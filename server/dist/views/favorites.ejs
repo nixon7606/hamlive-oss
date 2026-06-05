@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- hamlive-oss — MIT License. See LICENSE. -->
+
+<head>
+  <%- include('./partials/head') %> <%- include('./partials/pageTopFeatures') %>
+
+  <title><%= server.appName %> - Your Favs <%if (server.logLevel !== "info") {%> (<%= server.logLevel %>) <%}%></title>
+    </head>
+    <body class="bg-dark text-light">
+      <%- include('./partials/adTopBar') %>
+    <%- include('./partials/navbar', {user: user}) %>
+
+    <div class="container" id="rowContainer">
+      <div class="row">
+        <div class="col p-md-2 pb-md-0 m-md-3">
+          <ul class="nav nav-tabs">
+            <li class="nav-item">
+              <a class="nav-link" href="/views/myaccount">Account</a>
+            </li>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" data-bs-toggle="dropdown" href="#" role="button">
+                Your Privacy
+              </a>
+              <ul class="dropdown-menu bg-secondary">
+                <li>
+                  <a class="dropdown-item" href="/views/dataprivacy">Data Privacy Options</a>
+                </li>
+                <li>
+                  <hr class="dropdown-divider" />
+                </li>
+                <li>
+                  <a class="dropdown-item" href="/views/privacypolicy">Privacy Policy</a>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="/views/cookiepolicy">Cookie Policy</a>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="/views/termsofuse">Terms of Use</a>
+                </li>
+              </ul>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link active bg-secondary" href="#">Favorites</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+
+      <div class="row">
+        <div class="col-12 col-md-7">
+          <hl-favlist></hl-favlist>
+        </div>
+      </div>
+
+    </div>
+
+
+
+    <%- include('./partials/pageBottomFeatures') %>
+
+    <script src="/js/byView/<%= VIEW %>/main.js" type="module"></script>
+    </body>
+    <%- include('./partials/footer') %>
+
+</html>

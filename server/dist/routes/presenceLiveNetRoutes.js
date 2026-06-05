@@ -1,0 +1,9 @@
+/* hamlive-oss — MIT License. See LICENSE. */
+
+const router = require('express').Router();
+const { liveNetPresence } = require('../controllers/liveNetController');
+const { authCheck, REQ_CALLSIGN } = require('../lib/serverUtils');
+
+router.get('/:id', authCheck(REQ_CALLSIGN), liveNetPresence);
+
+module.exports = router;

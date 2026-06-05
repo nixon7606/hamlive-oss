@@ -1,0 +1,43 @@
+<!--Begin: navbar.ejs-->
+<nav class="navbar navbar-expand-md bg-quaternary navbar-dark" aria-label="Main Navigation">
+  <div class="container">
+    <a href="/views/dashboard" class="navbar-brand hasToolTip" title="Spread the word about <%= server.appName %> 🙏" data-bs-toggle="tooltip" data-bs-placement="right" aria-label="<%= server.appName %> Home – Go to the main listing of all active nets">
+      <img src="/img/HL-main.svg" width="150" alt="<%= server.appName %> Logo, click for list of all active nets" />
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navmenu" aria-controls="navmenu" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navmenu">
+      <ul class="navbar-nav ms-auto" role="menubar">
+        <li class="nav-item" role="none">
+          <a href="/views/dashboard" class="nav-link h6" role="menuitem" tabindex="0">
+            <strong>Attend Net</strong>
+          </a>
+        </li>
+        <li class="nav-item" role="none">
+          <a href="/views/mynets" class="nav-link h6" role="menuitem" tabindex="0">
+            <strong>Start Net</strong>
+          </a>
+        </li>
+        <li class="nav-item" role="none">
+          <a href="/views/guide" class="nav-link h6" role="menuitem" tabindex="0">
+            <strong>Guide</strong>
+          </a>
+        </li>
+        <li class="nav-item" role="none">
+          <a href="/views/myaccount" class="nav-link h6" role="menuitem" tabindex="0">
+            <strong>Settings</strong>
+          </a>
+        </li>
+        <% if (user.isLoggedIn) { %>
+        <li class="nav-item" role="none">
+          <a href="/auth/logout" class="nav-link h6" role="menuitem" tabindex="0">
+            <strong>Logout</strong>
+          </a>
+        </li>
+        <% } %>
+      </ul>
+    </div>
+  </div>
+</nav>
+<!--End: navbar.ejs-->

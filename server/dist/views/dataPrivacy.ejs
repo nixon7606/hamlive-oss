@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- hamlive-oss — MIT License. See LICENSE. -->
+
+<head>
+  <%- include('./partials/head') %> <%- include('./partials/pageTopFeatures') %>
+
+  <title><%= server.appName %> - Data Privacy <%if (server.logLevel !== "info") {%> (<%= server.logLevel %>) <%}%></title>
+    </head>
+    <body class="bg-dark text-light">
+      <%- include('./partials/adTopBar') %>
+    <%- include('./partials/navbar', {user: user}) %>
+
+    <!-- Modal -->
+    <div class="modal fade" id="account_delete_modal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="staticBackdropLabel">Account Marked for Deletion</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <em id="delete_output"></em>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" id="undelete_my_account_btn" class="btn btn-primary bi bi-person-plus-fill">
+              Undelete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- End Modal -->
+
+    <div class="container">
+      <div class="row">
+        <div class="col p-md-2 m-md-3">
+          <ul class="nav nav-tabs">
+            <li class="nav-item">
+              <a class="nav-link" aria-current="page" href="/views/myaccount">Account</a>
+            </li>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle bg-secondary active" data-bs-toggle="dropdown" href="#" role="button" aria-expanded="false">
+                Your Privacy
+              </a>
+              <ul class="dropdown-menu bg-secondary">
+                <li>
+                  <a class="dropdown-item active" href="#">Data Privacy Options</a>
+                </li>
+                <li>
+                  <hr class="dropdown-divider" />
+                </li>
+                <li>
+                  <a class="dropdown-item" href="/views/privacypolicy">Privacy Policy</a>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="/views/cookiepolicy">Cookie Policy</a>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="/views/termsofuse">Terms of Use</a>
+                </li>
+              </ul>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="/views/favorites">Favorites</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <form id="dataprivacy_form">
+        <div class="row">
+          <div class="col-1 ms-4 mt-2 mt-md-0 form-check">
+            <input class="form-check-input bg-tertiary ms-1 mt-1 flexOption" type="checkbox" id="flexOpt-email" />
+          </div>
+          <div class="col-10 mt-2 mt-md-0">
+            <span class="text-secondary">Email Subsystem</span>
+            <em>- Enable / Disable email notifications when a net you follow is starting</em>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-1 ms-4 mt-3 mt-md-0 form-check">
+            <input class="form-check-input bg-tertiary ms-1 mt-1 flexOption" type="checkbox" id="flexOpt-chat" />
+          </div>
+          <div class="col-10 mt-3 mt-md-0">
+            <span class="text-secondary">Interactive Chat Widget</span>
+            <em>- Enable / Disable chat functionality during nets</em>
+          </div>
+        </div>
+
+        <div class="col-12 border-bottom border-light mt-4"></div>
+
+        <div class="row">
+          <div class="d-flex align-items-center" style="height: 75px">
+            <button type="button" id="delete_my_account_btn" class="btn btn-small btn-outline-primary" data-bs-toggle="modal" data-bs-target="#account_delete_modal">
+              <i class="bi bi-person-x"></i>
+            </button>
+
+            <span class="text-light ms-2">Delete My Account</span>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <%- include('./partials/pageBottomFeatures') %>
+
+    <script src="/js/byView/<%= VIEW %>/main.js" type="module"></script>
+    </body>
+    <%- include('./partials/footer') %>
+
+</html>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- hamlive-oss — MIT License. See LICENSE. -->
+
+<head>
+  <%- include('./partials/head') %>
+  <%- include('./partials/pageTopFeatures') %>
+  <title><%= server.appName %> <% if (server.logLevel !== "info") { %> (<%= server.logLevel %>) <% } %></title>
+</head>
+
+<body class="bg-dark">
+  <%- include('./partials/adTopBar') %>
+  <%- include('./partials/navbar', { user: user }) %>
+
+  <div class="container-xxl">
+    <div class="row">
+      <div class="col p-md-2 m-md-3">
+        <ul class="nav nav-tabs">
+          <li class="nav-item">
+            <a class="nav-link active bg-secondary" href="#">Live Nets</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/views/intro">How-To Video</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="p-2" id="dashItemsContainer">
+      <!-- Template for dynamically generated net rows -->
+      <div id="netTemplate" class="ms-md-5 me-md-5 mb-2 mb-md-3 row bg-very-dark rounded border-1 border-light border-dotted text-secondary d-none py-4">
+        <div class="row">
+          <div class="col-md-5 ms-md-5 text-light text-nowrap align-items-end">
+            <a id="title-link" href="#" class="text-decoration-none text-muted">
+              <img src="/img/on-air-inactive2.png" id="onairimg" width="62" height="22" />
+              <span class="ms-1 ms-md-2 align-middle" id="title" style="font-size: 1.1em"></span>
+            </a>
+            <span> </span>
+            <span class="text-tertiary align-bottom">
+              <% if (user.isLoggedIn) { %>
+              <i class="bi bi-star favicon pt-2" style="font-size: 1.1em"></i>
+              <% } else { %>
+              <i class="d-none bi bi-star favicon" style="font-size: 1.1em"></i>
+              <% } %>
+            </span>
+          </div>
+          <div class="col"></div>
+        </div>
+        <div class="row">
+          <div class="col-5 ms-md-5" id="startTime"></div>
+          <div class="col" id="frequency"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('./partials/pageBottomFeatures') %>
+  <script src="/js/byView/<%= VIEW %>/main.js" type="module"></script>
+  <%- include('./partials/footer') %>
+</body>
+
+</html>

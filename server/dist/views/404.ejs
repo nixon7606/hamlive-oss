@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- hamlive-oss — MIT License. See LICENSE. -->
+
+<head>
+  <%- include('./partials/head') %> <%-
+        include('./partials/pageTopFeatures') %>
+
+
+  <title><%= server.appName %> - Not Found <%if (server.logLevel !== "info") {%> (<%= server.logLevel %>) <%}%></title>
+        
+    </head>
+    <body class="bg-dark">
+        <%- include('./partials/navbar', {user: user}) %>
+
+    <section class="bg-dark text-light p-5 text-center">
+      <div class="container">
+        <div class="d-sm-flex">
+          <div class="m-4">
+            <span class="text-secondary h4"></span>
+            <em class="text-primary">Not Found</em>
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <%- include('./partials/pageBottomFeatures') %>
+    </body>
+    <%- include('./partials/footer') %>
+
+</html>

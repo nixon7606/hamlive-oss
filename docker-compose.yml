@@ -1,0 +1,37 @@
+# hamlive-oss — local MongoDB for development / testing.
+#
+#   docker compose up -d      # start MongoDB in the background
+#   npm run dev               # then run the app
+#   docker compose down       # stop it (data persists in the named volume)
+#
+# This runs a SINGLE-NODE REPLICA SET. A replica set (not a standalone mongod)
+# is required for MongoDB change streams, which power Ham.Live's real-time
+# (SSE) updates. The healthcheck below auto-initiates the replica set on first
+# start, so there's nothing extra to run.
+#
+# Your MONGODB_URI must include ?directConnection=true (the .env.example default
+# already does). For a hosted instance, point MONGODB_URI at a managed database
+# (e.g. MongoDB Atlas), which is already a replica set.
+
+services:
+    mongo:
+        image: mongo:7
+        container_name: hamlive-mongo
+        restart: unless-stopped
+        command: ['--replSet', 'rs0', '--bind_ip_all']
+        ports:
+            - '27017:27017'
+        volumes:
+            - hamlive-mongo-data:/data/db
+        healthcheck:
+            # Initiate the replica set once the node is up (no-op once initiated).
+            test: >
+                mongosh --quiet --eval
+                "try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}) }"
+            interval: 10s
+            timeout: 10s
+            start_period: 20s
+            retries: 10
+
+volumes:
+    hamlive-mongo-data:

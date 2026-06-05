@@ -1,0 +1,277 @@
+/* hamlive-oss — MIT License. See LICENSE. */
+
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.height-40vh {
+    height: 40vh;
+    overflow-y: auto;
+}
+
+.container-fluid {
+    width: 95%;
+    margin-right: auto;
+    margin-left: auto;
+}
+
+.ads-topbar {
+    height: 91px;
+}
+
+.offline {
+    filter: var(--hl-offline-filter);
+}
+
+.bg-very-dark {
+    background-color: #121212;
+}
+
+.border-dotted {
+    border-style: dotted;
+}
+
+/* Container treatments */
+.chat-container {
+    border-radius: 8px;
+    border: 1px solid rgba(110, 184, 192, 0.15);
+    min-height: 0; /* Critical: allows flex child to shrink and enable overflow scroll in chat */
+}
+
+.stations-container {
+    border-radius: 8px;
+    border: 1px solid rgba(220, 131, 53, 0.15);
+}
+
+/* Chat header bar - full width gradient with centered text */
+.chat-label {
+    display: block;
+    width: 100%;
+    text-align: center;
+    color: var(--hl-light);
+    font-size: 0.8rem;
+    font-weight: 400;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 6px 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(110, 184, 192, 0.2) 30%,
+        rgba(110, 184, 192, 0.3) 50%,
+        rgba(110, 184, 192, 0.2) 70%,
+        transparent 100%
+    );
+    border-radius: 4px;
+}
+
+#onairimg {
+    border-radius: 8px;
+}
+
+/* System notification modal */
+#systemNotificationModal .modal-content {
+    border: 1px solid rgba(163, 118, 195, 0.25);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.onair-glow {
+    box-shadow:
+        0 0 10px 2px rgba(220, 131, 53, 0.2),
+        0 0 20px 4px rgba(220, 131, 53, 0.07);
+}
+
+#stations-col {
+    max-height: 220px;
+}
+
+#chat-col {
+    min-height: 300px;
+}
+
+#command-help {
+    display: none;
+}
+
+#command-help code {
+    font-weight: bolder;
+}
+
+#input_netcontrol_commandline {
+    width: 250px;
+}
+
+#topmost-rolestat-label {
+    border-radius: 6px 6px 0px 0px;
+}
+
+#bottommost-rolestat-label {
+    border-radius: 0px 0px 6px 6px;
+}
+
+.net-btn-bar {
+    width: 200px;
+}
+
+.netwait {
+    min-height: 50vh;
+    min-width: 50vh;
+}
+
+.gbutton {
+    display: inline-block;
+    width: 160px;
+    height: 39px;
+    background-image: url('/img/google/gnormal.png');
+}
+
+.profile-pic-container {
+    position: relative;
+    max-width: 50px;
+    cursor: pointer;
+}
+
+.profile-pic {
+    max-height: 48px;
+    width: auto;
+    border-radius: 50%;
+}
+
+.hand-icon {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    opacity: 1;
+    transition: opacity 0.4s ease-in-out;
+}
+
+.hand-icon.hand-is-down {
+    opacity: 0;
+}
+
+.online-icon {
+    position: absolute;
+    bottom: 0%;
+    right: 0%;
+}
+
+.online-icon::before {
+    transition: color 0.4s ease-in-out;
+}
+
+#role-stats tr td {
+    font-size: 0.9rem;
+}
+
+#last-checkin {
+    scroll-margin: 150px;
+}
+
+/* Bootstrap Breakpoints: */
+/* bs-sm */
+@media (min-width: 576px) {
+    #command-help {
+        font-size: 1rem;
+    }
+    .ncp-related-text {
+        font-size: 0.9rem;
+    }
+    #input_netcontrol_commandline {
+        width: 450px;
+    }
+}
+
+/* bs-md */
+@media (min-width: 768px) {
+    .height-md-57vh {
+        height: 57vh;
+        overflow-y: auto;
+    }
+    #command-help {
+        display: inline;
+        font-size: 1rem;
+    }
+    .ncp-related-text {
+        font-size: 0.9rem;
+    }
+    #stations-col {
+        min-height: 45vh;
+        max-height: 60vh;
+    }
+    #chat-col {
+        min-height: 45vh;
+        max-height: 60vh;
+    }
+    .net-btn-bar {
+        width: 300px;
+    }
+    .container-fluid {
+        max-width: 95%;
+    }
+}
+
+/* bs-lg */
+@media (min-width: 992px) {
+    #command-help {
+        font-size: 1rem;
+    }
+    .ncp-related-text {
+        font-size: 0.9rem;
+    }
+    .container-fluid {
+        max-width: 95%;
+    }
+}
+
+/* bs-xl */
+@media (min-width: 1200px) {
+    #command-help {
+        font-size: 1rem;
+    }
+    .container-fluid {
+        max-width: 99%;
+    }
+}
+
+/* bs-xxl */
+@media (min-width: 1400px) {
+    .container-fluid {
+        max-width: 99%;
+    }
+}
+
+@media (min-width: 1600px) {
+    .container-fluid {
+        max-width: 80%;
+    }
+}
+
+/* Misc Breakpoints: */
+/* hand positioning tweak */
+@media only screen and (max-width: 600px) {
+    .hand-icon {
+        top: 0%;
+        transform: translate(-50%, 0%);
+    }
+}
+
+/* Begin Net Control Button: */
+.fade-in {
+    animation: fadeIn 0.2s;
+}
+
+@keyframes fadeIn {
+    0% {
+        opacity: 0;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}
+
+/* End Net Control Button: */

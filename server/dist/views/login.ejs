@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- hamlive-oss — MIT License. See LICENSE. -->
+
+<head>
+  <%- include('./partials/head') %> <%- include('./partials/pageTopFeatures') %>
+  <title><%= server.appName %> - Login <%if (server.logLevel !== "info") {%> (<%= server.logLevel %>) <%}%></title>
+    </head>
+    <body class="bg-dark">
+      <%- include('./partials/adTopBar') %>
+    <%- include('./partials/navbar', {user: user}) %>
+
+    <% if (server.googleAuth) { %>
+    <div class="d-flex container mt-4">
+      <div class="flex-fill d-flex justify-content-center h6">
+        <em class="text-muted">
+          <small>
+            Note: Google sign-In is generally more reliable (spam filters might impact delivery of the email
+            link)
+          </small>
+        </em>
+      </div>
+    </div>
+    <% } %>
+
+    <div class="container-fluid">
+      <div class="row mt-2 mt-sm-5"></div>
+
+      <div class="row justify-content-center">
+        <% if (server.googleAuth) { %>
+        <div class="col-xs-12 col-sm-6 col-md-4 mt-0 d-flex align-items-center justify-content-center">
+          <a href="/auth/google"><button class="gbutton"></button></a>
+        </div>
+        <% } %>
+        <div class="col-xs-4 col-sm-4 col-md-4 mt-2 d-flex align-items-center justify-content-center">
+          <div class="card w-45">
+            <div class="card-body bg-dark">
+              <span class="card-title text-light">Sign in with email link</span>
+              <form id="magic-auth">
+                <input type="email" class="form-control text-primary" name="magic-auth-email_addr" id="input_magic-auth-email_addr" placeholder="example@domain" />
+              </form>
+              <% if (!server.emailEnabled) { %>
+              <p class="small text-warning mt-2 mb-0">
+                Email delivery isn't set up on this server — after you enter your email, your sign-in
+                link will appear right here.
+              </p>
+              <% } %>
+              <div id="dev-magic-link" class="mt-2"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <%- include('./partials/pageBottomFeatures') %>
+
+    <script src="/js/byView/<%= VIEW %>/main.js" type="module"></script>
+    </body>
+    <%- include('./partials/footer') %>
+
+</html>

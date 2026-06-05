@@ -1,0 +1,818 @@
+/* hamlive-oss — MIT License. See LICENSE. */
+
+const { realtimeClients } = require('./realtimeClients');
+const { logger } = require('./logger');
+const { NetCloseReport } = require('./userNotification');
+const { getFlexOptionsByUser, wellFormedCall, qrzLookup } = require('./serverUtils');
+const { getNetProfile } = require('../models/netProfile');
+const { getUserProfile } = require('../models/userProfile');
+const { getLiveNet } = require('../models/liveNet');
+const { getPendingUnfollow, getPendingAccountDelete } = require('../models/taskQueues');
+const { getStationInteraction } = require('../models/stationInteraction');
+const mongoose = require('mongoose');
+// NEW: GetStream.io chat integration
+const { deleteNetChannel } = require('./streamChat');
+
+function getModels(db = null) {
+    return {
+        NetProfile: getNetProfile(db),
+        UserProfile: getUserProfile(db),
+        LiveNet: getLiveNet(db),
+        PendingUnfollow: getPendingUnfollow(db),
+        PendingAccountDelete: getPendingAccountDelete(db),
+        StationInteraction: getStationInteraction(db)
+    };
+}
+
+const roleLevels = new Map([
+    ['netcontrol', 0],
+    ['netlogger', 1],
+    ['netrelay', 2],
+    ['netuser', 3]
+]);
+/*  
+    Any 'net function' used by 2 more modules should be moved to this lib.
+    Typical example: functions used by both the command line functions and
+    by controllers should be centralized here
+
+ */
+const validRoles = Array.from(roleLevels.keys());
+
+async function getStationDetail({ lnid, station, db = mongoose.connection }) {
+    let { LiveNet, StationInteraction } = getModels(db);
+
+    let ia;
+    let lnresult;
+    const stationUpper = station.toUpperCase();
+
+    if (!lnid || !station) {
+        logger.error(`getStationDetail() missing required params, received lnid: ${lnid}, station: ${station}`);
+        throw new Error('getStationDetail() missing required params');
+    } else {
+        if ((lnresult = await LiveNet.findById(lnid))) {
+            if ((ia = await StationInteraction.findById(lnresult.lookupTable.get(stationUpper)?.stationInteraction))) {
+                if (validRoles.includes(ia.role)) {
+                    return {
+                        role: ia.role,
+                        level: roleLevels.get(ia.role),
+                        checkedState: ia.checkedState
+                    };
+                } else {
+                    throw new Error(`getStationDetail() role in ia doc: ${ia.role} not found in valid roles map`);
+                }
+            } else {
+                throw new Error(
+                    `could not find role details, make sure ${station.toLowerCase()} is checked-in or online`
+                );
+            }
+        } else {
+            throw new Error(`getStationDetail() livenet ${lnid} not found in db`);
+        }
+    }
+}
+
+async function checkState({
+    liveNet,
+    srcStation,
+    state,
+    dstStations,
+    highlight = false,
+    hand = false,
+    flexOpts,
+    db = mongoose.connection
+}) {
+    // Validate state
+    if (typeof state !== 'boolean' && state !== null) {
+        throw new Error('checkState(): valid state options are true, false, or null');
+    }
+
+    // Validate liveNet
+    if (!liveNet || !liveNet.lookupTable) {
+        throw new Error('checkState(): missing liveNet doc as param or missing lookupTable in liveNet doc');
+    }
+
+    // Validate dstStations
+    dstStations.forEach(dstStation => {
+        if (typeof dstStation !== 'string') {
+            throw new Error('checkState() expects dstStations[] to each be of type string');
+        }
+        if (!wellFormedCall(dstStation)) {
+            throw new Error(`Malformed callsign: ${dstStation}`);
+        }
+    });
+
+    const { level: myLevel, checkedState: myCheckedState } = await getStationDetail({
+        lnid: liveNet._id,
+        station: srcStation.toUpperCase()
+    });
+
+    if (myCheckedState === false) {
+        throw new Error(`You must be checked-in to alter check-state`);
+    }
+
+    // Check role level
+    if (myLevel > 1) throw new Error(`Only NCS or logger can alter checked state`);
+
+    let { StationInteraction, UserProfile } = getModels(db);
+
+    const knownStations = [];
+    const newStations = [];
+    const tsIndex = new Map();
+    const tsBase = Date.now();
+
+    let stateDescription = '';
+    if (state === true) {
+        stateDescription = 'IN';
+    } else if (state === false) {
+        stateDescription = 'OUT';
+    } else if (state === null) {
+        stateDescription = 'default';
+    }
+
+    logger.info(
+        `checkState(): ${srcStation} is changing check-state to '${stateDescription}' for ${dstStations.length} stations`
+    );
+
+    // Process stations
+    dstStations.forEach((s, index, arr) => {
+        const station = s.trim().toUpperCase();
+
+        if (s.length) {
+            if (!wellFormedCall(station)) throw new Error(`Malformed callsign: ${station}`);
+
+            if (srcStation.toUpperCase() === station) {
+                throw new Error(`Cannot alter your *own check-state`);
+            }
+
+            const ts = tsBase + index;
+            tsIndex.set(station, ts);
+
+            if (liveNet.lookupTable.has(station.toUpperCase())) {
+                knownStations.push(station);
+            } else {
+                if (state === false) {
+                    throw new Error(`${s} must be checked-*in prior to check-*out (use io command for in-out)`);
+                } else {
+                    newStations.push(station);
+                }
+            }
+        }
+    });
+
+    // Check role-level privs
+    if (knownStations.length) {
+        await Promise.all(
+            knownStations.map(async dstStation => {
+                const { level: targetLevel } = await getStationDetail({
+                    lnid: liveNet._id,
+                    station: dstStation
+                });
+
+                if (myLevel >= targetLevel) {
+                    throw new Error(
+                        `Insufficient Privileges: ${srcStation.toLowerCase()} cannot alter ${dstStation.toLowerCase()}'s check-state`
+                    );
+                }
+            })
+        );
+    }
+
+    // Process known stations
+    const knownIaDocs = await Promise.all(
+        knownStations.map(dstStation => {
+            let diaId;
+
+            if ((diaId = liveNet.lookupTable.get(dstStation.toUpperCase())?.stationInteraction)) {
+                return StationInteraction.findById(diaId);
+            }
+        })
+    );
+
+    // Process new stations
+    const newIaDocs = await Promise.all(
+        newStations.map(async dstStation => {
+            let userData;
+            const dstStationUpper = dstStation.toUpperCase();
+
+            if (
+                !(userData = await UserProfile.findOne({
+                    callSign: dstStationUpper
+                }))
+            ) {
+                //they don't have an account
+                ({ result: userData, atQuota: qrzInQuotaWait } = await qrzLookup(dstStationUpper, flexOpts));
+            }
+
+            return new StationInteraction({
+                netProfile: liveNet.netProfile,
+                liveNet: liveNet._id,
+                callSign: dstStationUpper,
+                createdBy: 'admin',
+                userProfile: userData?._id || null,
+                displayName: userData?.localNickname || userData?.displayName || null,
+                photo: userData?.photo || null,
+                email: userData?.email || null,
+                location: userData?.location || null,
+                chatEnabled: false,
+                highlight: highlight,
+                hand: hand,
+                checkedState: state,
+                checkedInAt: state === true ? tsIndex.get(dstStationUpper) : null,
+                sigReports: {
+                    rst: {}
+                }
+            });
+        })
+    );
+
+    // Update known stations
+    const knownResponses = knownIaDocs.map(dia => {
+        const ts = tsIndex.get(dia.callSign.toUpperCase());
+        const dupe = dia.checkedState === state;
+
+        // Throw an error if trying to check out a station that hasn't checked in
+        if (dia.checkedState === null && state === false) {
+            throw new Error(`${dia.callSign} must be checked-in prior to check-out (use io command for in-out)`);
+        }
+
+        if (state === null) {
+            //changing to lurker:
+            dia.checkedState = null;
+            dia.checkedInAt = null;
+        } else {
+            //changing to in or out:
+            dia.checkedState = state;
+            if (state) {
+                //changing to in:
+                dia.checkedInAt = ts;
+            }
+        }
+
+        // If the requested check-state is not a dupe, save the document
+        if (!dupe) {
+            dia.save();
+        }
+
+        return {
+            callSign: dia.callSign,
+            checkedState: dia.checkedState,
+            dupe,
+            ts
+        };
+    });
+
+    // Save new stations
+    const newResponses = await Promise.all(
+        newIaDocs.map(async dia => {
+            try {
+                await dia.save();
+            } catch (err) {
+                logger.error(`In dia.save(): ${err}`);
+                throw err;
+            }
+
+            liveNet.lookupTable.set(dia.callSign.toUpperCase(), {
+                stationInteraction: dia._id
+            });
+
+            const { callSign, checkedState, checkedInAt: ts } = dia;
+
+            return {
+                callSign,
+                checkedState,
+                dupe: false,
+                ts
+            };
+        })
+    );
+
+    // Save liveNet if new stations were added
+    if (newIaDocs.length) {
+        logger.debug(`checkState(): adding ${newIaDocs.length} new stations to lookupTable`);
+        try {
+            await liveNet.save();
+        } catch (err) {
+            logger.error(`In liveNet.save(): ${err}`);
+            throw err;
+        }
+    }
+
+    return [...knownResponses, ...newResponses].sort((a, b) => a.ts - b.ts);
+}
+
+async function hand({ liveNet, srcStation, dstStation, state, db = mongoose.connection }) {
+    if (!dstStation || !liveNet) {
+        throw new Error('hand(): missing required params');
+    }
+
+    if (typeof state !== 'boolean') {
+        throw new Error(`hand(): expected boolean param and received ${state}`);
+    }
+
+    const { StationInteraction } = getModels(db);
+    const diaId = liveNet.lookupTable.get(dstStation.toUpperCase())?.stationInteraction;
+    if (!diaId) {
+        throw new Error(`hand(): could not find interaction for ${dstStation}. Is callsign correct?`);
+    }
+
+    const dia = await StationInteraction.findById(diaId);
+    if (!dia) {
+        throw new Error(`hand(): could not retrieve hand state for ${dstStation}.`);
+    }
+
+    if (srcStation !== dstStation) {
+        const { level: myLevel, checkedState: myCheckedState } = await getStationDetail({
+            lnid: liveNet._id,
+            station: srcStation.toUpperCase()
+        });
+        if (myCheckedState === false) {
+            throw new Error(`You must be checked-in to alter hand state`);
+        }
+
+        if (myLevel > 1) {
+            throw new Error('only NCS or logger can alter hand state');
+        }
+    }
+
+    dia.hand = state;
+
+    const savedDia = await dia.save();
+    if (!savedDia) {
+        throw new Error(`hand() could not save state in interaction doc for ${dstStation}`);
+    }
+
+    return savedDia.hand;
+}
+
+async function highlight({ liveNet, srcStation, dstStation, state, db = mongoose.connection }) {
+    let { StationInteraction } = getModels(db);
+
+    let dia;
+
+    if (typeof state === 'boolean') {
+        if (dstStation && liveNet) {
+            dia = await StationInteraction.findById(
+                liveNet.lookupTable.get(dstStation.toUpperCase())?.stationInteraction
+            );
+
+            if (liveNet && dia) {
+                if (dia.checkedState !== true && state)
+                    throw new Error('highlight() can only highlight checked-in stations');
+
+                if ((await getStationDetail({ lnid: liveNet._id, station: srcStation.toUpperCase() })).level > 1)
+                    throw new Error(`only NCS or logger can alter highlight state`);
+
+                dia.highlight = state;
+                if (!(await dia.save())) {
+                    throw new Error(`highlight() could not save state in interaction doc for ${dstStation}`);
+                }
+
+                return dia.highlight;
+            } else {
+                throw new Error(
+                    `highlight(): could not retreive state from db for ${dstStation}. Is callsign correct?`
+                );
+            }
+        } else {
+            throw new Error('highlight(): missing required params - livenetdoc or dst station');
+        }
+    } else {
+        throw new Error(`highlight(): expected boolean param and received ${state}`);
+    }
+}
+
+async function setNetRole({ lnid, station, newRole, db = mongoose.connection, session = null }) {
+    // Parameter validation
+    if (!lnid) throw new Error('setNetRole(): missing lnid param');
+    if (typeof station !== 'string' || !station) throw new Error('setNetRole(): missing or invalid station param');
+    if (!validRoles.includes(newRole)) throw new Error('setNetRole() called with invalid role as param');
+
+    let { LiveNet, StationInteraction } = getModels(db);
+
+    let ia;
+    let lnresult;
+    const stationUpper = station.toUpperCase();
+
+    // Pass session to findById
+    if ((lnresult = await LiveNet.findById(lnid).session(session))) {
+        const lookup = lnresult.lookupTable.get(stationUpper);
+        if (lookup && (ia = await StationInteraction.findById(lookup.stationInteraction).session(session))) {
+            //checks on target station:
+            const hasAccount = Boolean(ia.userProfile);
+            const isOwner = hasAccount
+                ? (await netOwnerCheck({ npid: lnresult.netProfile, upid: ia.userProfile, session })).confirmed
+                : false;
+
+            if ((newRole === 'netcontrol' || newRole === 'netlogger') && !hasAccount)
+                throw new Error(`have ${ia.callSign.toLowerCase()} create an account first`);
+
+            if (newRole === 'netcontrol') {
+                if (!isOwner)
+                    throw new Error(
+                        `${ia.callSign.toLowerCase()} must also be an owner. type "help owner" for more info`
+                    );
+
+                //update livenetdoc with new ncs
+                lnresult.netControl = ia.userProfile;
+
+                //save with session
+                if (!(await lnresult.save({ session }))) {
+                    throw new Error(`setNetRole() could not update livenetdoc with new ncs`);
+                }
+            }
+
+            ia.role = newRole;
+
+            // Save with session
+            if (!(await ia.save({ session }))) {
+                throw new Error(`setNetRole() could not save interaction doc with role update for ${ia._id}`);
+            }
+        } else {
+            throw new Error(`setNetRole() make sure ${station} is in attendance`);
+        }
+    } else {
+        throw new Error(`setNetRole() livenet ${lnid} not found in db`);
+    }
+}
+
+async function netOwnerCheck({ req, npid, upid, db = mongoose.connection, session = null }) {
+    let { NetProfile } = getModels(db);
+    let confirmed = false;
+    let npresult;
+    let count;
+
+    try {
+        if (req) {
+            npid = req.params.id;
+            upid = req.user.id;
+        } else {
+            if (!npid || !upid) {
+                throw new Error('netOwnerCheck() missing required parameters (req -OR- npid AND upid');
+            }
+        }
+
+        if (!(npresult = await NetProfile.findById(npid).session(session))) {
+            throw new Error(`netprofile ${npid} not found`);
+        }
+    } catch (err) {
+        if (err.message instanceof mongoose.Error.CastError) {
+            logger.error(`Netprofile ${npid} does not exist`);
+        }
+
+        logger.error(err.stack);
+    }
+
+    if (npresult) {
+        count = npresult.owners.length;
+
+        npresult.owners.forEach(owner => {
+            if (owner.toString() === upid.toString()) {
+                confirmed = true;
+            }
+        });
+
+        return {
+            confirmed,
+            count,
+            npresult
+        };
+    } else {
+        logger.error(`netOwnerCheck() could not find profile: ${npid}`);
+        return { confirmed: false, count };
+    }
+}
+
+async function addNetOwner({ newOwnerEmail, netProfiles, flexOpts, db = mongoose.connection }) {
+    let { NetProfile, UserProfile } = getModels(db);
+
+    if (!flexOpts) {
+        throw new Error('addNetOwner: missing flexOpts param');
+    }
+    if (!netProfiles) {
+        throw new Error('addNetOwner missing required netprofiles param');
+    }
+
+    if (newOwnerEmail) {
+        const count = netProfiles.toObject().owners.length;
+        let upresult;
+
+        if (count < flexOpts['maxOwnersPerNet']) {
+            if ((upresult = await UserProfile.findOne({ email: newOwnerEmail }))) {
+                if (!upresult.callSign) {
+                    throw new Error('target does not have an amateur radio callsign');
+                }
+
+                if (
+                    upresult.toObject().myNets.length >=
+                    (await getFlexOptionsByUser({ user: upresult, cachedResponse: false }))?.maxNetsPerUser
+                ) {
+                    throw new Error('target is already at max nets');
+                }
+
+                if (netProfiles.owners.includes(upresult._id)) {
+                    throw new Error('target is already owner for this net');
+                }
+
+                if (
+                    await UserProfile.findByIdAndUpdate({ _id: upresult._id }, { $push: { myNets: netProfiles._id } })
+                ) {
+                    if (
+                        await NetProfile.findOneAndUpdate({ _id: netProfiles._id }, { $push: { owners: upresult._id } })
+                    ) {
+                        return `co-owner privileges successfully assigned to ${upresult
+                            .toObject()
+                            .callSign.toLowerCase()}`;
+                    } else {
+                        throw new Error('Could not update owners in netprofile');
+                    }
+                } else {
+                    throw new Error('Could not update myNets in userprofile');
+                }
+            } else {
+                throw new Error(`no account with email: ${newOwnerEmail}`);
+            }
+        } else {
+            throw new Error(`already at max owner count for net: ${netProfiles.title}`);
+        }
+    } else {
+        throw new Error('missing required email address param');
+    }
+}
+
+async function delNet({ upid, npid, db = mongoose.connection }) {
+    let { UserProfile, LiveNet } = getModels(db);
+
+    if (!upid || !npid) {
+        throw new Error('delNet: missing required param(s)');
+    }
+
+    let upresult;
+    let lnresult;
+
+    const { confirmed, npresult, count } = await netOwnerCheck({ upid, npid, db });
+
+    if (confirmed) {
+        if (npresult.liveNet) {
+            lnresult = await LiveNet.findById(npresult.liveNet);
+
+            // Defensive: LiveNet doc may not exist even if npresult.liveNet references an _id
+            // (e.g., it was removed earlier). Guard against null before accessing netControl.
+            if (lnresult && lnresult.netControl && lnresult.netControl.toString() === upid.toString()) {
+                logger.info(`ncs user ${upid} is deleting net ${npid}, closing first...`);
+                await closeNet({ netProfileDoc: npresult, liveNetDoc: lnresult, db });
+            }
+        }
+
+        if ((upresult = await UserProfile.findOneAndUpdate({ _id: upid }, { $pull: { myNets: npid } }))) {
+            logger.info(
+                `delNet: ${npresult.toObject().title} removed from myNets array for netOwner ${
+                    upresult.toObject().callSign
+                }`
+            );
+
+            if (await npresult.updateOne({ $pull: { owners: upid } })) {
+                logger.info(
+                    `delNet: ${upresult.toObject().callSign} removed from owners array of ${npresult.toObject().title}`
+                );
+            }
+
+            if (count === 1) {
+                if (npresult.followers?.length) {
+                    if (
+                        !(
+                            npresult.followers.length === 1 &&
+                            npresult.followers[0].equals(upid) &&
+                            upresult.flaggedForDeletion
+                        )
+                    ) {
+                        logger.warn('creating unfollowjob inside delnet()');
+                        createBulkUnfollowJob({
+                            unlink: 'userOnly',
+                            npids: [npresult._id],
+                            upids: npresult.followers,
+                            db
+                        });
+                    } else {
+                        logger.info(
+                            `the only follower (${upid}) is flagged for deletion, no need to create unfollow job`
+                        );
+                    }
+                }
+
+                if (await npresult.deleteOne()) {
+                    logger.info('delNet: Last net owner--net profile *immediately deleted: ' + npresult.title);
+
+                    return 'Last net owner, netprofile hard-deleted';
+                } else {
+                    throw new Error('delNet: could not delete netprofile record from db');
+                }
+            } else if (count > 1) {
+                // more net owners stations remain
+                return 'delNet: some net owners remain, will not delete netprofile record from db';
+            }
+        } else {
+            throw new Error('could not remove netprofile from users myNets array');
+        }
+    } else {
+        throw new Error(`user (${upid}) is not net ${npid} owner`);
+    }
+}
+
+async function createBulkUnfollowJob({ npids, upids, unlink = 'both', db = mongoose.connection }) {
+    let { PendingUnfollow } = getModels(db);
+    if (npids.length !== 0 && upids.length !== 0) {
+        if (npids.length === 1 && upids.length > 1) {
+            unlink = 'userOnly';
+            logger.info(`defer unfollow npid:${npids[0]}, unklink:${unlink}, upid(s):${upids.join(', ')}`);
+            await PendingUnfollow.insertMany(
+                upids.map(upid => ({
+                    unlink,
+                    upid: upid,
+                    npid: npids[0]
+                }))
+            );
+        } else if (npids.length > 1 && upids.length === 1) {
+            unlink = 'netOnly';
+            logger.info(`defer unfollow npid(s):${npids.join(', ')}, unklink:${unlink}, upid:${upids[0]}`);
+            await PendingUnfollow.insertMany(
+                npids.map(npid => ({
+                    unlink,
+                    upid: upids[0],
+                    npid: npid
+                }))
+            );
+        } else if (upids.length === 1 && npids.length === 1) {
+            logger.info(`defer unfollow npid:${npids[0]}, unklink:${unlink}, upid:${upids[0]}`);
+            await PendingUnfollow.create({
+                unlink,
+                upid: upids[0],
+                npid: npids[0]
+            });
+        } else {
+            throw new Error('createBulkUnfollowJob: invalid params or param array lenth');
+        }
+    } else {
+        throw new Error('createBulkUnfollowJob called with zero length param');
+    }
+}
+
+async function unFollow({ upid, npid, unlink, db = mongoose.connection }) {
+    let { NetProfile, UserProfile } = getModels(db);
+    let output = '';
+
+    if (!upid || !npid) {
+        throw new Error('unFollow: missing required param(s)');
+    }
+
+    if (unlink != 'userOnly') {
+        try {
+            if (await NetProfile.findOneAndUpdate({ _id: npid }, { $pull: { followers: upid } })) {
+                output += `user ${upid} removed from followers of net ${npid}. `;
+            } else {
+                output += `unFollow() net ${npid} does not exist. `;
+            }
+        } catch (err) {
+            logger.error(err);
+        }
+    }
+
+    if (unlink != 'netOnly') {
+        try {
+            if (await UserProfile.findByIdAndUpdate({ _id: upid }, { $pull: { following: npid } })) {
+                output += `net ${npid} removed from following list for user ${upid}`;
+            } else {
+                output += `unFollow() user ${upid} does not exist. `;
+            }
+        } catch (err) {
+            logger.error(err);
+        }
+    }
+
+    return output;
+}
+
+async function closeNet({ netProfileDoc, liveNetDoc, quiet = false, db = mongoose.connection }) {
+    let { StationInteraction, UserProfile } = getModels(db);
+
+    //cleanup SSE connection info in realtimeClients:
+    realtimeClients.close(netProfileDoc._id.toString());
+
+    liveNetDoc.closing = true;
+    await liveNetDoc.save();
+
+    if (!quiet) {
+        try {
+            const ncr = await NetCloseReport.init({
+                netProfileDoc,
+                liveNetDoc,
+                attendees: (
+                    await Promise.all(
+                        Array.from(liveNetDoc.lookupTable.values()).map(v =>
+                            StationInteraction.findById(v.stationInteraction)
+                        )
+                    )
+                )
+                    .map(({ photo, callSign, role, highlight, displayName, location, checkedInAt, sigReports }) => ({
+                        photo,
+                        callSign,
+                        role,
+                        highlight,
+                        displayName,
+                        location,
+                        checkedInAt,
+                        rst: sigReports.calculated
+                    }))
+                    .filter(({ checkedInAt }) => checkedInAt)
+            });
+
+            // Send email report if it was created successfully
+            // (may be null if chat log fetch failed and report couldn't be created)
+            if (ncr) {
+                //CC SuperUsers On Reports
+                const suIds = (await UserProfile.find({ superUser: true })).map(su => su._id);
+
+                await ncr.sendMailToUPIDs({ upids: [...netProfileDoc.owners, ...suIds], db });
+            } else {
+                logger.warn('NetCloseReport creation failed. Skipping email notification.');
+            }
+        } catch (err) {
+            logger.error('error in close routine: report generation');
+            logger.error(err.stack);
+        }
+    }
+
+    // Delete Stream Chat channel AFTER report is generated (so chat history is still available)
+    // WHY: Chat channel lifecycle tied to net lifecycle
+    // Wrapped in try/catch for graceful degradation - chat failure shouldn't prevent net close
+    try {
+        await deleteNetChannel(netProfileDoc._id);
+        logger.info(`Chat channel deleted for net ${netProfileDoc.title}`);
+    } catch (chatErr) {
+        // Don't fail net close if chat cleanup fails - graceful degradation
+        logger.error(`Failed to delete chat channel for ${netProfileDoc.title}: ${chatErr.message}`);
+    }
+
+    try {
+        await StationInteraction.deleteMany({ netProfile: netProfileDoc._id });
+        await liveNetDoc.deleteOne();
+
+        netProfileDoc.liveNet = undefined;
+        const savedNetProfileDoc = await netProfileDoc.save({ validateBeforeSave: false });
+
+        if (!savedNetProfileDoc) {
+            throw new Error('could not remove ln ref from np');
+        }
+
+        logger.info('Net Closed');
+    } catch (error) {
+        console.error(
+            `Error occurred in db cleanup while closing net ${netProfileDoc._id.toString()}: ${error.message}`
+        );
+    }
+}
+
+async function flagAccountForDeletion({ userProfileDoc, db = mongoose.connection }) {
+    let { PendingAccountDelete } = getModels(db);
+
+    if (userProfileDoc.locked === false && userProfileDoc.flaggedForDeletion !== true) {
+        userProfileDoc.flaggedForDeletion = true;
+
+        if (await userProfileDoc.save({ validateBeforeSave: false })) {
+            if (
+                await PendingAccountDelete.create({
+                    upid: userProfileDoc._id
+                })
+            ) {
+                logger.warn(`${userProfileDoc.id} account flagged for deletion`);
+                return userProfileDoc;
+            } else {
+                throw new Error(`Could not enqueue account ${userProfileDoc.id} in pending account delete collection`);
+            }
+        } else {
+            throw new Error(`Could not save account ${userProfileDoc.id} with deletion flag`);
+        }
+    } else {
+        logger.info(`account ${userProfileDoc.id} locked or already marked for deletion`);
+        return userProfileDoc;
+    }
+}
+
+const getSigReportType = ({ mode, sigReportTypeByMode }) =>
+    mode in sigReportTypeByMode ? sigReportTypeByMode[mode] : 'RSQ';
+
+module.exports = {
+    netOwnerCheck,
+    addNetOwner,
+    checkState,
+    delNet,
+    closeNet,
+    unFollow,
+    hand,
+    highlight,
+    createBulkUnfollowJob,
+    setNetRole,
+    getStationDetail,
+    roleLevels,
+    flagAccountForDeletion,
+    getSigReportType
+};
