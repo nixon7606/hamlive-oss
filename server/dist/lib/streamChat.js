@@ -243,22 +243,19 @@ const getChatToken = async (req, res) => {
         const firstName = displayName.split(' ')[0];
         const userCallSign = req.user.callSign || 'UNKNOWN';
         const displayFormat = firstName !== userCallSign ? `${firstName}(${userCallSign})` : userCallSign;
-        await (0, exports.upsertStreamUser)({
-            id: streamUserId,
-            name: displayFormat,
-            callSign: userCallSign
-        });
         const channelId = (0, exports.getChannelId)(npidParam);
         const client = (0, exports.getStreamClient)();
         const channel = client.channel('messaging', channelId);
-        try {
-            await channel.addMembers([{ user_id: streamUserId }]);
-            logger_js_1.logger.debug(`Ensured ${userCallSign} is member of channel ${channelId}`);
-        }
-        catch (memberErr) {
-            const err = memberErr;
-            logger_js_1.logger.warn(`addMembers in getChatToken: ${err.message}`);
-        }
+        // Non-blocking: register the Stream user and channel membership in the background
+        // so the chat token returns immediately even when Stream's API is slow.
+        (0, exports.upsertStreamUser)({
+            id: streamUserId,
+            name: displayFormat,
+            callSign: userCallSign
+        })
+            .then(() => channel.addMembers([{ user_id: streamUserId }]))
+            .then(() => logger_js_1.logger.debug(`Ensured ${userCallSign} is member of channel ${channelId}`))
+            .catch((bgErr) => logger_js_1.logger.warn(`Stream background register in getChatToken: ${bgErr.message}`));
         const token = (0, exports.createUserToken)(streamUserId);
         if (!configLib_js_1.conf.stream_api_key) {
             throw new Error('Stream API key not configured');
