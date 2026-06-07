@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <!-- hamlive-oss — MIT License. See LICENSE. -->
+<!-- OPERATOR: fill in every [BRACKETED] value below. Independent legal review recommended before publishing. -->
 
 <head>
   <%- include('./partials/head') %> <%- include('./partials/pageTopFeatures') %>
@@ -14,22 +15,55 @@
 
     <div class="container">
       <div class="row">
-        <div class="col p-md-2 m-md-3">
+        <div class="col p-md-2 m-md-3 legal-page">
           <h1 class="h3 mt-3">Terms of Use</h1>
 
-          <div class="alert alert-warning mt-3" role="alert">
-            <strong>Operator action required.</strong> This is a placeholder. If you host this
-            application for your club or group, replace the contents of
-            <code>server/dist/views/termsOfUse.ejs</code> with terms of use appropriate to your
-            instance.
-          </div>
+          <p><strong>Effective date:</strong> [DATE]
+          <strong>Service:</strong> netcontrol.live ("the Service")
+          <strong>Operator:</strong> [OPERATOR LEGAL NAME] ("we", "us", "our")
+          <strong>Contact:</strong> [support@netcontrol.live]</p>
+          <p>These Terms of Use ("Terms") govern your access to and use of the Service, a web application for running and participating in amateur radio nets. By creating an account or using the Service, you agree to these Terms. If you do not agree, do not use the Service.</p>
+          <h4 class="mt-4">1. Eligibility and accounts</h4>
+          <p>You must be at least [16] years old to use the Service. You are responsible for the information on your account, including keeping your email address accurate, and for all activity that occurs under your account. Sign-in uses a one-time email link or Google sign-in; keep access to your email account and any linked Google account secure. Notify us promptly of any unauthorized use.</p>
+          <h4 class="mt-4">2. Amateur radio responsibilities</h4>
+          <p>The Service is intended for lawful amateur radio activity. You agree that:</p>
+          <ul>
+          <li>Any callsign you enter is one you are authorized to use.</li>
+          <li>Your use complies with the amateur radio licensing rules and communications laws that apply to you, including those of the FCC in the United States and any equivalent authority in your jurisdiction.</li>
+          <li>You will not use the Service to misrepresent your identity or callsign, or to facilitate unlicensed or unlawful transmissions.</li>
+          </ul>
+          <p>The Service is a coordination and logging tool. It does not transmit radio signals, and it does not grant or verify any license or operating authority.</p>
+          <h4 class="mt-4">3. Acceptable use</h4>
+          <p>You agree not to:</p>
+          <ul>
+          <li>Use the Service for any unlawful purpose or in violation of these Terms</li>
+          <li>Harass, abuse, impersonate, or harm other users</li>
+          <li>Post or transmit content that is unlawful, defamatory, infringing, or obscene</li>
+          <li>Attempt to gain unauthorized access to the Service, other accounts, or the underlying systems, or interfere with or disrupt the Service (including probing, scanning, scraping, or overloading it)</li>
+          <li>Use automated means to access the Service except as expressly permitted</li>
+          </ul>
+          <h4 class="mt-4">4. Your content</h4>
+          <p>You retain ownership of content you submit (such as net titles, notes, and messages). You grant us a non-exclusive, worldwide, royalty-free license to host, store, display, and transmit that content as necessary to operate the Service. You are responsible for your content and represent that you have the rights to submit it. We may remove content that violates these Terms.</p>
+          <h4 class="mt-4">5. Privacy</h4>
+          <p>Your use of the Service is also governed by our Privacy Policy and Cookie Policy, which describe how we handle your information. Amateur radio nets are public activities, and information you provide such as your callsign, display name, and location may be visible to other participants.</p>
+          <h4 class="mt-4">6. Availability and changes</h4>
+          <p>The Service is provided on an "as available" basis. We may modify, suspend, or discontinue the Service or any feature at any time, with or without notice. We do not guarantee that the Service will be uninterrupted, error-free, or that data will never be lost.</p>
+          <h4 class="mt-4">7. Disclaimer of warranties</h4>
+          <p>THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS, IMPLIED, OR STATUTORY, INCLUDING WITHOUT LIMITATION THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. WE DO NOT WARRANT THAT THE SERVICE WILL MEET YOUR REQUIREMENTS OR BE SECURE, ACCURATE, OR RELIABLE.</p>
+          <h4 class="mt-4">8. Limitation of liability</h4>
+          <p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT WILL THE OPERATOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF DATA, USE, OR GOODWILL, ARISING OUT OF OR RELATED TO YOUR USE OF THE SERVICE. OUR TOTAL LIABILITY FOR ANY CLAIM RELATING TO THE SERVICE WILL NOT EXCEED [USD 100 OR THE AMOUNT YOU PAID US IN THE PRIOR 12 MONTHS, WHICHEVER IS GREATER]. Some jurisdictions do not allow certain limitations, so some of the above may not apply to you.</p>
+          <h4 class="mt-4">9. Indemnification</h4>
+          <p>You agree to indemnify and hold harmless the Operator from any claims, damages, or expenses arising from your use of the Service, your content, or your violation of these Terms or applicable law.</p>
+          <h4 class="mt-4">10. Termination</h4>
+          <p>You may stop using the Service and request account deletion at any time. We may suspend or terminate your access if you violate these Terms or if we discontinue the Service. Provisions that by their nature should survive termination (including Sections 7, 8, and 9) will survive.</p>
+          <h4 class="mt-4">11. Governing law</h4>
+          <p>These Terms are governed by the laws of the State of [Colorado], United States, without regard to its conflict-of-laws rules. You agree to the exclusive jurisdiction of the state and federal courts located in [Colorado] for any dispute not subject to arbitration or small-claims resolution, to the extent permitted by law.</p>
+          <h4 class="mt-4">12. Changes to these Terms</h4>
+          <p>We may update these Terms from time to time. We will post the updated version here with a new effective date. Continued use of the Service after changes take effect constitutes acceptance.</p>
+          <h4 class="mt-4">13. Contact</h4>
+          <p>[OPERATOR LEGAL NAME]
+          [support@netcontrol.live]</p>
 
-          <p class="mt-3">
-            This open-source edition does not ship legal terms of use. The original hosted service's
-            terms were specific to its operator and are intentionally not included. The software
-            itself is provided under the MIT License — see the <code>LICENSE</code> file in the
-            repository.
-          </p>
         </div>
       </div>
     </div>
@@ -37,5 +71,3 @@
     <%- include('./partials/pageBottomFeatures') %>
     </body>
     <%- include('./partials/footer') %>
-
-</html>

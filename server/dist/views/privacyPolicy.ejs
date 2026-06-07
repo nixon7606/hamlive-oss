@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <!-- hamlive-oss — MIT License. See LICENSE. -->
+<!-- OPERATOR: fill in every [BRACKETED] value below. Independent legal review recommended before publishing. -->
 
 <head>
   <%- include('./partials/head') %> <%- include('./partials/pageTopFeatures') %>
@@ -14,23 +15,81 @@
 
     <div class="container">
       <div class="row">
-        <div class="col p-md-2 m-md-3">
+        <div class="col p-md-2 m-md-3 legal-page">
           <h1 class="h3 mt-3">Privacy Policy</h1>
 
-          <div class="alert alert-warning mt-3" role="alert">
-            <strong>Operator action required.</strong> This is a placeholder. If you host this
-            application for your club or group, replace the contents of
-            <code>server/dist/views/privacyPolicy.ejs</code> with your own privacy policy describing
-            how <em>your</em> instance collects, uses, and stores member data.
-          </div>
+          <p><strong>Effective date:</strong> [DATE]
+          <strong>Service:</strong> netcontrol.live ("the Service")
+          <strong>Operator:</strong> [OPERATOR LEGAL NAME], [ADDRESS] ("we", "us", "our")
+          <strong>Privacy contact:</strong> [privacy@netcontrol.live]</p>
+          <p>This Privacy Policy explains what personal information the Service collects, how we use it, and the choices you have. The Service is a self-hosted instance of Ham.Live, a web application for running and participating in amateur radio nets.</p>
+          <h4 class="mt-4">1. Who is responsible for your data</h4>
+          <p>The Operator named above is the controller of personal data processed through the Service. For questions about this policy or to exercise your rights, contact us at the privacy contact above.</p>
+          <h4 class="mt-4">2. Information we collect</h4>
+          <p><strong>Information you provide when you create or use an account:</strong></p>
+          <ul>
+          <li>Email address (required, used to identify your account and sign you in)</li>
+          <li>Display name (required)</li>
+          <li>Amateur radio callsign (optional)</li>
+          <li>Location, as free text such as a city or grid square (optional)</li>
+          <li>Profile photo URL (optional; populated automatically if you sign in with Google)</li>
+          </ul>
+          <p><strong>Information from Google when you choose Google sign-in:</strong></p>
+          <ul>
+          <li>A Google account identifier, your email address, and basic profile information (name and photo), under the <code>profile</code> and <code>email</code> scopes. We do not receive your Google password.</li>
+          </ul>
+          <p><strong>Information generated as you use the Service:</strong></p>
+          <ul>
+          <li>Net activity: nets you create or follow, check-ins, signal reports, presence/status, and any notes or messages you submit</li>
+          <li>Account metadata: last login time, last sign-in method, account status flags, and timestamps</li>
+          <li>Records of your consent to this policy</li>
+          </ul>
+          <p><strong>Technical information:</strong></p>
+          <ul>
+          <li>Standard server logs, which may include request paths, timestamps, and the IP address your connection presents. Inbound traffic is served through Cloudflare, which also processes connection metadata (see Section 6).</li>
+          </ul>
+          <p>We do <strong>not</strong> collect or store account passwords, and we do not knowingly collect special categories of data (such as health, biometric, or financial information).</p>
+          <h4 class="mt-4">3. How we use your information</h4>
+          <p>We use your information to:</p>
+          <ul>
+          <li>Authenticate you and maintain your signed-in session</li>
+          <li>Provide the core net-control features (creating and joining nets, check-ins, presence, signal reports)</li>
+          <li>Display your callsign, display name, location, and photo to other participants in nets you take part in</li>
+          <li>Maintain and secure the Service, prevent abuse, and diagnose problems</li>
+          <li>Communicate with you about your account or the Service where necessary</li>
+          </ul>
+          <p><strong>Visibility to other users:</strong> amateur radio nets are inherently public activities. Your display name, callsign, location, and participation in a net are visible to other participants and net control operators. Do not enter information you are unwilling to share in that context.</p>
+          <h4 class="mt-4">4. Legal bases for processing (where applicable)</h4>
+          <p>If you are in a jurisdiction that requires a legal basis (for example, the EU/UK under the GDPR), we process your data on the bases of: performance of a contract (providing the Service you signed up for), our legitimate interests (securing and improving the Service), your consent (where you have given it), and compliance with legal obligations. You may withdraw consent at any time; this does not affect processing already carried out.</p>
+          <h4 class="mt-4">5. How we share information</h4>
+          <p>We do not sell your personal information. We share it only as follows:</p>
+          <ul>
+          <li><strong>Service providers</strong> who help us run the Service, such as our hosting and content-delivery/security provider (Cloudflare). [If you enable email delivery: an email delivery provider such as SendGrid receives your email address to send sign-in and notification messages.]</li>
+          <li><strong>Other users</strong>, to the extent described in Section 3 (your public net participation).</li>
+          <li><strong>Legal and safety reasons</strong>, where we believe disclosure is required by law or necessary to protect rights, safety, or the integrity of the Service.</li>
+          </ul>
+          <p>[Delete any integration below that your instance does not enable:]</p>
+          <ul>
+          <li><em>Google</em> receives authentication requests when you choose Google sign-in.</li>
+          <li><em>QRZ</em> receives a callsign when callsign lookups are enabled.</li>
+          <li><em>Stream</em> processes chat messages when in-app chat is enabled.</li>
+          <li><em>Analytics/advertising</em> providers receive usage data only if analytics or ads are enabled on this instance.</li>
+          </ul>
+          <h4 class="mt-4">6. Hosting, security, and international transfers</h4>
+          <p>The Service runs on infrastructure located in the United States. Connections are encrypted in transit (HTTPS) and reach the application through a private tunnel rather than open inbound ports; the application and its database are network-segmented, and the database is not reachable from the public internet. No method of transmission or storage is perfectly secure, and we cannot guarantee absolute security. If you access the Service from outside the United States, your information will be transferred to and processed in the United States.</p>
+          <h4 class="mt-4">7. Data retention</h4>
+          <p>We keep your account information for as long as your account is active. If you request deletion, your account is flagged and removed in line with our deletion process. We may retain limited information where necessary to comply with legal obligations, resolve disputes, or enforce our agreements. Server logs are retained for a limited operational period and then rotated or deleted.</p>
+          <h4 class="mt-4">8. Your rights and choices</h4>
+          <p>Depending on where you live, you may have the right to access, correct, delete, or export your personal data, to object to or restrict certain processing, and to withdraw consent. Residents of California (CCPA/CPRA), Colorado (CPA), and the EU/UK (GDPR) have specific statutory rights, including the right not to be discriminated against for exercising them. You can update most profile information in your account settings, or contact us at the privacy contact above to make a request. We will respond as required by applicable law. You also have the right to lodge a complaint with your local data protection authority.</p>
+          <h4 class="mt-4">9. Children</h4>
+          <p>The Service is not directed to children and is not intended for use by anyone under [16]. We do not knowingly collect personal information from children. If you believe a child has provided us information, contact us and we will delete it.</p>
+          <h4 class="mt-4">10. Changes to this policy</h4>
+          <p>We may update this policy from time to time. We will post the updated version here with a new effective date and, where appropriate, notify you through the Service.</p>
+          <h4 class="mt-4">11. Contact</h4>
+          <p>[OPERATOR LEGAL NAME]
+          [ADDRESS]
+          [privacy@netcontrol.live]</p>
 
-          <p class="mt-3">
-            This open-source edition does not ship a legal privacy policy. The original hosted
-            service's policy was specific to its operator and is intentionally not included. You are
-            responsible for providing a policy appropriate to your jurisdiction and to the
-            third-party services you enable (database host, email provider, chat provider, callsign
-            lookup, geocoding, etc.).
-          </p>
         </div>
       </div>
     </div>
@@ -38,5 +97,3 @@
     <%- include('./partials/pageBottomFeatures') %>
     </body>
     <%- include('./partials/footer') %>
-
-</html>

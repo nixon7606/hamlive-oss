@@ -41,7 +41,7 @@ const getStreamClient = () => {
         if (!configLib_js_1.conf.stream_api_key || !configLib_js_1.conf.stream_api_secret) {
             throw new Error('Stream Chat credentials not configured');
         }
-        serverClient = stream_chat_1.StreamChat.getInstance(configLib_js_1.conf.stream_api_key, configLib_js_1.conf.stream_api_secret);
+        serverClient = stream_chat_1.StreamChat.getInstance(configLib_js_1.conf.stream_api_key, configLib_js_1.conf.stream_api_secret, { timeout: 10000 });
         setupEventListeners(serverClient);
         logger_js_1.logger.info('Stream Chat server client initialized');
     }
