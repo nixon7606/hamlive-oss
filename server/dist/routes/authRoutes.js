@@ -34,8 +34,17 @@ const magicLogin = new MagicLoginStrategy({
 
         try {
             const email = new EmailBase({
-                subject: 'Click to finish signing in',
-                message: `Click this <a clicktracking=off href='${link}'>LINK</a> to finish logging in`
+                subject: 'Sign in to netcontrol.live',
+                message:
+                    `<div style="background-color:#f4f2ec; padding:24px 12px; font-family:Arial,Helvetica,sans-serif;">` +
+                    `<table role="presentation" align="center" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; background-color:#ffffff; border:1px solid #e2ddd0; border-radius:10px; overflow:hidden;">` +
+                    `<tr><td align="center" bgcolor="#23262B" style="background-color:#23262B; padding:20px 0;"><img src="https://netcontrol.live/img/hamlive-logo-tagline-beta-horizontal-darkbg.png" alt="netcontrol.live" width="300" style="display:block; width:300px; max-width:82%; height:auto; border:0;"></td></tr>` +
+                    `<tr><td style="padding:28px 32px 8px 32px; font-family:Georgia,'Times New Roman',serif; color:#23262B; font-size:20px; font-weight:bold;">Finish signing in</td></tr>` +
+                    `<tr><td style="padding:0 32px 20px 32px; color:#444444; font-size:14px; line-height:1.6;">Click the button below to finish signing in to your netcontrol.live account. This link expires shortly and can only be used once.</td></tr>` +
+                    `<tr><td style="padding:0 32px 26px 32px;"><a clicktracking=off href='${link}' style="display:inline-block; background-color:#C24A38; color:#ffffff; font-size:15px; font-weight:bold; text-decoration:none; padding:12px 26px; border-radius:6px;">Sign in</a></td></tr>` +
+                    `<tr><td style="padding:0 32px 26px 32px; color:#7a756a; font-size:12px; line-height:1.6;">If the button does not work, paste this link into your browser:<br><a clicktracking=off href='${link}' style="color:#C24A38; word-break:break-all;">${link}</a></td></tr>` +
+                    `<tr><td bgcolor="#23262B" style="background-color:#23262B; padding:16px 32px; color:#9a9a9a; font-size:11px; line-height:1.6;">If you did not request this, you can safely ignore this email.<br>Sent by <a href="https://netcontrol.live" style="color:#C4933F; text-decoration:none;">netcontrol.live</a> &middot; Amateur Radio Net Control</td></tr>` +
+                    `</table></div>`
             });
 
             await email.sendMailToAddrs([destination]);

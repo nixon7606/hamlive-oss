@@ -201,9 +201,14 @@ class NetAnnounceStart extends EmailBase {
                 from: EMAIL_FROM,
                 subject: `${title}(★) is going live ${humanTime} !`,
                 html:
-                    `<p>${netControl} is starting <a href='${conf.base_url}${url}'>${title}</a>.` +
-                    ` Join us here: <em><a href='${conf.base_url}${url}'>${conf.base_url}${url}</a></em></p>` +
-                    `<p><small><em>To discontinue receiving this message, unfollow (☆) ${title} at ${conf.base_url}/views/favorites`
+                    `<div style="background-color:#f4f2ec; padding:24px 12px; font-family:Arial,Helvetica,sans-serif;">` +
+                    `<table role="presentation" align="center" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; background-color:#ffffff; border:1px solid #e2ddd0; border-radius:10px; overflow:hidden;">` +
+                    `<tr><td align="center" bgcolor="#23262B" style="background-color:#23262B; padding:20px 0;"><img src="https://netcontrol.live/img/hamlive-logo-tagline-beta-horizontal-darkbg.png" alt="netcontrol.live" width="300" style="display:block; width:300px; max-width:82%; height:auto; border:0;"></td></tr>` +
+                    `<tr><td style="padding:28px 32px 6px 32px; font-family:Georgia,'Times New Roman',serif; color:#23262B; font-size:20px; font-weight:bold;">A net is going live</td></tr>` +
+                    `<tr><td style="padding:0 32px 18px 32px; color:#444444; font-size:14px; line-height:1.6;">${netControl} is starting <a href='${conf.base_url}${url}' style="color:#C24A38; font-weight:bold; text-decoration:none;">${title}</a>.</td></tr>` +
+                    `<tr><td style="padding:0 32px 26px 32px;"><a href='${conf.base_url}${url}' style="display:inline-block; background-color:#C24A38; color:#ffffff; font-size:15px; font-weight:bold; text-decoration:none; padding:12px 26px; border-radius:6px;">Join the net</a></td></tr>` +
+                    `<tr><td bgcolor="#23262B" style="background-color:#23262B; padding:16px 32px; color:#9a9a9a; font-size:11px; line-height:1.6;">To stop these alerts, unfollow (☆) ${title} at <a href='${conf.base_url}/views/favorites' style="color:#C4933F; text-decoration:none;">your favorites</a>.<br>Sent by <a href="https://netcontrol.live" style="color:#C4933F; text-decoration:none;">netcontrol.live</a> &middot; Amateur Radio Net Control</td></tr>` +
+                    `</table></div>`
             }
         });
     }
@@ -267,7 +272,7 @@ class NetCloseReport extends EmailBase {
         super({
             body: {
                 from: EMAIL_FROM,
-                templateId: 'd-e9f0060962884a80a9b20ec8591483cf',
+                templateId: 'd-c2c75b3765954b5dbc043576c67493a7',
                 dynamic_template_data: {
                     subject: `${title} - Net Close Report`,
                     url: `${conf.base_url}${url}`,
