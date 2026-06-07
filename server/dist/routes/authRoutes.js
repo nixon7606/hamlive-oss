@@ -95,6 +95,7 @@ const magicLogin = new MagicLoginStrategy({
                     .catch(err => {
                         logger.error(err.stack);
                         logger.error('Likely data validation error. Missing required info on user creation?');
+                        done(null, false);
                     });
             }
         });

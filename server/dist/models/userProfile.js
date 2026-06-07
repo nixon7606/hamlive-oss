@@ -15,10 +15,10 @@ const userProfileSchema = new Schema(
             required: [true, 'display name required'],
             unique: false,
             minlength: 2,
-            maxlength: 20,
+            maxlength: 40,
             validate: {
                 validator: function (v) {
-                    return /^[A-zÀ-ú-' ]+$/.test(v);
+                    return /^[A-Za-z0-9À-ÿ\-'.()\/ ]+$/.test(v);
                 },
                 message: 'invalid characters in display name'
             }
@@ -58,7 +58,7 @@ const userProfileSchema = new Schema(
             maxlength: 24,
             validate: {
                 validator: function (v) {
-                    return /^[0-9A-zÀ-ú-', ()]+$/.test(v);
+                    return /^[0-9A-zÀ-ÿ-', ()]+$/.test(v);
                 },
                 message: 'invalid characters in location'
             }
