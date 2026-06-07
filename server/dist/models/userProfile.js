@@ -30,10 +30,10 @@ const userProfileSchema = new Schema(
             unique: true,
             sparse: true,
             minlength: 3,
-            maxlength: 7,
+            maxlength: 14,
             validate: {
-                validator: v => /^(\d?[a-zA-Z]{1,3}|[a-zA-Z]\d[a-zA-Z]?)\d[a-zA-Z]{1,4}$/.test(v),
-                message: 'malformed callsign'
+                validator: v => /^(?:[a-zA-Z0-9]{1,4}\/)?(\d?[a-zA-Z]{1,3}|[a-zA-Z]\d[a-zA-Z]?)\d[a-zA-Z]{1,4}(?:\/[a-zA-Z0-9]{1,4})?$/.test(v),
+                message: 'Enter a valid callsign, for example N0AD or a portable form like N0AD/M'
             }
         },
         photo: {
@@ -54,13 +54,13 @@ const userProfileSchema = new Schema(
         location: {
             type: String,
             unique: false,
-            minlength: 5,
             maxlength: 24,
             validate: {
                 validator: function (v) {
-                    return /^[0-9A-zÀ-ÿ-', ()]+$/.test(v);
+                    if (v === '' || v == null) { return true; }
+                    return v.length >= 5 && /^[0-9A-zÀ-ÿ-', ()]+$/.test(v);
                 },
-                message: 'invalid characters in location'
+                message: 'location must be 5 to 24 characters'
             }
         },
         newAccount: { type: Boolean, default: true },
@@ -120,7 +120,7 @@ const userProfileSchema = new Schema(
 
 userProfileSchema.plugin(uniqueValidator, {
     message:
-        'Callsign already registered to a different email address. To fix: logout and login again with the email you **1st registered with**'
+        'That callsign already has an account. If it is yours, sign out and sign back in with the email you first registered it with.'
 });
 
 module.exports = {

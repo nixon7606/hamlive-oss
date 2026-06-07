@@ -15,7 +15,7 @@ const netProfileSchema = new Schema(
                 validator: function (v) {
                     return /^\w+(?:[&.'\- ]*\w+)*$/.test(v);
                 },
-                message: 'net title format did not pass validation'
+                message: 'Net title must be 4 to 25 characters and may use letters, numbers, spaces, and & . - symbols'
             }
         },
         frequency: {
@@ -28,7 +28,7 @@ const netProfileSchema = new Schema(
                     }
                     return /^\d+[.]\d+(?:([.]\d+))?$/.test(v);
                 },
-                message: 'frequency format did not pass validation'
+                message: 'Enter frequency as a decimal in MHz, like 14.230 or 146.520'
             }
         },
         mode: {

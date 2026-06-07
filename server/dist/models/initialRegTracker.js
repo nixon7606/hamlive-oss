@@ -11,10 +11,10 @@ const initialRegSchema = new Schema(
             unique: true,
             sparse: true,
             minlength: 3,
-            maxlength: 7,
+            maxlength: 14,
             validate: {
-                validator: v => /^(\d?[a-zA-Z]{1,3}|[a-zA-Z]\d[a-zA-Z]?)\d[a-zA-Z]{1,4}$/.test(v),
-                message: 'malformed callsign'
+                validator: v => /^(?:[a-zA-Z0-9]{1,4}\/)?(\d?[a-zA-Z]{1,3}|[a-zA-Z]\d[a-zA-Z]?)\d[a-zA-Z]{1,4}(?:\/[a-zA-Z0-9]{1,4})?$/.test(v),
+                message: 'Enter a valid callsign, for example N0AD or a portable form like N0AD/M'
             }
         },
         startOfGracePeriod: {
