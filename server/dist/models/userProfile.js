@@ -81,6 +81,7 @@ const userProfileSchema = new Schema(
             sparse: true
         },
         locked: { type: Boolean, default: false },
+        lastIp: { type: String, default: '' },
         superUser: { type: Boolean, default: false, index: true },
         verified: { type: Boolean, default: false },
         flexOptions: {

@@ -1,24 +1,17 @@
 /* hamlive-oss — MIT License. See LICENSE. */
 
 /**
- * Chat Widget - GetStream.io integration
+ * Chat Widget - In-house chat integration (replaces GetStream.io)
  *
- * WHY not extend HamLiveElement: Chat has a unique initialization flow that requires
- * `level` from Presence (passed via init()) and manages its own Stream Chat connection.
- * However, we adopt key patterns from HamLiveElement:
- * - StoreSubscriber interface for reactive updates
- * - didMyDataSegmentChange() for efficient re-renders
- * - UserAgentPersistentPreferences for UI state persistence
- * - Light DOM (EncapsulationMode.Open pattern) for Bootstrap compatibility
- *
- * WHY stream-chat works: Resolved via importmap in head.ejs -> esm.sh CDN
+ * Uses LocalChatConnection for transport (REST + SSE) instead of StreamChat SDK.
+ * All UI, rendering, and event handling patterns remain the same.
  */
 
-import { StreamChat, Channel, MessageResponse } from 'stream-chat';
 import { LiveNetReactiveStore, StoreSubscriber, NewDataReturnType } from '#@client/lib/stores.js';
 import { createLogger } from '#@client/lib/logger.js';
 import { serverInfo } from '#@client/lib/serverInfo.js';
 import { getNpid, generateUUID, UserAgentPersistentPreferences } from '#@client/lib/clientUtils.js';
+import { LocalChatConnection, LocalChatMessage } from '#@client/lib/localChat.js';
 
 const logger = createLogger('lib/chat.ts');
 const prefs = new UserAgentPersistentPreferences();
@@ -26,46 +19,6 @@ const prefs = new UserAgentPersistentPreferences();
 // ============================================================================
 // Types
 // ============================================================================
-
-interface ChatTokenResponse {
-    token: string;
-    userId: string;
-    channelId: string;
-    channelType: string;
-    apiKey: string;
-}
-
-const isChatTokenResponse = (obj: unknown): obj is ChatTokenResponse => {
-    if (typeof obj !== 'object' || obj === null) return false;
-    const response = obj as ChatTokenResponse;
-    return (
-        typeof response.token === 'string' &&
-        typeof response.userId === 'string' &&
-        typeof response.channelId === 'string' &&
-        typeof response.channelType === 'string' &&
-        typeof response.apiKey === 'string'
-    );
-};
-
-interface ChatUser {
-    id: string;
-    name?: string;
-    callSign?: string;
-    image?: string;
-}
-
-interface ChatAttachment {
-    type?: string;
-    image_url?: string;
-    thumb_url?: string;
-    asset_url?: string;
-}
-
-interface ChatReaction {
-    type: string;
-    user_id?: string;
-    user?: ChatUser;
-}
 
 const REACTIONS = [
     { type: 'like', emoji: '👍' },
@@ -96,13 +49,33 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
 
     // Widget state
     private store: LiveNetReactiveStore | null = null;
-    private client: StreamChat | null = null;
-    private channel: Channel | null = null;
+    private connection: LocalChatConnection | null = null;
     private npid = getNpid();
     private level: number | undefined;
     private initialized = false;
-    private currentUserId: string | null = null;
+    private messages: LocalChatMessage[] = [];
     private lastKnownLevel: number | undefined;
+    private currentUserId: string | null = null;
+    private selfCallSign: string | null = null;
+
+    // Reply state
+    private replyingTo: { messageId: string; callSign: string; text: string } | null = null;
+
+    // Typing indicator state
+    private typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private typingDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    private wasTyping = false;
+
+    // Ban state
+    private isBanned: { reason: string; bannedAt: string } | null = null;
+
+    // UI state
+    private lastRenderedDate: string | null = null;
+    private lastRenderedCallSign: string | null = null;
+    private unreadCount = 0;
+    private isScrolledUp = false;
+    private scrollListener: (() => void) | null = null;
+    private visibilityHandler: (() => void) | null = null;
 
     // Event handlers stored for cleanup
     private documentClickHandler: ((e: MouseEvent) => void) | null = null;
@@ -155,39 +128,51 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         try {
             logger.info(`Chat initializing with level ${level} from presence`);
 
-            // Fetch initial token to get apiKey, userId, channelId
-            const chatConfig = await this.fetchToken();
-            if (!chatConfig) {
-                logger.info('Chat is disabled on this server (GetStream not configured) — skipping chat.');
+            // Create a new local chat connection
+            const conn = new LocalChatConnection();
+            this.connection = conn;
+
+            // Fetch chat session — replaces old GetStream token fetch
+            const session = await conn.getSession();
+            if (!session || !session.enabled) {
+                logger.info('Chat is disabled on this server — skipping chat.');
                 return;
             }
-            this.client = StreamChat.getInstance(chatConfig.apiKey);
-            this.currentUserId = chatConfig.userId;
+            this.currentUserId = session.userId;
+            this.selfCallSign = (session.callSign || '').toUpperCase();
 
-            // WHY tokenProvider: Tokens expire (3 hours). The SDK automatically calls this
-            // function when a token expires, ensuring chat continues working during long nets.
-            // See docs/chat-system.md for details.
-            const tokenProvider = async (): Promise<string> => {
-                logger.info('Token provider: fetching fresh token');
-                const freshConfig = await this.fetchToken();
-                if (!freshConfig) throw new Error('Chat token unavailable');
-                return freshConfig.token;
-            };
+            // Check if user is banned
+            if (session.banned && typeof session.banned === 'object') {
+                this.isBanned = session.banned as { reason: string; bannedAt: string };
+                logger.info(`User is banned from chat: ${this.isBanned.reason}`);
+            }
 
-            // Server already set user data (name, callSign, image) via upsertStreamUser in getChatToken
-            await this.client.connectUser({ id: chatConfig.userId }, tokenProvider);
-
-            this.channel = this.client.channel(chatConfig.channelType, chatConfig.channelId);
-            await this.channel.watch();
-            logger.info(`Watching channel ${chatConfig.channelId}`);
+            // Connect to the SSE stream
+            conn.connect();
 
             // Subscribe to store for role changes (level may change during session)
             this.store.subscribe(this);
-            this.setupChannelListeners();
+            this.setupConnectionListeners();
 
             this.initialized = true;
             this.render();
+
+            // Fetch initial messages from the server
+            const existingMessages = await conn.getMessages();
+            if (existingMessages && existingMessages.length > 0) {
+                this.messages = existingMessages;
+            }
             this.loadMessages();
+            // Setup scroll-to-latest button
+            this.setupScrollListener();
+            // Track tab visibility for unread count
+            this.visibilityHandler = () => {
+                if (!document.hidden) {
+                    this.unreadCount = 0;
+                    this.updateLatestButton();
+                }
+            };
+            document.addEventListener('visibilitychange', this.visibilityHandler);
 
             // Show slash command tip if user is NCS/logger
             if (level <= 1) {
@@ -405,6 +390,15 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                         <p>Connecting to chat...</p>
                     </div>
                 </div>
+                <div class="chat-typing-indicator d-none px-2 py-1" style="color: var(--hl-tertiary); font-size: 12px; font-style: italic; min-height: 20px;"></div>
+                <div class="chat-reply-indicator d-none" style="display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--hl-quaternary); border-top: 1px solid var(--hl-tertiary); font-size: 12px;">
+                    <i class="bi bi-reply-fill" style="color: var(--hl-secondary);"></i>
+                    <span style="flex: 1;">
+                        <span class="chat-reply-name" style="color: var(--hl-secondary); font-weight: 600;"></span>
+                        <span class="chat-reply-text" style="color: var(--hl-tertiary);"></span>
+                    </span>
+                    <button class="chat-reply-cancel btn btn-sm p-0" style="background: none; border: none; color: var(--hl-tertiary); cursor: pointer;">&times;</button>
+                </div>
                 <div class="chat-input-wrapper">
                     <input type="text" class="chat-text-input" placeholder="Message..." maxlength="500">
                     <div class="chat-emoji-wrapper">
@@ -447,14 +441,13 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
     // Messages
     // ========================================================================
 
-    private loadMessages(): void {
-        if (!this.channel) return;
 
+    private loadMessages(): void {
+        if (!this.connection) return;
         const messagesContainer = this.querySelector('.chat-messages');
         if (!messagesContainer) return;
 
-        const messages = this.channel.state.messages;
-        if (messages.length === 0) {
+        if (this.messages.length === 0) {
             messagesContainer.innerHTML = `
                 <div class="text-center text-muted p-4">
                     <p>No messages yet. Say hello!</p>
@@ -464,29 +457,46 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         }
 
         messagesContainer.innerHTML = '';
-        messages.forEach(msg => this.renderMessage(msg as unknown as MessageResponse));
+        this.lastRenderedDate = null;
+        this.lastRenderedCallSign = null;
+        this.messages.forEach(msg => this.renderMessage(msg));
         this.scrollToBottom();
     }
 
-    private renderMessage(msg: MessageResponse): void {
+    private renderMessage(msg: LocalChatMessage): void {
         const messagesContainer = this.querySelector('.chat-messages');
-        if (!messagesContainer || !this.client) return;
+        if (!messagesContainer) return;
 
-        const user = msg.user as ChatUser | undefined;
-        // Server sets name as "FirstName(CALLSIGN)" or just "CALLSIGN" if no display name
-        const rawName = user?.name || user?.callSign || 'Unknown';
+        const msgDate = new Date(msg.createdAt);
+        const msgDateKey = this.dateKey(msgDate);
+        const smartTs = this.formatSmartTimestamp(msgDate);
+        const isSameCallSign = msg.callSign && msg.callSign === this.lastRenderedCallSign;
+
+        // Insert date separator if date changed
+        if (msgDateKey !== this.lastRenderedDate) {
+            this.lastRenderedDate = msgDateKey;
+            const sep = document.createElement('div');
+            sep.className = 'chat-date-separator';
+            sep.style.cssText = 'text-align: center; font-size: 11px; color: var(--hl-tertiary); padding: 8px 0 4px; opacity: 0.7;';
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const msgDay = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate());
+            const diff = Math.round((today.getTime() - msgDay.getTime()) / 86400000);
+            let label: string;
+            if (diff === 0) label = 'Today';
+            else if (diff === 1) label = 'Yesterday';
+            else label = msgDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+            sep.textContent = label;
+            messagesContainer.appendChild(sep);
+        }
+
+        const rawName = msg.displayName || msg.callSign || 'Unknown';
         const usernameHtml = this.formatUsername(rawName);
-        const timestamp = new Date(msg.created_at || '').toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
 
-        // Check if message was edited (message_text_updated_at is set and different from created_at)
-        const isEdited = msg.message_text_updated_at && msg.message_text_updated_at !== msg.created_at;
+        const isEdited = msg.edited;
         const editedIndicator = isEdited ? '<span class="chat-edited">(edited)</span>' : '';
 
-        // Only show edit button for own messages
-        const isOwnMessage = user?.id === this.currentUserId;
+        const isOwnMessage = msg.userId === this.currentUserId;
         const editBtn = isOwnMessage
             ? `<button class="chat-action-btn chat-edit-btn" title="Edit message"><i class="bi bi-pencil"></i></button>`
             : '';
@@ -500,22 +510,15 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             messageContent += `<span class="chat-text">${this.linkifyText(this.escapeHtml(msg.text))}</span>`;
         }
 
-        if (msg.attachments && msg.attachments.length > 0) {
-            msg.attachments.forEach((att: ChatAttachment) => {
-                if (att.type === 'image') {
-                    const imageUrl = att.image_url || att.thumb_url || '';
-                    const fullUrl = att.asset_url || att.image_url || '';
-                    messageContent += `
-                        <div class="mt-1">
-                            <img src="${this.escapeHtml(imageUrl)}" 
-                                 alt="Shared image" 
-                                 class="img-fluid rounded" 
-                                 style="max-height: 200px; cursor: pointer; border: 1px solid var(--hl-quaternary);"
-                                 onclick="window.open('${this.escapeHtml(fullUrl)}', '_blank')">
-                        </div>
-                    `;
-                }
-            });
+        if (msg.imageUrl) {
+            messageContent += `
+                <div class="mt-1">
+                    <img src="${this.escapeHtml(msg.imageUrl)}"
+                         alt="Shared image"
+                         class="chat-image img-fluid rounded chat-image-clickable"
+                         style="max-height: 200px; cursor: pointer; border: 1px solid var(--hl-quaternary);">
+                </div>
+            `;
         }
 
         const reactionsHtml = this.renderReactions(msg);
@@ -527,17 +530,27 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             <div class="chat-message-actions">
                 ${editBtn}
                 <button class="chat-action-btn chat-react-btn" title="React"><i class="bi bi-emoji-smile"></i></button>
+                <button class="chat-action-btn chat-reply-btn" title="Reply"><i class="bi bi-reply"></i></button>
                 ${moderateBtn}
             </div>
             <div class="chat-reaction-picker">
                 ${REACTIONS.map(r => `<button data-reaction="${r.type}">${r.emoji}</button>`).join('')}
             </div>
-            <span class="chat-username">${usernameHtml}</span>
-            <span class="chat-timestamp ms-2">${timestamp}</span>
+            ${isSameCallSign ? '' : `<span class="chat-username">${usernameHtml}</span>`}
+            <span class="chat-timestamp ms-2">${smartTs}</span>
             ${editedIndicator}
+            ${msg.parentMessage ? this.renderReplySnippet(msg) : ''}
             <div class="chat-message-content">${messageContent}</div>
+            ${msg.replyCount && msg.replyCount > 0 ? `<div class="chat-reply-count" style="margin-top: 4px; font-size: 11px; color: var(--hl-secondary); cursor: pointer;"><i class="bi bi-reply-fill"></i> ${msg.replyCount} ${msg.replyCount === 1 ? 'reply' : 'replies'}</div>` : ''}
             <div class="chat-reactions">${reactionsHtml}</div>
         `;
+
+        // If grouped, reduce padding and add separator line
+        if (isSameCallSign) {
+            msgEl.style.paddingTop = '2px';
+            msgEl.style.borderTop = '1px solid rgba(240, 238, 222, 0.08)';
+        }
+        this.lastRenderedCallSign = msg.callSign || null;
 
         this.setupMessageActions(msgEl, msg.id, msg.text || '');
 
@@ -547,14 +560,25 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         messagesContainer.appendChild(msgEl);
     }
 
-    private renderReactions(msg: MessageResponse): string {
-        const reactionCounts = msg.reaction_counts || {};
-        const ownReactions = (msg.own_reactions || []) as ChatReaction[];
-        const ownReactionTypes = new Set(ownReactions.map(r => r.type));
+    private renderReplySnippet(msg: LocalChatMessage): string {
+        const callsign = msg.parentCallSign || 'someone';
+        const preview = msg.parentText ? this.escapeHtml(msg.parentText.slice(0, 60)) : '';
+        return preview
+            ? `<div style="font-size: 11px; color: var(--hl-tertiary); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><i class="bi bi-reply-fill" style="font-size: 10px;"></i> <strong>${this.escapeHtml(callsign)}</strong>: ${preview}</div>`
+            : `<div style="font-size: 11px; color: var(--hl-tertiary); margin-bottom: 2px;"><i class="bi bi-reply-fill" style="font-size: 10px;"></i> Replying to <strong>${this.escapeHtml(callsign)}</strong></div>`;
+    }
 
-        return REACTIONS.filter(r => reactionCounts[r.type])
+    private renderReactions(msg: any): string {
+        const reactions = msg.reactions || {};
+        const ownReactionTypes = new Set(
+            this.currentUserId ? Object.entries(reactions)
+                .filter(([, users]) => (users as string[]).includes(this.currentUserId!))
+                .map(([type]) => type) : []
+        );
+
+        return REACTIONS.filter(r => reactions[r.type] && (reactions[r.type] as string[]).length > 0)
             .map(r => {
-                const count = reactionCounts[r.type] || 0;
+                const count = (reactions[r.type] as string[])?.length || 0;
                 const isMine = ownReactionTypes.has(r.type);
                 return `<span class="chat-reaction${isMine ? ' mine' : ''}" data-reaction="${r.type}">
                     ${r.emoji}<span class="chat-reaction-count">${count}</span>
@@ -567,14 +591,15 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
     // Event Listeners
     // ========================================================================
 
-    private setupChannelListeners(): void {
-        if (!this.channel) return;
+    private setupConnectionListeners(): void {
+        if (!this.connection) return;
 
-        this.channel.on('message.new', this.handleNewMessage.bind(this));
-        this.channel.on('message.deleted', this.handleDeletedMessage.bind(this));
-        this.channel.on('message.updated', this.handleUpdatedMessage.bind(this));
-        this.channel.on('reaction.new', this.handleReactionUpdate.bind(this));
-        this.channel.on('reaction.deleted', this.handleReactionUpdate.bind(this));
+        this.connection.on('message.new', this.handleNewMessage.bind(this));
+        this.connection.on('message.updated', this.handleUpdatedMessage.bind(this));
+        this.connection.on('message.deleted', this.handleDeletedMessage.bind(this));
+        this.connection.on('reaction', this.handleReaction.bind(this));
+        this.connection.on('typing', this.handleTypingEvent.bind(this));
+        this.connection.on('ban', this.handleBanEvent.bind(this));
     }
 
     private setupInputListeners(): void {
@@ -586,12 +611,20 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         const emojiPicker = this.querySelector('emoji-picker');
 
         sendBtn?.addEventListener('click', () => void this.sendMessage());
-        textInput?.addEventListener('keypress', e => {
+        textInput?.addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 void this.sendMessage();
+            } else if (e.key === 'Escape' && this.replyingTo) {
+                this.cancelReply();
             }
         });
+
+        // Typing indicator — debounced, fires on input change
+        textInput?.addEventListener('input', () => {
+            this.handleInputTyping();
+        });
+
         fileInput?.addEventListener('change', e => {
             const file = (e.target as HTMLInputElement).files?.[0];
             if (file) {
@@ -615,9 +648,11 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                 const unicode: string = detail.unicode;
                 textInput.value = textInput.value.slice(0, start) + unicode + textInput.value.slice(end);
                 textInput.selectionStart = textInput.selectionEnd = start + unicode.length;
-                textInput.focus();
             }
             emojiPickerWrapper?.classList.remove('show');
+            // Defer focus to avoid mobile keyboard swallowing the next keydown
+            // after the emoji-picker shadow DOM releases its event capture
+            setTimeout(() => textInput?.focus(), 100);
         });
 
         // Close emoji picker when clicking outside
@@ -629,6 +664,51 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         };
         document.addEventListener('click', this.documentClickHandler);
 
+        // Reply cancel button
+        const replyCancel = this.querySelector('.chat-reply-cancel');
+        replyCancel?.addEventListener('click', () => this.cancelReply());
+
+        // Escape key cancels reply
+        textInput?.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && this.replyingTo) {
+                this.cancelReply();
+                textInput.blur();
+            }
+        });
+
+        // Slash command autocomplete
+        textInput?.addEventListener('input', () => {
+            this.handleSlashAutocomplete();
+        });
+        // Tab key navigates autocomplete dropdown; Enter selects
+        textInput?.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Tab') {
+                const dd = this.querySelector('.chat-slash-dropdown');
+                if (dd && !dd.classList.contains('d-none')) {
+                    e.preventDefault();
+                    const active = dd.querySelector('.chat-slash-active');
+                    if (active) {
+                        const nxt = active.nextElementSibling as HTMLElement;
+                        if (nxt) { active.classList.remove('chat-slash-active'); nxt.classList.add('chat-slash-active'); }
+                    } else {
+                        const first = dd.querySelector('div') as HTMLElement;
+                        if (first) first.classList.add('chat-slash-active');
+                    }
+                }
+            }
+            if (e.key === 'Enter') {
+                const dd = this.querySelector('.chat-slash-dropdown');
+                if (dd && !dd.classList.contains('d-none')) {
+                    const active = dd.querySelector('.chat-slash-active');
+                    if (active && textInput) {
+                        e.preventDefault();
+                        textInput.value = active.textContent || '';
+                        dd.classList.add('d-none');
+                    }
+                }
+            }
+        });
+
         // Store handler for cleanup in disconnect()
         this.beforeUnloadHandler = () => this.disconnect();
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
@@ -639,11 +719,28 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         const picker = msgEl.querySelector('.chat-reaction-picker');
         const deleteBtn = msgEl.querySelector('.chat-delete-btn');
         const editBtn = msgEl.querySelector('.chat-edit-btn');
+        const replyBtn = msgEl.querySelector('.chat-reply-btn');
         const reactions = msgEl.querySelectorAll('.chat-reaction');
 
         reactBtn?.addEventListener('click', e => {
             e.stopPropagation();
             picker?.classList.toggle('show');
+        });
+
+        // Reply button
+        replyBtn?.addEventListener('click', e => {
+            e.stopPropagation();
+            const callSign = msgEl.querySelector('.chat-username')?.textContent || 'Unknown';
+            const textEl = msgEl.querySelector('.chat-text');
+            const text = textEl?.textContent || '';
+            this.startReply(messageId, callSign, text);
+        });
+
+        // Reply count click — load thread replies
+        const replyCountEl = msgEl.querySelector('.chat-reply-count');
+        replyCountEl?.addEventListener('click', e => {
+            e.stopPropagation();
+            void this.loadThread(messageId, msgEl);
         });
 
         picker?.querySelectorAll('button').forEach(btn => {
@@ -654,6 +751,15 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                     void this.toggleReaction(messageId, reactionType);
                 }
                 picker.classList.remove('show');
+            });
+        });
+
+        // Image lightbox click
+        const chatImages = msgEl.querySelectorAll('.chat-image');
+        chatImages.forEach(img => {
+            img.addEventListener('click', () => {
+                const src = img.getAttribute('src');
+                if (src) this.showLightbox(src);
             });
         });
 
@@ -687,68 +793,297 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
     // Event Handlers
     // ========================================================================
 
-    private handleNewMessage(event: { message?: MessageResponse }): void {
-        if (event.message) {
+    private handleNewMessage(data: unknown): void {
+        const msg = data as LocalChatMessage;
+        if (msg && msg.id) {
+            this.messages.push(msg);
             const wasNearBottom = this.isNearBottom();
-            this.renderMessage(event.message);
+            if (!wasNearBottom) {
+                this.unreadCount += 1;
+                this.updateLatestButton();
+            }
+            this.renderMessage(msg);
             if (wasNearBottom) {
                 this.scrollToBottom();
             }
+            // If this is a reply, update the parent's reply count in the DOM
+            if (msg.parentMessage) {
+                this.updateParentReplyCount(msg.parentMessage);
+            }
         }
     }
 
-    private handleDeletedMessage(event: { message?: MessageResponse }): void {
-        if (event.message) {
-            const msgEl = this.querySelector(`[data-message-id="${event.message.id}"]`);
+    /**
+     * Update the displayed reply count on a parent message.
+     */
+    private updateParentReplyCount(parentMessageId: string): void {
+        const parentEl = this.querySelector(`[data-message-id="${parentMessageId}"]`);
+        if (!parentEl) return;
+        const countEl = parentEl.querySelector('.chat-reply-count');
+        if (countEl) {
+            // Increment the displayed count
+            const match = countEl.textContent?.match(/(\d+)/);
+            if (match && match[1]) {
+                const count = parseInt(match[1]) + 1;
+                countEl.innerHTML = `<i class="bi bi-reply-fill"></i> ${count} ${count === 1 ? 'reply' : 'replies'}`;
+            }
+        }
+    }
+
+    private handleDeletedMessage(data: unknown): void {
+        const event = data as { messageId?: string };
+        if (event && event.messageId) {
+            const msgEl = this.querySelector(`[data-message-id="${event.messageId}"]`);
             if (msgEl) msgEl.remove();
+            this.messages = this.messages.filter(m => m.id !== event.messageId);
         }
     }
 
-    private handleUpdatedMessage(event: { message?: MessageResponse }): void {
-        if (!event.message) return;
+    private handleUpdatedMessage(data: unknown): void {
+        const msg = data as LocalChatMessage;
+        if (!msg || !msg.id) return;
 
-        const msgEl = this.querySelector<HTMLElement>(`[data-message-id="${event.message.id}"]`);
+        // Update in-memory store
+        const idx = this.messages.findIndex(m => m.id === msg.id);
+        if (idx >= 0) this.messages[idx] = msg;
+
+        // Update DOM
+        const msgEl = this.querySelector(`[data-message-id="${msg.id}"]`);
         if (!msgEl) return;
-
-        // Update message text content
         const contentEl = msgEl.querySelector('.chat-message-content');
-        if (contentEl && event.message.text) {
-            contentEl.innerHTML = `<span class="chat-text">${this.linkifyText(this.escapeHtml(event.message.text))}</span>`;
+        if (contentEl && msg.text) {
+            contentEl.innerHTML = `<span class="chat-text">${this.linkifyText(this.escapeHtml(msg.text))}</span>`;
         }
-
-        // Add or update edited indicator
-        const isEdited =
-            event.message.message_text_updated_at && event.message.message_text_updated_at !== event.message.created_at;
-        let editedEl = msgEl.querySelector('.chat-edited');
-        if (isEdited && !editedEl) {
+        const editedIndicators = msgEl.querySelectorAll('.chat-edited');
+        if (msg.edited && editedIndicators.length === 0) {
             const timestampEl = msgEl.querySelector('.chat-timestamp');
             if (timestampEl) {
-                editedEl = document.createElement('span');
-                editedEl.className = 'chat-edited';
-                editedEl.textContent = '(edited)';
-                timestampEl.insertAdjacentElement('afterend', editedEl);
+                const edited = document.createElement('span');
+                edited.className = 'chat-edited';
+                edited.textContent = '(edited)';
+                timestampEl.insertAdjacentElement('afterend', edited);
             }
         }
     }
 
-    private handleReactionUpdate(event: { message?: MessageResponse }): void {
-        if (event.message) {
-            const msgEl = this.querySelector(`[data-message-id="${event.message.id}"]`);
-            if (msgEl) {
-                const reactionsContainer = msgEl.querySelector('.chat-reactions');
-                if (reactionsContainer) {
-                    reactionsContainer.innerHTML = this.renderReactions(event.message);
-                    reactionsContainer.querySelectorAll('.chat-reaction').forEach(reaction => {
-                        reaction.addEventListener('click', () => {
-                            const reactionType = (reaction as HTMLElement).dataset['reaction'];
-                            if (reactionType && event.message?.id) {
-                                void this.toggleReaction(event.message.id, reactionType);
-                            }
-                        });
-                    });
+    private handleReaction(data: unknown): void {
+        const event = data as { messageId?: string; reactionType?: string; action?: string; reactions?: Record<string, string[]> };
+        if (!event || !event.messageId) return;
+
+        // Update in-memory store
+        const msg = this.messages.find(m => m.id === event.messageId);
+        if (msg && event.reactions) {
+            msg.reactions = event.reactions;
+        }
+
+        // Update DOM — re-render reactions for that message
+        const msgEl = this.querySelector(`[data-message-id="${event.messageId}"]`);
+        if (!msgEl) return;
+        const reactionsContainer = msgEl.querySelector('.chat-reactions');
+        if (reactionsContainer && msg) {
+            reactionsContainer.innerHTML = this.renderReactions(msg);
+        }
+    }
+
+    // ========================================================================
+    // Typing Indicator
+    // ========================================================================
+
+    private handleInputTyping(): void {
+        const textInput = this.querySelector<HTMLInputElement>('.chat-text-input');
+        const isCurrentlyTyping = textInput ? textInput.value.trim().length > 0 : false;
+
+        // Debounce: only send if state changed
+        if (isCurrentlyTyping !== this.wasTyping) {
+            this.wasTyping = isCurrentlyTyping;
+            this.connection?.sendTyping(isCurrentlyTyping);
+        }
+
+        // Auto-stop typing after 3 seconds of no input
+        if (this.typingDebounceTimer) clearTimeout(this.typingDebounceTimer);
+        if (isCurrentlyTyping) {
+            this.typingDebounceTimer = setTimeout(() => {
+                if (this.wasTyping) {
+                    this.wasTyping = false;
+                    this.connection?.sendTyping(false);
                 }
+            }, 3000);
+        }
+    }
+
+    private handleTypingEvent(data: unknown): void {
+        const event = data as { type: string; callSign: string; isTyping: boolean };
+        if (!event || !event.callSign) return;
+        if (event.callSign === this.selfCallSign) return; // Don't show own typing
+
+        const indicator = this.querySelector('.chat-typing-indicator');
+        if (!indicator) return;
+
+        if (event.isTyping) {
+            // Add to typing set with auto-clear after 5s
+            const existing = indicator.querySelector(`[data-typing-user="${event.callSign}"]`);
+            if (!existing) {
+                const el = document.createElement('span');
+                el.dataset['typingUser'] = event.callSign;
+                el.textContent = `${event.callSign} is typing...`;
+                indicator.appendChild(el);
+            }
+            // Auto-clear after 5s (safety net)
+            const existingTimer = this.typingTimers.get(event.callSign);
+            if (existingTimer) clearTimeout(existingTimer);
+            this.typingTimers.set(event.callSign, setTimeout(() => {
+                const el = indicator.querySelector(`[data-typing-user="${event.callSign}"]`);
+                if (el) el.remove();
+                this.typingTimers.delete(event.callSign);
+                this.updateTypingVisibility();
+            }, 5000));
+        } else {
+            const el = indicator.querySelector(`[data-typing-user="${event.callSign}"]`);
+            if (el) el.remove();
+            const timer = this.typingTimers.get(event.callSign);
+            if (timer) clearTimeout(timer);
+            this.typingTimers.delete(event.callSign);
+        }
+        this.updateTypingVisibility();
+    }
+
+    private updateTypingVisibility(): void {
+        const indicator = this.querySelector('.chat-typing-indicator');
+        if (!indicator) return;
+        const hasTyping = indicator.children.length > 0;
+        indicator.classList.toggle('d-none', !hasTyping);
+    }
+
+    // ========================================================================
+    // Ban Events
+    // ========================================================================
+
+    private handleBanEvent(data: unknown): void {
+        const event = data as { type: string; callSign: string; reason?: string };
+        if (!event || !event.callSign) return;
+
+        if (event.type === 'ban') {
+            // If we were banned, update state
+            if (event.callSign === this.sessionCallSign) {
+                this.isBanned = { reason: event.reason || 'Banned', bannedAt: new Date().toISOString() };
+                this.showChatNotice(`You have been banned from chat: ${event.reason || 'No reason'}`);
+                this.updateBanUI();
+            }
+        } else if (event.type === 'unban') {
+            if (event.callSign === this.sessionCallSign) {
+                this.isBanned = null;
+                this.showChatNotice('You have been unbanned from chat');
+                this.updateBanUI();
             }
         }
+    }
+
+    private updateBanUI(): void {
+        const textInput = this.querySelector<HTMLInputElement>('.chat-text-input');
+        const sendBtn = this.querySelector('.chat-send-btn');
+        const fileLabel = this.querySelector('.chat-icon-btn[title="Share image"]');
+        if (textInput) {
+            textInput.disabled = !!this.isBanned;
+            textInput.placeholder = this.isBanned ? 'You are banned from chat' : 'Message...';
+        }
+        if (sendBtn) (sendBtn as HTMLButtonElement).disabled = !!this.isBanned;
+        if (fileLabel) (fileLabel as HTMLElement).style.opacity = this.isBanned ? '0.4' : '1';
+    }
+
+    // ========================================================================
+    // Reply / Thread
+    // ========================================================================
+
+    private startReply(messageId: string, callSign: string, text: string): void {
+        this.replyingTo = { messageId, callSign, text: text.slice(0, 80) };
+        this.updateReplyIndicator();
+        // Focus the text input
+        const textInput = this.querySelector<HTMLInputElement>('.chat-text-input');
+        textInput?.focus();
+    }
+
+    private cancelReply(): void {
+        this.replyingTo = null;
+        this.updateReplyIndicator();
+    }
+
+    /**
+     * Load and display thread replies for a parent message.
+     */
+    private async loadThread(parentMessageId: string, parentMsgEl: HTMLElement): Promise<void> {
+        if (!this.connection) return;
+
+        // Check if thread is already open
+        const existingThread = parentMsgEl.querySelector('.chat-thread');
+        if (existingThread) {
+            existingThread.remove();
+            return;
+        }
+
+        try {
+            const replies = await this.connection.getReplies(parentMessageId);
+            if (replies.length === 0) return;
+
+            const threadDiv = document.createElement('div');
+            threadDiv.className = 'chat-thread';
+            threadDiv.style.cssText = 'margin-left: 16px; padding-left: 8px; border-left: 2px solid var(--hl-quaternary); margin-top: 4px;';
+
+            // Show the parent message as thread context header
+            const parentMsg = this.messages.find(m => m.id === parentMessageId);
+            if (parentMsg) {
+                const parentHeader = document.createElement('div');
+                parentHeader.style.cssText = 'padding: 6px 8px; border-bottom: 1px solid rgba(240, 238, 222, 0.15); margin-bottom: 4px;';
+                const parentTs = new Date(parentMsg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const parentContent = parentMsg.text
+                    ? this.linkifyText(this.escapeHtml(parentMsg.text))
+                    : parentMsg.imageUrl
+                        ? '<i class="bi bi-image"></i> Image'
+                        : '';
+                parentHeader.innerHTML = `
+                    <div style="font-size: 10px; color: var(--hl-tertiary); margin-bottom: 2px;">Thread</div>
+                    <span class="chat-username" style="font-size: 12px;">${this.escapeHtml(parentMsg.callSign)}</span>
+                    <span class="chat-timestamp ms-2" style="font-size: 10px;">${parentTs}</span>
+                    <div class="chat-text" style="font-size: 13px; margin-top: 2px;">${parentContent}</div>
+                `;
+                threadDiv.appendChild(parentHeader);
+            }
+
+            replies.forEach(reply => {
+                const replyEl = document.createElement('div');
+                replyEl.className = 'chat-message';
+                replyEl.style.cssText = 'padding: 4px 8px; border-bottom: none; font-size: 13px;';
+                const ts = new Date(reply.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                replyEl.innerHTML = `
+                    <span class="chat-username" style="font-size: 12px;">${this.escapeHtml(reply.callSign)}</span>
+                    <span class="chat-timestamp ms-2" style="font-size: 10px;">${ts}</span>
+                    <div class="chat-text" style="font-size: 13px;">${this.linkifyText(this.escapeHtml(reply.text))}</div>
+                `;
+                threadDiv.appendChild(replyEl);
+            });
+
+            parentMsgEl.appendChild(threadDiv);
+        } catch (err) {
+            logger.error('Failed to load thread:', err);
+        }
+    }
+
+    private updateReplyIndicator(): void {
+        const indicator = this.querySelector('.chat-reply-indicator');
+        if (!indicator) return;
+
+        if (this.replyingTo) {
+            indicator.classList.remove('d-none');
+            const nameEl = indicator.querySelector('.chat-reply-name');
+            const textEl = indicator.querySelector('.chat-reply-text');
+            if (nameEl) nameEl.textContent = this.replyingTo.callSign;
+            if (textEl) textEl.textContent = this.replyingTo.text;
+        } else {
+            indicator.classList.add('d-none');
+        }
+    }
+
+    private get sessionCallSign(): string {
+        return this.connection?.['session']?.callSign || '';
     }
 
     // ========================================================================
@@ -756,7 +1091,13 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
     // ========================================================================
 
     private async sendMessage(): Promise<void> {
-        if (!this.channel) return;
+        if (!this.connection) return;
+
+        // Check if banned
+        if (this.isBanned) {
+            this.showChatNotice(`You are banned from chat: ${this.isBanned.reason}`);
+            return;
+        }
 
         const textInput = this.querySelector<HTMLInputElement>('.chat-text-input');
         const text = textInput?.value.trim();
@@ -769,8 +1110,21 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         }
 
         try {
-            await this.channel.sendMessage({ text });
+            const parentMessageId = this.replyingTo?.messageId;
+            const sent = await this.connection.sendMessage(text, parentMessageId);
             if (textInput) textInput.value = '';
+            // Clear reply state after sending
+            if (this.replyingTo) {
+                this.replyingTo = null;
+                this.updateReplyIndicator();
+            }
+            // Render locally in case SSE hasn't arrived yet (or as fallback)
+            if (sent && sent.id && !this.messages.find(m => m.id === sent.id)) {
+                this.messages.push(sent);
+                const wasNearBottom = this.isNearBottom();
+                this.renderMessage(sent);
+                if (wasNearBottom) this.scrollToBottom();
+            }
         } catch (error) {
             this.handleSendError(error);
         }
@@ -810,63 +1164,61 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
     }
 
     private async sendImage(file: File): Promise<void> {
-        if (!this.channel) return;
+        if (!this.connection) return;
+
+        // Check if banned
+        if (this.isBanned) {
+            this.showChatNotice(`You are banned from chat: ${this.isBanned.reason}`);
+            return;
+        }
 
         try {
             logger.info(`Attempting to send image: ${file.name} (${file.size} bytes, type: ${file.type})`);
-            const response = await this.channel.sendImage(file);
-            logger.info('Image uploaded successfully:', response.file);
-            await this.channel.sendMessage({
-                attachments: [
-                    {
-                        type: 'image',
-                        asset_url: response.file,
-                        image_url: response.file,
-                        thumb_url: response.file
-                    }
-                ]
-            });
+            const parentMessageId = this.replyingTo?.messageId;
+            const sent = await this.connection.sendImage(file, parentMessageId);
+
+            // Clear reply state after sending
+            if (this.replyingTo) {
+                this.replyingTo = null;
+                this.updateReplyIndicator();
+            }
+
+            // If upload succeeded, show status feedback
+            if (sent && sent.id && !this.messages.find(m => m.id === sent.id)) {
+                this.messages.push(sent);
+                const wasNearBottom = this.isNearBottom();
+                this.renderMessage(sent);
+                if (wasNearBottom) this.scrollToBottom();
+            } else if (!sent) {
+                this.handleSendError(new Error('Image upload returned no message'));
+            }
         } catch (error) {
             this.handleSendError(error);
         }
     }
 
     private async toggleReaction(messageId: string, reactionType: string): Promise<void> {
-        if (!this.channel) return;
-
+        if (!this.connection) return;
         try {
-            const message = this.channel.state.messages.find(m => m.id === messageId);
-            const ownReactions = (message?.own_reactions || []) as ChatReaction[];
-            const existingReaction = ownReactions.find(r => r.type === reactionType);
-
-            if (existingReaction) {
-                await this.channel.deleteReaction(messageId, reactionType);
-                logger.debug(`Removed ${reactionType} reaction from ${messageId}`);
-            } else {
-                await this.channel.sendReaction(messageId, { type: reactionType });
-                logger.debug(`Added ${reactionType} reaction to ${messageId}`);
-            }
+            await this.connection.toggleReaction(messageId, reactionType);
+            logger.debug(`Toggled ${reactionType} reaction on ${messageId}`);
         } catch (error) {
             logger.error('Failed to toggle reaction:', error);
         }
     }
 
     private async deleteMessage(messageId: string): Promise<void> {
-        if (!this.canModerate()) return;
+        if (!this.canModerate() || !this.connection) return;
 
         try {
-            const response = await fetch(`/api/endorse/chat/${this.npid.toString()}/message/${messageId}`, {
-                method: 'DELETE'
-            });
-
-            if (!response.ok) {
-                const data = (await response.json()) as { errorMessage?: string };
-                throw new Error(data.errorMessage ?? 'Failed to delete message');
+            const success = await this.connection.deleteMessage(messageId);
+            if (!success) {
+                throw new Error('Failed to delete message');
             }
-
             logger.info(`Deleted message ${messageId}`);
         } catch (error) {
             logger.error('Failed to delete message:', error);
+            this.showChatNotice('Failed to delete message');
         }
     }
 
@@ -929,11 +1281,10 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
     }
 
     private async editMessage(messageId: string, newText: string): Promise<void> {
-        if (!this.client) return;
-
+        if (!this.connection) return;
         try {
-            // Stream Chat SDK handles authorization - only message owner can edit
-            await this.client.updateMessage({ id: messageId, text: newText });
+            const success = await this.connection.editMessage(messageId, newText);
+            if (!success) throw new Error('Edit failed');
             logger.info(`Edited message ${messageId}`);
         } catch (error) {
             logger.error('Failed to edit message:', error);
@@ -978,24 +1329,8 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         });
     }
 
-    private async fetchToken(): Promise<ChatTokenResponse | null> {
-        const response = await fetch(`/api/endorse/chat/${this.npid.toString()}`);
-        if (!response.ok) {
-            throw new Error(`Failed to get chat token: ${response.statusText}`);
-        }
-        const data = (await response.json()) as { message?: unknown };
-        // Chat is optional; the server returns { enabled: false } when GetStream
-        // is not configured. Treat that as "no chat" rather than an error.
-        if (data.message && (data.message as { enabled?: boolean }).enabled === false) {
-            return null;
-        }
-        if (!isChatTokenResponse(data.message)) {
-            throw new Error('Invalid chat token response from server');
-        }
-        return data.message;
-    }
-
     /**
+     * Check if scroll position is near the bottom of the messages container.
      * Check if scroll position is near the bottom of the messages container.
      * Used to determine whether to auto-scroll on new messages.
      * WHY: Only auto-scroll if user is already at/near bottom. If they've scrolled
@@ -1031,6 +1366,23 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         return div.innerHTML;
     }
 
+    /** Format a date into a smart timestamp: today → "12:34 PM", yesterday → "Yesterday 12:34 PM", older → "Jun 8 12:34 PM" */
+    private formatSmartTimestamp(date: Date): string {
+        const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const msgDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const diffDays = Math.round((today.getTime() - msgDate.getTime()) / 86400000);
+        if (diffDays === 0) return time;
+        if (diffDays === 1) return `Yesterday ${time}`;
+        return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time;
+    }
+
+    /** Format a date key for grouping (YYYY-MM-DD) */
+    private dateKey(date: Date): string {
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+
     /**
      * Format username for display: "Name(CALLSIGN)" -> Name in light, callsign in secondary accent
      * Falls back to plain text if no parentheses found (just a callsign)
@@ -1048,15 +1400,13 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
      * Shows user-friendly message for ban (code 17) and mute (code 17) errors
      */
     private handleSendError(error: unknown): void {
-        // Check for Stream Chat error with code property
-        const streamError = error as { code?: number; message?: string };
-
-        if (streamError.code === 17) {
-            // User is banned or muted - show friendly message
-            this.showChatNotice('You are currently unable to send messages in this chat.');
-            logger.info('User attempted to send message while banned/muted');
+        logger.error('Failed to send message:', error);
+        // Check for ban-related error messages from the server
+        const errMsg = error instanceof Error ? error.message : String(error);
+        if (errMsg.toLowerCase().includes('banned')) {
+            this.showChatNotice(errMsg);
         } else {
-            logger.error('Failed to send message:', error);
+            this.showChatNotice('Failed to send message');
         }
     }
 
@@ -1141,6 +1491,127 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         setTimeout(() => notice.remove(), 8000);
     }
 
+    // ========================================================================
+    // Scroll-to-latest & Unread Badge
+    // ========================================================================
+
+    private setupScrollListener(): void {
+        const container = this.querySelector('.chat-messages');
+        if (!container) return;
+
+        // Create latest button
+        const btn = document.createElement('div');
+        btn.className = 'chat-latest-btn d-none';
+        btn.style.cssText = 'position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); background: var(--hl-secondary); color: #fff; border: none; border-radius: 20px; padding: 6px 16px; font-size: 12px; cursor: pointer; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 6px;';
+        btn.innerHTML = '↓ Latest <span class="chat-unread-badge" style="background: #e74c3c; color: #fff; border-radius: 10px; padding: 1px 6px; font-size: 10px; display: none;"></span>';
+        const wrapper = this.querySelector<HTMLElement>('.chat-widget');
+        if (wrapper) wrapper.style.position = 'relative';
+        container.parentElement?.appendChild(btn);
+
+        btn.addEventListener('click', () => {
+            this.unreadCount = 0;
+            this.updateLatestButton();
+            this.scrollToBottom();
+        });
+
+        this.scrollListener = () => {
+            const threshold = 150;
+            const isUp = container.scrollHeight - container.scrollTop - container.clientHeight > threshold;
+            this.isScrolledUp = isUp;
+            this.updateLatestButton();
+        };
+        container.addEventListener('scroll', this.scrollListener);
+    }
+
+    private updateLatestButton(): void {
+        const btn = this.querySelector('.chat-latest-btn');
+        if (!btn) return;
+        btn.classList.toggle('d-none', !this.isScrolledUp);
+        const badge = btn.querySelector('.chat-unread-badge') as HTMLElement;
+        if (badge) {
+            if (this.unreadCount > 0) {
+                badge.textContent = String(this.unreadCount);
+                badge.style.display = 'inline';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    }
+
+    // ========================================================================
+    // Image Lightbox
+    // ========================================================================
+
+    private showLightbox(src: string): void {
+        const overlay = document.createElement('div');
+        overlay.className = 'chat-lightbox';
+        overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; cursor: pointer;';
+        const img = document.createElement('img');
+        img.src = src;
+        img.style.cssText = 'max-width: 90%; max-height: 90%; border-radius: 4px; object-fit: contain;';
+        overlay.appendChild(img);
+        overlay.addEventListener('click', () => overlay.remove());
+        document.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Escape') overlay.remove();
+        }, { once: true });
+        document.body.appendChild(overlay);
+    }
+
+    // ========================================================================
+    // Slash Command Autocomplete
+    // ========================================================================
+
+    private handleSlashAutocomplete(): void {
+        const textInput = this.querySelector<HTMLInputElement>('.chat-text-input');
+        if (!textInput) return;
+        const val = textInput.value;
+
+        // Remove existing dropdown
+        const existing = this.querySelector('.chat-slash-dropdown');
+        existing?.remove();
+
+        // Only show when typing a command (starts with /, no space yet)
+        if (!val.startsWith('/') || val.includes(' ')) return;
+
+        const COMMANDS = [
+            '/i — Check in',
+            '/o — Check out',
+            '/? — Help',
+            '/ban — Ban user',
+            '/unban — Unban user',
+            '/f — Set frequency',
+            '/nick — Set nickname',
+            '/hand — Hand off',
+            '/close — Close net',
+            '/count — Station count'
+        ];
+
+        const partial = val.slice(1).toLowerCase();
+        const matches = COMMANDS.filter(c => c.toLowerCase().includes(partial));
+        if (matches.length === 0 || matches.length === COMMANDS.length) return;
+
+        const dd = document.createElement('div');
+        dd.className = 'chat-slash-dropdown';
+        dd.style.cssText = 'position: absolute; bottom: 100%; left: 0; right: 0; background: var(--hl-dark); border: 1px solid var(--hl-quaternary); border-radius: 6px; max-height: 200px; overflow-y: auto; z-index: 100;';
+        matches.forEach(cmd => {
+            const item = document.createElement('div');
+            item.style.cssText = 'padding: 6px 10px; font-size: 12px; color: var(--hl-light); cursor: pointer; border-bottom: 1px solid rgba(240, 238, 222, 0.1);';
+            item.textContent = cmd;
+            item.addEventListener('click', () => {
+                textInput.value = cmd.split(' — ')[0] || '';
+                dd.remove();
+                textInput.focus();
+            });
+            dd.appendChild(item);
+        });
+
+        const wrapper = this.querySelector('.chat-input-wrapper');
+        if (wrapper) {
+            (wrapper as HTMLElement).style.position = 'relative';
+            wrapper.appendChild(dd);
+        }
+    }
+
     private disconnect(): void {
         // Clean up global event listeners to prevent memory leaks
         if (this.documentClickHandler) {
@@ -1152,11 +1623,27 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             this.beforeUnloadHandler = null;
         }
 
+        if (this.scrollListener) {
+            const container = this.querySelector('.chat-messages');
+            container?.removeEventListener('scroll', this.scrollListener);
+            this.scrollListener = null;
+        }
+        if (this.visibilityHandler) {
+            document.removeEventListener('visibilitychange', this.visibilityHandler);
+            this.visibilityHandler = null;
+        }
+        // Remove lightbox if any
+        this.querySelector('.chat-lightbox')?.remove();
+        // Remove slash dropdown if any
+        this.querySelector('.chat-slash-dropdown')?.remove();
+        // Remove latest button
+        this.querySelector('.chat-latest-btn')?.remove();
+
         if (this.store) {
             this.store.unsubscribe(this);
         }
-        if (this.client) {
-            void this.client.disconnectUser();
+        if (this.connection) {
+            this.connection.disconnect();
             logger.info('Disconnected from chat');
         }
     }

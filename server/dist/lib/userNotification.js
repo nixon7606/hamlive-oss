@@ -3,6 +3,7 @@
 const { getUserProfile } = require('../models/userProfile');
 const sgMail = require('@sendgrid/mail');
 const { conf } = require('../lib/configLib');
+const { checkBulk } = require('./emailRateLimiter');
 
 // Email delivery is optional. When SENDGRID_API_KEY is absent, messages are
 // logged to the server console instead of being sent (see INSTALL.md,
@@ -68,10 +69,26 @@ class EmailBase {
             logger.warn('sendMailToAddrs() contains duplicate email addresses');
         }
 
+        // Per-recipient cooldown: skip recipients that were recently emailed
+        const { allowed, blocked } = checkBulk(validRecipients);
+        if (blocked.length > 0) {
+            for (const b of blocked) {
+                logger.warn(
+                    `[emailRateLimiter] Skipping ${b.recipient} — ${b.reason}`
+                );
+            }
+        }
+        if (allowed.length === 0) {
+            logger.warn(
+                'sendMailToAddrs() — all recipients are in cooldown, no email sent'
+            );
+            return;
+        }
+
         try {
             const subject = this.getSubject();
-            const emailData = this.getEmailData(validRecipients, subject);
-            this.sendEmailWithRetry(emailData, validRecipients);
+            const emailData = this.getEmailData(allowed, subject);
+            this.sendEmailWithRetry(emailData, allowed);
         } catch (err) {
             logger.error(`Failed to send mail: ${err.message}`);
             throw err;

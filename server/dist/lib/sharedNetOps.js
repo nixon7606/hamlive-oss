@@ -10,8 +10,8 @@ const { getLiveNet } = require('../models/liveNet');
 const { getPendingUnfollow, getPendingAccountDelete } = require('../models/taskQueues');
 const { getStationInteraction } = require('../models/stationInteraction');
 const mongoose = require('mongoose');
-// NEW: GetStream.io chat integration
-const { deleteNetChannel } = require('./streamChat');
+// In-house chat integration (replaces GetStream.io)
+const { deleteChatChannel } = require('./localChat');
 
 function getModels(db = null) {
     return {
@@ -741,15 +741,14 @@ async function closeNet({ netProfileDoc, liveNetDoc, quiet = false, db = mongoos
         }
     }
 
-    // Delete Stream Chat channel AFTER report is generated (so chat history is still available)
-    // WHY: Chat channel lifecycle tied to net lifecycle
-    // Wrapped in try/catch for graceful degradation - chat failure shouldn't prevent net close
+    // Clean up in-house chat SSE stream
+    // WHY: Chat lifecycle tied to net lifecycle
+    // Wrapped in try/catch for graceful degradation
     try {
-        await deleteNetChannel(netProfileDoc._id);
-        logger.info(`Chat channel deleted for net ${netProfileDoc.title}`);
+        await deleteChatChannel(netProfileDoc._id);
+        logger.info(`Chat SSE stream cleaned up for net ${netProfileDoc.title}`);
     } catch (chatErr) {
-        // Don't fail net close if chat cleanup fails - graceful degradation
-        logger.error(`Failed to delete chat channel for ${netProfileDoc.title}: ${chatErr.message}`);
+        logger.error(`Failed to clean up chat for ${netProfileDoc.title}: ${chatErr.message}`);
     }
 
     try {

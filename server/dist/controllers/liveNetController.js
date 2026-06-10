@@ -13,8 +13,8 @@ const { NetAnnounceStart } = require('../lib/userNotification');
 const oHash = require('object-hash');
 const helpers = require('../lib/controllers/liveNetHelpers');
 const { isLiveNetDetailsResponse, NetNotFoundError } = require('../types/commonTypesupport');
-// NEW: GetStream.io chat integration
-const { createNetChannel, addChannelMember, getStreamUserId } = require('../lib/streamChat');
+// In-house chat integration (replaces GetStream.io)
+const { createChatChannel } = require('../lib/localChat');
 
 const liveNetDetails = async (req, res, presenceOnly = false) => {
     const {
@@ -262,26 +262,19 @@ const liveNetCreatePost = async (req, res) => {
                     if (await NetProfile.findOneAndUpdate({ _id: npresult._id }, { liveNet: lnresult._id })) {
                         logger.info(`LIVENET_Controller: Started: ${npresult.title} at ${conf.base_url}${liveNet.url}`);
 
-                        // NEW: Create Stream Chat channel for this net
-                        // WHY: Chat channel lifecycle tied to net lifecycle
-                        // Wrapped in try/catch for graceful degradation - chat failure shouldn't prevent net start
+                        // NEW: Set up in-house chat for this net
+                        // WHY: Chat lifecycle tied to net lifecycle
+                        // Wrapped in try/catch for graceful degradation
                         try {
-                            await createNetChannel({
+                            await createChatChannel({
                                 npid: npresult._id,
                                 netTitle: npresult.title,
-                                createdById: getStreamUserId(req.user._id.toString())
+                                createdById: req.user._id.toString()
                             });
-
-                            // Add net control as channel admin
-                            await addChannelMember({
-                                npid: npresult._id,
-                                userId: getStreamUserId(req.user._id.toString()),
-                                role: 'netcontrol'
-                            });
-                            logger.info(`LIVENET_Controller: Chat channel created for ${npresult.title}`);
+                            logger.info(`LIVENET_Controller: Chat ready for ${npresult.title}`);
                         } catch (chatErr) {
-                            // Don't fail net creation if chat fails - graceful degradation
-                            logger.error(`Failed to create chat channel for ${npresult.title}: ${chatErr.message}`);
+                            // Don't fail net creation if chat setup fails
+                            logger.error(`Failed to set up chat for ${npresult.title}: ${chatErr.message}`);
                         }
 
                         if (npresult.followers.length) {

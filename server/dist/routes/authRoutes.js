@@ -2,6 +2,7 @@
 
 const router = require('express').Router();
 const passport = require('passport');
+const rateLimit = require('express-rate-limit');
 const { conf } = require('../lib/configLib');
 const { logger } = require('../lib/logger');
 const UserProfile = require('../models/userProfile').getUserProfile(null);
@@ -9,6 +10,20 @@ const GoogleStrategy = require('passport-google-oauth20');
 const MagicLoginStrategy = require('passport-magic-login').default;
 const gravatar = require('gravatar');
 const { EmailBase, emailEnabled } = require('../lib/userNotification');
+
+// Rate limit magic-link requests per IP to prevent email-bombing.
+// The cooldown in EmailBase.sendMailToAddrs() catches per-recipient abuse
+// across all features; this HTTP-layer limiter reduces server load from
+// rapid-fire requests and adds defense-in-depth.
+const magicLoginLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,   // 5-minute window
+    max: 5,                      // 5 requests per window per IP
+    standardHeaders: true,       // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false,
+    message: {
+        error: 'Too many sign-in attempts. Please try again in a few minutes.'
+    }
+});
 
 //MagicLogin Auth:
 const magicLogin = new MagicLoginStrategy({
@@ -88,7 +103,7 @@ const magicLogin = new MagicLoginStrategy({
                 // if not, create user in our db
                 new UserProfile({
                     lastAuthVia: 'email',
-                    displayName: '',
+                    displayName: payload.destination.split('@')[0].slice(0, 40) || 'New User',
                     flexOptions: {
                         option: {}
                     },
@@ -96,7 +111,7 @@ const magicLogin = new MagicLoginStrategy({
                     photo: gravatar.url(payload.destination),
                     newAccount: true
                 })
-                    .save({ validateBeforeSave: false })
+                    .save()
                     .then(newUser => {
                         logger.info('new partial user account created (email link)' + newUser);
                         done(null, newUser);
@@ -111,12 +126,12 @@ const magicLogin = new MagicLoginStrategy({
     },
 
     jwtOptions: {
-        expiresIn: '30 days'
+        expiresIn: '24h'
     }
 });
 
 passport.use(magicLogin);
-router.post('/magiclogin', (req, res, next) => {
+router.post('/magiclogin', magicLoginLimiter, (req, res, next) => {
     // When email delivery is disabled (local test drive), include the sign-in
     // link in the JSON response so the browser can show it — no logs needed.
     if (!emailEnabled) {
@@ -128,6 +143,11 @@ router.post('/magiclogin', (req, res, next) => {
 // router.get('/magiclogin/callback', passport.authenticate('magiclogin'));
 router.get('/magiclogin/callback', passport.authenticate('magiclogin'), (req, res) => {
     if (req.user) {
+        // Save IP address asynchronously (non-blocking)
+        const ip = req.ip || req.connection?.remoteAddress || '';
+        UserProfile.findOneAndUpdate({ _id: req.user._id }, { lastIp: ip }).catch(err => {
+            logger.debug(`Failed to save IP for ${req.user.callSign || req.user.email}: ${err.message}`);
+        });
         if (req.user.callSign) {
             res.redirect('/views/dashboard');
         } else {
@@ -198,6 +218,8 @@ if (googleAuthEnabled) {
                         .catch(err => {
                             logger.error(err.stack);
                             logger.error('Likely data validation error. Missing required info on user creation?');
+                            done(null, false);
+                            logger.info('Google auth profile save failed — passport sent false, user will retry');
                         });
                 }
             });
@@ -224,6 +246,7 @@ router.get('/google/redirect', passport.authenticate('google'), (req, res) => {
 // google specific auth, specify what we want from google (scope)
 router.get(
     '/google',
+    magicLoginLimiter,
     passport.authenticate('google', {
         scope: ['profile', 'email']
     })

@@ -1,9 +1,223 @@
 /* hamlive-oss — MIT License. See LICENSE. */
+/* ── Ham.Live Design System ── */
+
+/* ========================================================================
+   Base Body
+   ======================================================================== */
 
 body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
+
+/* ========================================================================
+   Unified Page Layout
+   ======================================================================== */
+
+/* For all pages — consistent vertical padding */
+.app-page { padding-top: 1.5rem; padding-bottom: 2rem; }
+
+/* For static/info pages — narrower container */
+.static-page { padding-top: 2rem; padding-bottom: 3rem; }
+
+/* ========================================================================
+   Typography — consistent across all pages
+   ======================================================================== */
+
+/* Headings on dark backgrounds */
+h1, .h1 { font-size: 1.75rem; font-weight: 500; color: var(--hl-light); }
+h2, .h2 { font-size: 1.4rem; font-weight: 500; color: var(--hl-light); }
+h3, .h3 { font-size: 1.2rem; font-weight: 500; color: var(--hl-light); }
+h4, .h4 { font-size: 1.05rem; font-weight: 500; color: var(--hl-secondary); }
+h5, .h5 { font-size: 0.95rem; font-weight: 500; color: var(--hl-primary); }
+h6, .h6 { font-size: 0.85rem; font-weight: 500; }
+
+/* Default body text */
+p, li, td, th { color: var(--hl-light); }
+small, .small { font-size: 0.875em; color: var(--hl-tertiary); }
+
+/* Links */
+a { color: var(--hl-primary); transition: color 0.15s ease; }
+a:hover { color: var(--hl-secondary); }
+a.text-muted:hover { color: var(--hl-primary) !important; }
+
+/* ========================================================================
+   Page Header (for all pages)
+   ======================================================================== */
+
+.page-header {
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid rgba(163, 118, 195, 0.15);
+}
+.page-header h1, .page-header .h1 { margin-bottom: 0; }
+.page-header .page-subtitle {
+    font-size: 0.85rem;
+    color: var(--hl-tertiary);
+    margin-top: 4px;
+}
+
+/* ========================================================================
+   Unified Card Component
+   ======================================================================== */
+
+.app-card {
+    border-radius: 8px;
+    border: 1px solid rgba(163, 118, 195, 0.2);
+    background: var(--hl-quaternary);
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+.app-card-header {
+    border-bottom: 1px solid rgba(163, 118, 195, 0.15);
+    padding-bottom: 0.75rem;
+    margin-bottom: 1rem;
+    font-weight: 500;
+    font-size: 1rem;
+    color: var(--hl-secondary);
+}
+
+/* ========================================================================
+   Stat Cards
+   ======================================================================== */
+
+.app-stat-card {
+    border-radius: 8px;
+    border: 1px solid rgba(110, 184, 192, 0.2);
+    background: var(--hl-quaternary);
+    padding: 16px;
+    text-align: center;
+}
+.app-stat-card .stat-value { font-size: 1.8rem; font-weight: 600; color: var(--hl-light); }
+.app-stat-card .stat-label {
+    font-size: 0.75rem; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--hl-tertiary);
+}
+
+/* ========================================================================
+   Unified Tabs
+   ======================================================================== */
+
+.app-tabs {
+    border-bottom: 1px solid rgba(163, 118, 195, 0.15);
+    margin-bottom: 1.25rem;
+}
+.app-tabs .nav-link {
+    color: var(--hl-tertiary); border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 16px; font-size: 0.9rem;
+    background: transparent;
+}
+.app-tabs .nav-link:hover { color: var(--hl-light); border-bottom-color: rgba(163, 118, 195, 0.4); }
+.app-tabs .nav-link.active {
+    color: var(--hl-light); background: transparent;
+    border-bottom-color: var(--hl-tertiary);
+}
+
+/* ========================================================================
+   Unified Button
+   ======================================================================== */
+
+.app-btn {
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 0.85rem;
+    border: 1px solid var(--hl-quaternary);
+    background: transparent;
+    color: var(--hl-light);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.app-btn:hover { border-color: var(--hl-tertiary); background: var(--hl-quaternary); }
+.app-btn-primary {
+    background: var(--hl-primary);
+    border-color: var(--hl-primary);
+    color: #fff;
+}
+.app-btn-primary:hover { background: #c6742e; border-color: #c6742e; color: #fff; }
+.app-btn-secondary {
+    background: var(--hl-secondary);
+    border-color: var(--hl-secondary);
+    color: #fff;
+}
+.app-btn-secondary:hover { background: #5da6ae; border-color: #5da6ae; color: #fff; }
+.app-btn-sm { padding: 4px 12px; font-size: 0.8rem; }
+
+/* ========================================================================
+   Unified Form Controls
+   ======================================================================== */
+
+.app-input {
+    background: #333;
+    border: 1px solid #555;
+    color: var(--hl-light);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+}
+.app-input:focus {
+    border-color: var(--hl-secondary);
+    box-shadow: 0 0 0 0.2rem rgba(110, 184, 192, 0.25);
+    outline: none;
+    background: #3a3a3a;
+}
+.app-input::placeholder { color: var(--hl-tertiary); opacity: 0.6; }
+.app-label {
+    font-size: 0.85rem;
+    color: var(--hl-secondary);
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+/* ========================================================================
+   Unified Table
+   ======================================================================== */
+
+.app-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.app-table th {
+    padding: 10px 12px;
+    border-bottom: 2px solid var(--hl-tertiary);
+    color: var(--hl-secondary);
+    font-weight: 500;
+    font-size: 0.85rem;
+    text-align: left;
+}
+.app-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(163, 118, 195, 0.1);
+    color: var(--hl-light);
+    font-size: 0.9rem;
+}
+.app-table tr:hover td { background: rgba(163, 118, 195, 0.05); }
+.app-table .text-muted { color: var(--hl-tertiary) !important; }
+
+/* ========================================================================
+   Unified Modal
+   ======================================================================== */
+
+.app-modal .modal-content {
+    background: #2a2a2a; color: var(--hl-light);
+    border: 1px solid rgba(163, 118, 195, 0.25);
+    border-radius: 8px;
+}
+.app-modal .modal-header { border-bottom-color: #444; }
+.app-modal .modal-footer { border-top-color: #444; }
+.app-modal .form-control {
+    background: #333; border-color: #555; color: var(--hl-light);
+}
+.app-modal .form-control:focus {
+    border-color: var(--hl-secondary);
+    box-shadow: 0 0 0 0.2rem rgba(110, 184, 192, 0.25);
+}
+.app-modal .form-check-input { background: #555; border-color: #777; }
+.app-modal .form-check-input:checked { background: var(--hl-secondary); border-color: var(--hl-secondary); }
+
+/* ========================================================================
+   Legacy — kept for backward compatibility with existing templates
+   ======================================================================== */
 
 .height-40vh {
     height: 40vh;
@@ -36,7 +250,7 @@ body {
 .chat-container {
     border-radius: 8px;
     border: 1px solid rgba(110, 184, 192, 0.15);
-    min-height: 0; /* Critical: allows flex child to shrink and enable overflow scroll in chat */
+    min-height: 0;
 }
 
 .stations-container {
@@ -251,7 +465,6 @@ body {
 }
 
 /* Misc Breakpoints: */
-/* hand positioning tweak */
 @media only screen and (max-width: 600px) {
     .hand-icon {
         top: 0%;
@@ -259,19 +472,12 @@ body {
     }
 }
 
-/* Begin Net Control Button: */
+/* Net Control Button: */
 .fade-in {
     animation: fadeIn 0.2s;
 }
 
 @keyframes fadeIn {
-    0% {
-        opacity: 0;
-    }
-
-    100% {
-        opacity: 1;
-    }
+    0% { opacity: 0; }
+    100% { opacity: 1; }
 }
-
-/* End Net Control Button: */

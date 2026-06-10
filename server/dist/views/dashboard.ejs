@@ -4,7 +4,7 @@
 
 <head>
   <%- include('./partials/head') %>
-  <%- include('./partials/pageTopFeatures') %>
+  <%- include('./partials/pageTopFeatures') %> <%- include('./partials/featureAppLayout') %>
   <title><%= server.appName %> <% if (server.logLevel !== "info") { %> (<%= server.logLevel %>) <% } %></title>
 </head>
 
@@ -12,23 +12,19 @@
   <%- include('./partials/adTopBar') %>
   <%- include('./partials/navbar', { user: user }) %>
 
-  <div class="container-xxl">
-    <div class="row">
-      <div class="col p-md-2 m-md-3">
-        <ul class="nav nav-tabs">
-          <li class="nav-item">
-            <a class="nav-link active bg-secondary" href="#">Live Nets</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="/views/intro">How-To Video</a>
-          </li>
-        </ul>
-      </div>
-    </div>
+  <div class="container-fluid app-page">
+    <ul class="nav app-tabs">
+      <li class="nav-item">
+        <a class="nav-link active" href="#">Live Nets</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="/views/intro">How-To Video</a>
+      </li>
+    </ul>
 
-    <div class="p-2" id="dashItemsContainer">
+    <div id="dashItemsContainer">
       <!-- Template for dynamically generated net rows -->
-      <div id="netTemplate" class="ms-md-5 me-md-5 mb-2 mb-md-3 row bg-very-dark rounded border-1 border-light border-dotted text-secondary d-none py-4">
+      <div id="netTemplate" class="app-card d-none py-4">
         <div class="row">
           <div class="col-md-5 ms-md-5 text-light text-nowrap align-items-end">
             <a id="title-link" href="#" class="text-decoration-none text-muted">

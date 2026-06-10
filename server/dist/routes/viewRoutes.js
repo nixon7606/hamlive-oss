@@ -77,4 +77,8 @@ router.get('/homepage', (req, res) => {
     res.render('oAuth2Homepage', populate(req, res, { VIEW: 'oAuth2Homepage' }));
 });
 
+router.get('/admin', authCheck(REQ_LOGIN), require('../middleware/superAdminCheck').superAdminCheck, (req, res) => {
+    res.render('admin', populate(req, res, { VIEW: 'admin' }));
+});
+
 module.exports = router;

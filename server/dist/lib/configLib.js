@@ -36,6 +36,7 @@ const fromEnv = {
     cookie_session_key: process.env.COOKIE_SESSION_KEY,
     magic_link_secret: process.env.MAGIC_LINK_SECRET,
     sendgrid_api_key: process.env.SENDGRID_API_KEY,
+    chat_upload_dir: process.env.CHAT_UPLOAD_DIR,
     stream_api_key: process.env.STREAM_API_KEY,
     stream_api_secret: process.env.STREAM_API_SECRET,
     google_client_id: process.env.GOOGLE_CLIENT_ID,

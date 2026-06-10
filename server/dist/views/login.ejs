@@ -6,26 +6,23 @@
   <%- include('./partials/head') %> <%- include('./partials/pageTopFeatures') %>
   <title><%= server.appName %> - Login <%if (server.logLevel !== "info") {%> (<%= server.logLevel %>) <%}%></title>
     </head>
-    <body class="bg-dark">
+    <body class="bg-dark text-light">
       <%- include('./partials/adTopBar') %>
     <%- include('./partials/navbar', {user: user}) %>
 
     <% if (server.googleAuth) { %>
-    <div class="d-flex container mt-4">
-      <div class="flex-fill d-flex justify-content-center h6">
-        <em class="text-muted">
-          <small>
-            Note: Google sign-In is generally more reliable (spam filters might impact delivery of the email
-            link)
-          </small>
-        </em>
+    <div class="container-fluid app-page">
+      <div class="row">
+        <div class="col d-flex justify-content-center">
+          <em class="text-muted small">
+            Note: Google sign-In is generally more reliable (spam filters might impact delivery of the email link)
+          </em>
+        </div>
       </div>
     </div>
     <% } %>
 
-    <div class="container-fluid">
-      <div class="row mt-2 mt-sm-5"></div>
-
+    <div class="container-fluid app-page">
       <div class="row justify-content-center">
         <% if (server.googleAuth) { %>
         <div class="col-xs-12 col-sm-6 col-md-4 mt-0 d-flex align-items-center justify-content-center">

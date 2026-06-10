@@ -3,7 +3,7 @@
 <!-- hamlive-oss — MIT License. See LICENSE. -->
 
 <head>
-  <%- include('./partials/head') %> <%- include('./partials/pageTopFeatures') %>
+  <%- include('./partials/head') %> <%- include('./partials/pageTopFeatures') %> <%- include('./partials/featureAppLayout') %>
   <!-- prettier-ignore -->
   <%- include('./partials/featureTinyMceJs') %>
 
@@ -13,9 +13,9 @@
       <%- include('./partials/adTopBar') %>
     <%- include('./partials/navbar', {user: user}) %>
 
-    <div class="container-lg">
+    <div class="container-fluid app-page">
       <div class="row">
-        <!-- Dispaly:None gets set to netListColumn (below) whenever the netlist has 0 entries.
+        <!-- Display:None gets set to netListColumn (below) whenever the netlist has 0 entries.
            This results in the form moving left on the screen -->
         <div id="netListColumn" class="col-xs-12 col-sm-5 col-md-5 col-lg-5 ms-sm-3">
           <p class="text-light h6 mt-sm-4 mb-2">You are owner of:</p>
@@ -25,14 +25,11 @@
         </div>
 
         <div id="formContainerNetProfile" class="col-sm-5 col-lg-5 col-xs-6 ms-sm-5 me-sm-3">
-          <div>
+          <div class="app-card">
             <p class="text-light h6 mt-sm-4">Net Submission:</p>
             <p>
               <small class="text-light">
-                <!-- Status Text Set by FormState object -->
-                [
-                <span id="netprofile_form_status"></span>
-                ]
+                [ <span id="netprofile_form_status"></span> ]
               </small>
             </p>
             <form id="netprofile_form">
@@ -80,22 +77,6 @@
                 </div>
               </div>
 
-              <!-- <div class="form-group mb-sm-2">
-                                <input
-                                    class="form-check-input bg-tertiary"
-                                    type="checkbox"
-                                    id="input_auto_in"
-                                    name="auto_in" />
-
-                                <span class="text-secondary">Auto CheckIn</span>
-
-                                <i
-                                    data-bs-toggle="tooltip"
-                                    data-bs-placement="above"
-                                    title="Stations monitoring/lurking are checked-in automatically"
-                                    class="text-light bi bi-info-circle"></i>
-                            </div> -->
-
               <div class="form-group mb-sm-2">
                 <input placeholder='Mode Details (i.e. "REF030C")' type="text" class="form-control" id="input_modedetails" name="modedetails" maxlength="15" />
               </div>
@@ -108,11 +89,9 @@
                 <textarea class="form-control" name="notes" id="input_notes"></textarea>
               </div>
 
-              <!-- FormState stores current mode (new vs edit) in this hidden input -->
               <input type="hidden" name="input_netprofile_mode" id="input_netprofile_mode" />
 
               <input type="hidden" name="npid_for_netprofile" id="input_npid_for_netprofile" />
-              <!-- Flexbox row below. Auto-margin makes both buttons (submit/reset) justified left and right, respectively  -->
               <div class="d-flex">
                 <div class="me-auto">
                   <button type="submit" class="btn btn-sm btn-primary float-left">Save</button>
@@ -125,6 +104,58 @@
               </div>
             </form>
           </div>
+
+          <!-- Schedule Section -->
+          <div class="app-card">
+            <p class="text-light h6 mb-3"><i class="bi bi-calendar-week text-secondary"></i> Net Schedule</p>
+            <p class="mb-2"><small class="text-light">[ <span id="schedule_form_status"></span> ]</small></p>
+            <div class="mb-2">
+              <div class="form-check">
+                <input type="checkbox" class="form-check-input" id="input_schedule_enabled">
+                <label class="form-check-label text-light" for="input_schedule_enabled">Enable Recurring Schedule</label>
+              </div>
+            </div>
+            <div id="schedule_settings" style="display:none;">
+              <div class="mb-2">
+                <label class="text-secondary small">Day of Week</label>
+                <select class="form-control form-control-sm" id="input_schedule_dow">
+                  <option value="0">Sunday</option>
+                  <option value="1">Monday</option>
+                  <option value="2">Tuesday</option>
+                  <option value="3">Wednesday</option>
+                  <option value="4">Thursday</option>
+                  <option value="5">Friday</option>
+                  <option value="6">Saturday</option>
+                </select>
+              </div>
+              <div class="mb-2">
+                <label class="text-secondary small">Time (HH:MM)</label>
+                <input type="time" class="form-control form-control-sm" id="input_schedule_time">
+              </div>
+              <div class="mb-2">
+                <label class="text-secondary small">Timezone</label>
+                <select class="form-control form-control-sm" id="input_schedule_tz">
+                  <option value="America/New_York">Eastern</option>
+                  <option value="America/Chicago">Central</option>
+                  <option value="America/Denver" selected>Mountain</option>
+                  <option value="America/Los_Angeles">Pacific</option>
+                  <option value="America/Anchorage">Alaska</option>
+                  <option value="Pacific/Honolulu">Hawaii</option>
+                  <option value="UTC">UTC</option>
+                </select>
+              </div>
+              <div class="mb-2">
+                <label class="text-secondary small">Notify minutes before</label>
+                <input type="number" class="form-control form-control-sm" id="input_schedule_notify" min="5" max="1440" value="30">
+              </div>
+              <div class="form-check mb-2">
+                <input type="checkbox" class="form-check-input" id="input_schedule_notify_enabled" checked>
+                <label class="form-check-label text-light small" for="input_schedule_notify_enabled">Send email notification</label>
+              </div>
+              <input type="hidden" id="input_schedule_npid">
+              <button type="button" class="btn btn-sm btn-outline-warning" id="schedule_save_btn">Save Schedule</button>
+            </div>
+          </div>
         </div>
 
         <div id="formContainerNetOwner" class="col-xs-4 col-sm-4 col-lg-4 col-xl-4 ms-sm-5 me-sm-3">
@@ -132,20 +163,15 @@
             <p class="text-light h6 mt-sm-4" id="netowner_form_title">Additional Net Owner</p>
             <p>
               <small class="text-light">
-                <!-- Status Text Set by FormState object -->
-                [
-                <span id="netowner_form_status"></span>
-                ]
+                [ <span id="netowner_form_status"></span> ]
               </small>
             </p>
             <form id="netowner_form">
               <div class="form-group mb-sm-2">
                 <input type="email" placeholder="hambuddy@gmail.com" class="form-control" id="input_email" name="email" required />
               </div>
-              <!-- FormState stores current mode (new vs edit) in this hidden input -->
               <input type="hidden" name="input_netowner_mode" id="input_netowner_mode" />
               <input type="hidden" name="npid_for_netowner" id="input_npid_for_netowner" />
-              <!-- Flexbox row below. Auto-margin makes both buttons (submit/reset) justified left and right, respectively  -->
               <div class="d-flex">
                 <div class="me-auto">
                   <button type="submit" class="btn btn-sm btn-primary float-left">Save</button>

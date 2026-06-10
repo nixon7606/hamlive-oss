@@ -40,7 +40,8 @@ const netProfileDetails = async (req, res) => {
             autoIn: npresult?.autoIn ? true : false,
             modeDetails: npresult.modeDetails,
             notes: sanitizeNotes(npresult.notes),
-            live: npresult.liveNet ? true : false
+            live: npresult.liveNet ? true : false,
+            schedule: npresult.schedule || null
         });
     } catch (err) {
         res.status(500).json({
@@ -72,6 +73,36 @@ const netProfileUpdate = async (req, res) => {
                 throw new Error('mode details required for CUSTOM or Digital Reflector modes');
             }
 
+            // Schedule guardrails
+            if (req.body.schedule && req.body.schedule.enabled !== false) {
+                const s = req.body.schedule;
+                if (s.dayOfWeek !== undefined && (s.dayOfWeek < 0 || s.dayOfWeek > 6)) {
+                    throw new Error('dayOfWeek must be 0 (Sunday) through 6 (Saturday)');
+                }
+                if (s.hour !== undefined && (s.hour < 0 || s.hour > 23)) {
+                    throw new Error('hour must be 0-23');
+                }
+                if (s.minute !== undefined && (s.minute < 0 || s.minute > 59)) {
+                    throw new Error('minute must be 0-59');
+                }
+                if (s.notifyBeforeMinutes !== undefined && (s.notifyBeforeMinutes < 5 || s.notifyBeforeMinutes > 1440)) {
+                    throw new Error('notifyBeforeMinutes must be 5-1440');
+                }
+
+                // Enforce max 3 scheduled nets per user
+                if (s.enabled !== false) {
+                    const NetProfile = require('../models/netProfile').getNetProfile(null);
+                    const existingScheduled = await NetProfile.countDocuments({
+                        _id: { $ne: id },
+                        owners: req.user._id,
+                        'schedule.enabled': true
+                    });
+                    if (existingScheduled >= 3) {
+                        throw new Error('Maximum 3 scheduled nets allowed. Disable an existing schedule first.');
+                    }
+                }
+            }
+
             let updateResult;
 
             if (
@@ -83,7 +114,15 @@ const netProfileUpdate = async (req, res) => {
                         restrictedSigReports: req.body.restrictedSigReports ? true : false,
                         autoIn: req.body.autoIn ? true : false,
                         modeDetails: req.body.modeDetails && req.body.modeDetails.trim(),
-                        notes: sanitizeNotes(req.body.notes)
+                        notes: sanitizeNotes(req.body.notes),
+                        schedule: req.body.schedule ? {
+                            dayOfWeek: req.body.schedule.dayOfWeek,
+                            hour: req.body.schedule.hour,
+                            minute: req.body.schedule.minute,
+                            timezone: req.body.schedule.timezone || 'America/Denver',
+                            notifyBeforeMinutes: req.body.schedule.notifyBeforeMinutes || 15,
+                            enabled: req.body.schedule.enabled !== false
+                        } : undefined
                     },
                     { runValidators: true }
                 ))

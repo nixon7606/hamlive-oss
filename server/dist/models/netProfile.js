@@ -94,7 +94,19 @@ const netProfileSchema = new Schema(
         autoIn: { type: Boolean, default: false },
         permanent: { type: Boolean, default: false },
         restrictedSigReports: { type: Boolean, default: false },
-        invisible: { type: Boolean, default: false }
+        invisible: { type: Boolean, default: false },
+        schedule: {
+            type: {
+                enabled: { type: Boolean, default: false },
+                dayOfWeek: { type: Number, min: 0, max: 6 },
+                hour: { type: Number, min: 0, max: 23 },
+                minute: { type: Number, min: 0, max: 59 },
+                timezone: { type: String, default: 'America/Denver' },
+                notifyBeforeMinutes: { type: Number, default: 30, min: 5, max: 1440 },
+                notifyBeforeEnabled: { type: Boolean, default: true }
+            },
+            default: {}
+        }
     },
     { timestamps: true }
 );

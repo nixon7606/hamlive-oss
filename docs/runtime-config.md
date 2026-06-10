@@ -127,7 +127,7 @@ All secrets and instance-specific values are supplied via environment variables.
 | `STREAM_API_SECRET` | `conf.stream_api_secret` | No | GetStream.io chat (optional) |
 | `QRZ_USERNAME` | `conf.qrz_username` | No | QRZ.com callsign lookup (optional) |
 | `QRZ_PASSWORD` | `conf.qrz_password` | No | QRZ.com callsign lookup (optional) |
-| `GEO_KEY` | `conf.geo_key` | No | Azure Maps reverse geocoding (optional) |
+| `GEO_KEY` | `conf.geo_key` | No | Deprecated — geocoding is now always free Nominatim (OpenStreetMap) |
 | `CMD_HELP_URL` | `conf.cmd_help_url` | No | Override net-command help URL |
 | `APP_NAME` | `conf.app_name` | No | Override display name |
 | `ADPLUGG_ACCESS_CODE` | `conf.adplugg_access_code` | No | AdPlugg ads provider ID |

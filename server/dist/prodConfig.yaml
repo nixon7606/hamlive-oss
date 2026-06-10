@@ -25,6 +25,9 @@ background_tasks:
     processUnfollowJobs:
         enabled: true
         options:
+    scheduledNetStarter:
+        enabled: true
+        options:
 
 netadmin_commands:
     help:
