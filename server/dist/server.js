@@ -212,8 +212,7 @@ app.use(helmet({
             imgSrc: [
                 "'self'",
                 'data:',
-                'www.gravatar.com',
-                'gravatar.com'
+                '*.gravatar.com'
             ],
             frameSrc: [
                 'www.youtube.com'
