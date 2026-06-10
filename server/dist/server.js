@@ -190,6 +190,8 @@ app.use(helmet({
         useDefaults: true,
         directives: {
             defaultSrc: ["'self'"],
+            // Disable upgrade-insecure-requests in dev (plain HTTP on localhost)
+            upgradeInsecureRequests: isDev ? null : undefined,
             scriptSrc: [
                 "'self'",
                 "'unsafe-inline'",
