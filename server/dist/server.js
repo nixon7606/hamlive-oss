@@ -34,6 +34,7 @@ const stationInteractionRoutes = require('./routes/stationInteractionRoutes');
 const utilRoutes = require('./routes/utilRoutes');
 const viewRoutes = require('./routes/viewRoutes');
 const cookieSession = require('cookie-session');
+const helmet = require('helmet');
 const dailyDispatch = require('./lib/dailyProcessingDispatch');
 const UserProfile = require('./models/userProfile').getUserProfile(null);
 const PORT = process.env['PORT'] ?? 3000;
@@ -104,6 +105,11 @@ app.use(
     })
 );
 
+// Set trust proxy so x-forwarded-* headers work behind Caddy/nginx/cloud LB.
+// This is required for FORCE_HTTPS (reads x-forwarded-proto) and for
+// IP-based rate limiting to see the real client IP, not the proxy IP.
+app.set('trust proxy', 1);
+
 // Renew cookie session on every 10 minutes of activity
 app.use(cookieSessionKeepAlive());
 
@@ -157,6 +163,9 @@ passport.serializeUser((user, done) => {
 passport.deserializeUser((id, done) => {
     UserProfile.findById(id).then(user => {
         done(null, user);
+    }).catch(err => {
+        logger.error(`deserializeUser error for id ${id}: ${err.message}`);
+        done(err, null);
     });
 });
 
@@ -171,6 +180,61 @@ app.use(express.json());
 // Serve chat image uploads from configurable directory (default: <project-root>/uploads/)
 app.use('/uploads', express.static(path.join(__dirname, '../../uploads'), { maxAge: 3600000 }));
 app.use(express.static(path.join(__dirname, '../../client/dist/public'), { maxAge: 7200000 }));
+
+// Security headers via helmet. CSP allows the CDNs the app needs.
+// 'unsafe-inline' on script-src is required for the importmap JSON block
+// and Bootstrap tooltip inline init — removing it would require refactoring
+// those into external files. This is tracked as a future improvement.
+app.use(helmet({
+    contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: [
+                "'self'",
+                "'unsafe-inline'",
+                'cdn.jsdelivr.net',
+                'www.googletagmanager.com'
+            ],
+            styleSrc: [
+                "'self'",
+                "'unsafe-inline'",
+                'cdn.jsdelivr.net',
+                'fonts.googleapis.com'
+            ],
+            fontSrc: [
+                "'self'",
+                'cdn.jsdelivr.net',
+                'fonts.gstatic.com'
+            ],
+            imgSrc: [
+                "'self'",
+                'data:',
+                'www.gravatar.com',
+                'gravatar.com'
+            ],
+            frameSrc: [
+                'www.youtube.com'
+            ],
+            connectSrc: [
+                "'self'",
+                'www.google-analytics.com',
+                'www.googletagmanager.com'
+            ],
+            formAction: ["'self'"],
+            frameAncestors: ["'none'"]
+        }
+    },
+    // In production, HSTS should be on. In dev, disable it so localhost works
+    // without certificate warnings. Production terminates TLS at the reverse proxy,
+    // which should set its own HSTS header.
+    strictTransportSecurity: !isDev ? {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true
+    } : false
+}));
+
 app.use('/views', viewRoutes);
 //API:CRUD Routes:
 app.use('/api/data/netprofiles', dataNetProfileRoutes);
