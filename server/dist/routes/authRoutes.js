@@ -86,7 +86,7 @@ const magicLogin = new MagicLoginStrategy({
             {
                 lastLogin: Date.now(),
                 lastAuthVia: 'email',
-                photo: gravatar.url(payload.destination, { protocol: 'https' })
+                photo: (gravatar.url(payload.destination, { protocol: 'https' }) || '').replace(/^\/\//, 'https://')
             }
         ).then(currentUser => {
             if (currentUser) {
@@ -108,7 +108,7 @@ const magicLogin = new MagicLoginStrategy({
                         option: {}
                     },
                     email: payload.destination,
-                    photo: gravatar.url(payload.destination),
+                    photo: (gravatar.url(payload.destination, { protocol: 'https' }) || '').replace(/^\/\//, 'https://'),
                     newAccount: true
                 })
                     .save()
@@ -183,7 +183,7 @@ if (googleAuthEnabled) {
                 {
                     lastLogin: Date.now(),
                     lastAuthVia: 'google',
-                    photo: profile.photos[0].value
+                    photo: (profile.photos[0].value || '').replace(/^\/\//, 'https://')
                 }
             ).then(currentUser => {
                 if (currentUser) {
@@ -207,7 +207,7 @@ if (googleAuthEnabled) {
                             option: {}
                         },
                         email: profile.emails[0].value,
-                        photo: profile.photos[0].value,
+                        photo: (profile.photos[0].value || '').replace(/^\/\//, 'https://'),
                         newAccount: true
                     })
                         .save()
