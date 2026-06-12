@@ -21,6 +21,7 @@
     "license": "MIT",
     "dependencies": {
         "@foundernest/namecase": "^1.0.5",
+        "@sendgrid/eventwebhook": "^8.0.0",
         "@sendgrid/mail": "^8.1.6",
         "ap-style-title-case": "^1.1.2",
         "axios": "^1.17.0",
