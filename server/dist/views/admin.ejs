@@ -50,6 +50,9 @@
       <li class="nav-item" role="presentation">
         <button class="nav-link" id="nets-tab" data-bs-toggle="tab" data-bs-target="#nets-panel" type="button" role="tab"><i class="bi bi-broadcast"></i> Nets</button>
       </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="email-tab" data-bs-toggle="tab" data-bs-target="#email-panel" type="button" role="tab"><i class="bi bi-envelope"></i> Email</button>
+        </li>
     </ul>
 
     <div class="tab-content">
@@ -106,6 +109,17 @@
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="email-panel" role="tabpanel">
+        <div class="app-card">
+          <div class="app-card-header"><i class="bi bi-envelope"></i> Email Delivery Lookup</div>
+          <div class="d-flex gap-2 mb-3" style="max-width: 520px;">
+            <input type="email" class="app-input flex-grow-1" id="email-search-input" placeholder="recipient@example.com" />
+            <button class="app-btn app-btn-primary" id="email-search-btn" type="button">Search</button>
+          </div>
+          <div id="email-results"></div>
         </div>
       </div>
     </div>

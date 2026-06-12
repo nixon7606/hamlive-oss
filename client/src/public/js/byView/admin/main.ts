@@ -145,6 +145,46 @@ async function loadNets() {
     }
 }
 
+/* ── Email Delivery ── */
+
+const EVENT_COLORS: Record<string, string> = {
+    delivered: 'success', open: 'info', click: 'info',
+    bounce: 'danger', dropped: 'danger', spamreport: 'danger', blocked: 'danger',
+    deferred: 'warning', processed: 'secondary', queued: 'secondary'
+};
+
+async function loadEmailActivity(recipient: string) {
+    const box = document.getElementById('email-results');
+    if (!box) return;
+    if (!recipient) { box.innerHTML = '<p class="text-muted">Enter an email address to look up.</p>'; return; }
+    box.innerHTML = '<p class="text-muted">Loading…</p>';
+    try {
+        const res = await fetch(`${API}/email?recipient=${encodeURIComponent(recipient)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const logs = (data.message && data.message.logs) || [];
+        const events = (data.message && data.message.events) || [];
+        if (logs.length === 0) { box.innerHTML = `<p class="text-muted">No emails found for ${esc(recipient)}.</p>`; return; }
+        const byBatch: Record<string, any[]> = {};
+        for (const ev of events) { (byBatch[ev.batchId] = byBatch[ev.batchId] || []).push(ev); }
+        box.innerHTML = logs.map((l: any) => {
+            const evs = (byBatch[l.batchId] || []).map((ev: any) => {
+                const color = EVENT_COLORS[ev.event] || 'secondary';
+                const when = ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '';
+                return `<div class="small mb-1"><span class="badge bg-${color}">${esc(ev.event)}</span> <span class="text-muted">${when}</span>${ev.reason ? ' — ' + esc(ev.reason) : ''}</div>`;
+            }).join('') || '<div class="small text-muted">No delivery events recorded yet.</div>';
+            const sent = l.createdAt ? new Date(l.createdAt).toLocaleString() : '';
+            return `<div class="app-card mb-2">
+                <div><strong>${esc(l.subject || l.type)}</strong> <span class="text-muted small">(${esc(l.type)})</span></div>
+                <div class="small text-muted">Sent ${sent} · status: ${esc(l.status)}${l.sgMessageId ? ' · id ' + esc(l.sgMessageId) : ''}</div>
+                <div class="mt-2">${evs}</div>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        box.innerHTML = `<p class="text-danger">Error: ${esc((err as Error).message)}</p>`;
+    }
+}
+
 /* ── User Edit / Delete ── */
 
 let currentUserId: string | null = null;
@@ -312,6 +352,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('users-tab')?.addEventListener('shown.bs.tab', () => {
         loadUsers();
+    });
+
+    document.getElementById('email-search-btn')?.addEventListener('click', () => {
+        const v = (document.getElementById('email-search-input') as HTMLInputElement).value.trim();
+        loadEmailActivity(v);
+    });
+    document.getElementById('email-search-input')?.addEventListener('keydown', (e) => {
+        if ((e as KeyboardEvent).key === 'Enter') {
+            loadEmailActivity((e.target as HTMLInputElement).value.trim());
+        }
     });
 
     (document.getElementById('edit-save-btn') as HTMLButtonElement)?.addEventListener('click', async () => {

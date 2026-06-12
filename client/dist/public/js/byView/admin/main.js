@@ -134,6 +134,53 @@ async function loadNets() {
         statusMsg(`Error loading nets: ${err.message}`, 'danger');
     }
 }
+const EVENT_COLORS = {
+    delivered: 'success', open: 'info', click: 'info',
+    bounce: 'danger', dropped: 'danger', spamreport: 'danger', blocked: 'danger',
+    deferred: 'warning', processed: 'secondary', queued: 'secondary'
+};
+async function loadEmailActivity(recipient) {
+    const box = document.getElementById('email-results');
+    if (!box)
+        return;
+    if (!recipient) {
+        box.innerHTML = '<p class="text-muted">Enter an email address to look up.</p>';
+        return;
+    }
+    box.innerHTML = '<p class="text-muted">Loading…</p>';
+    try {
+        const res = await fetch(`${API}/email?recipient=${encodeURIComponent(recipient)}`);
+        if (!res.ok)
+            throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const logs = (data.message && data.message.logs) || [];
+        const events = (data.message && data.message.events) || [];
+        if (logs.length === 0) {
+            box.innerHTML = `<p class="text-muted">No emails found for ${esc(recipient)}.</p>`;
+            return;
+        }
+        const byBatch = {};
+        for (const ev of events) {
+            (byBatch[ev.batchId] = byBatch[ev.batchId] || []).push(ev);
+        }
+        box.innerHTML = logs.map((l) => {
+            const evs = (byBatch[l.batchId] || []).map((ev) => {
+                const color = EVENT_COLORS[ev.event] || 'secondary';
+                const when = ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '';
+                return `<div class="small mb-1"><span class="badge bg-${color}">${esc(ev.event)}</span> <span class="text-muted">${when}</span>${ev.reason ? ' — ' + esc(ev.reason) : ''}</div>`;
+            }).join('') || '<div class="small text-muted">No delivery events recorded yet.</div>';
+            const sent = l.createdAt ? new Date(l.createdAt).toLocaleString() : '';
+            return `<div class="app-card mb-2">
+                <div><strong>${esc(l.subject || l.type)}</strong> <span class="text-muted small">(${esc(l.type)})</span></div>
+                <div class="small text-muted">Sent ${sent} · status: ${esc(l.status)}${l.sgMessageId ? ' · id ' + esc(l.sgMessageId) : ''}</div>
+                <div class="mt-2">${evs}</div>
+            </div>`;
+        }).join('');
+    }
+    catch (err) {
+        box.innerHTML = `<p class="text-danger">Error: ${esc(err.message)}</p>`;
+    }
+}
 let currentUserId = null;
 let currentUserEmail = '';
 async function editUser(id) {
@@ -299,6 +346,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('users-tab')?.addEventListener('shown.bs.tab', () => {
         loadUsers();
+    });
+    document.getElementById('email-search-btn')?.addEventListener('click', () => {
+        const v = document.getElementById('email-search-input').value.trim();
+        loadEmailActivity(v);
+    });
+    document.getElementById('email-search-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            loadEmailActivity(e.target.value.trim());
+        }
     });
     document.getElementById('edit-save-btn')?.addEventListener('click', async () => {
         const id = document.getElementById('edit-user-id').value;

@@ -6,6 +6,8 @@ declare function esc(s: string): string;
 declare function loadStats(): Promise<void>;
 declare function loadUsers(): Promise<void>;
 declare function loadNets(): Promise<void>;
+declare const EVENT_COLORS: Record<string, string>;
+declare function loadEmailActivity(recipient: string): Promise<void>;
 declare let currentUserId: string | null;
 declare let currentUserEmail: string;
 declare function editUser(id: string): Promise<void>;
