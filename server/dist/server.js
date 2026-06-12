@@ -33,6 +33,7 @@ const chatRoutes = require('./routes/chatRoutes');
 const stationInteractionRoutes = require('./routes/stationInteractionRoutes');
 const utilRoutes = require('./routes/utilRoutes');
 const viewRoutes = require('./routes/viewRoutes');
+const sendgridWebhookRoutes = require('./routes/sendgridWebhookRoutes');
 const cookieSession = require('cookie-session');
 const helmet = require('helmet');
 const dailyDispatch = require('./lib/dailyProcessingDispatch');
@@ -175,6 +176,11 @@ app.use(addServerInfo);
 app.use(dailyDispatch);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+
+// SendGrid event webhook needs the raw body for signature verification — mount
+// before the global JSON/urlencoded parsers.
+app.use('/api/sendgrid/events', express.raw({ type: '*/*' }), sendgridWebhookRoutes);
+
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 // Serve chat image uploads from configurable directory (default: <project-root>/uploads/)
