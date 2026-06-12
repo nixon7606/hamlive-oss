@@ -4,6 +4,8 @@ const { getUserProfile } = require('../models/userProfile');
 const sgMail = require('@sendgrid/mail');
 const { conf } = require('../lib/configLib');
 const { checkBulk } = require('./emailRateLimiter');
+const crypto = require('crypto');
+const { getEmailLog } = require('../models/emailLog');
 
 // Email delivery is optional. When SENDGRID_API_KEY is absent, messages are
 // logged to the server console instead of being sent (see INSTALL.md,
@@ -27,13 +29,15 @@ class EmailBase {
     #subject;
     #message;
     #body;
+    type;
 
     constructor(param = {}) {
-        const { subject, message, body } = param;
+        const { subject, message, body, type } = param;
 
         this.#subject = subject;
         this.#message = message;
         this.#body = body;
+        this.type = type || 'generic';
 
         if (!body && !(subject && message)) {
             throw new Error('In the constructor, if "body" is missing, both "subject" and "message" are mandatory.');
@@ -85,10 +89,13 @@ class EmailBase {
             return;
         }
 
+        const batchId = crypto.randomUUID();
         try {
             const subject = this.getSubject();
             const emailData = this.getEmailData(allowed, subject);
-            this.sendEmailWithRetry(emailData, allowed);
+            emailData.customArgs = { ...(emailData.customArgs || {}), hlType: this.type, hlBatch: batchId };
+            const sgMessageId = await this.sendEmailWithRetry(emailData, allowed);
+            this.recordEmailLogs(allowed, subject, batchId, sgMessageId);
         } catch (err) {
             logger.error(`Failed to send mail: ${err.message}`);
             throw err;
@@ -123,13 +130,13 @@ class EmailBase {
             const subject =
                 emailData.subject || emailData.dynamic_template_data?.subject || '(templated email)';
             logger.info(`[email disabled] Would send "${subject}" to ${validRecipients.join(', ')}`);
-            return;
+            return null;
         }
         for (let attempt = 0; attempt < 3; attempt++) {
             try {
-                await sgMail.sendMultiple(emailData);
+                const [response] = await sgMail.sendMultiple(emailData);
                 logger.info(`Mail successfully sent to SendGrid for ${validRecipients.length} recipients`);
-                break;
+                return response?.headers?.['x-message-id'] || null;
             } catch (err) {
                 if (attempt < 2) {
                     logger.warn(`Failed to send to SendGrid on attempt ${attempt + 1}: ${err.message}. Retrying...`);
@@ -140,6 +147,14 @@ class EmailBase {
             }
         }
     }
+    recordEmailLogs(recipients, subject, batchId, sgMessageId) {
+        if (!emailEnabled) return;
+        const EmailLog = getEmailLog();
+        Promise.all(recipients.map(r => EmailLog.create({
+            recipient: r, type: this.type, subject, batchId, sgMessageId, status: 'queued'
+        }))).catch(err => logger.error(`recordEmailLogs() failed: ${err.message}`));
+    }
+
     async sendMailToUPIDs({ upids, db = mongoose.connection }) {
         try {
             const UserProfile = getUserProfile(db);
@@ -228,6 +243,7 @@ class NetAnnounceStart extends EmailBase {
                     `</table></div>`
             }
         });
+        this.type = 'net-announce';
     }
 }
 
@@ -302,6 +318,7 @@ class NetCloseReport extends EmailBase {
         });
 
         // Set instance properties
+        this.type = 'net-close-report';
         this.#title = title;
         this.#NPID = NPID;
         this.#attendees = sortedAttendees;

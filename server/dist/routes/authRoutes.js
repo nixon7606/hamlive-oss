@@ -50,6 +50,7 @@ const magicLogin = new MagicLoginStrategy({
         try {
             const email = new EmailBase({
                 subject: 'Sign in to netcontrol.live',
+                type: 'magic-login',
                 message:
                     `<div style="background-color:#f4f2ec; padding:24px 12px; font-family:Arial,Helvetica,sans-serif;">` +
                     `<table role="presentation" align="center" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; background-color:#ffffff; border:1px solid #e2ddd0; border-radius:10px; overflow:hidden;">` +
