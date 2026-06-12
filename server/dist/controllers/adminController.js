@@ -8,6 +8,8 @@
 const { getUserProfile } = require('../models/userProfile');
 const { getNetProfile } = require('../models/netProfile');
 const { getLiveNet } = require('../models/liveNet');
+const { getEmailLog } = require('../models/emailLog');
+const { getEmailEvent } = require('../models/emailEvent');
 const { handleRequest } = require('../lib/responseUtils');
 const { logger } = require('../lib/logger');
 const mongoose = require('mongoose');
@@ -159,4 +161,22 @@ const updateNetSchedule = async (req, res) => {
     }, `admin: updateNetSchedule ${req.params.id}`);
 };
 
-module.exports = { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule };
+/**
+ * GET /api/admin/email?recipient=<email> — delivery log + events for one recipient
+ */
+const listEmailActivity = async (req, res) => {
+    handleRequest(res, async () => {
+        const recipient = String(req.query.recipient || '').trim();
+        if (!recipient) return { message: { logs: [], events: [] } };
+        const EmailLog = getEmailLog();
+        const EmailEvent = getEmailEvent();
+        const escaped = recipient.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const rx = new RegExp('^' + escaped + '$', 'i');
+        const logs = await EmailLog.find({ recipient: rx }).sort({ createdAt: -1 }).limit(100).lean();
+        const batchIds = logs.map(l => l.batchId).filter(Boolean);
+        const events = await EmailEvent.find({ batchId: { $in: batchIds } }).sort({ timestamp: 1 }).lean();
+        return { message: { logs, events } };
+    }, 'admin: listEmailActivity');
+};
+
+module.exports = { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity };
