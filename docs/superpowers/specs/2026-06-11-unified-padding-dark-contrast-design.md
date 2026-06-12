@@ -85,6 +85,21 @@ low-contrast text remains. No success claim before screenshots confirm it.
   app pages — *not* forced full-width.
 - **WCAG AA** is the contrast bar.
 
+## Implementation notes (refinements made while building)
+
+- **Reading column scope narrowed.** All pages use `container-fluid app-page` (uniform full width
+  + gutter). The `static-page` reading-column modifier is applied **only** to the genuinely
+  long-form text pages — `guide`, `privacyPolicy`, `termsOfUse`, `cookiePolicy`, `dataPrivacy`.
+  `intro`, `404`, and `oAuth2Homepage` stay full-width like the app pages, so they don't look
+  narrower than the dashboard (which would have been a *new* inconsistency).
+- **Reading-column selector specificity.** The cap uses the compound selector
+  `.app-page.static-page` (0,2,0) to outrank the `.container-fluid` `max-width` media-query rules
+  later in `local.css`; `margin-left` tracks the container-fluid gutter (2.5%, 10% at ≥1600px) so
+  the reading column's left edge aligns with full-width pages at every breakpoint.
+- **Contrast fixes** centralized in `local.css` (loads after `main.min.css`): navbar links bumped
+  from `rgba(220,131,53,0.55)` (~2.8:1, fails AA) to `0.85` (~5.4:1); footer copyright moved off
+  the dim tertiary purple to a readable muted light (`.app-footer-copy`).
+
 ## Out of scope
 
 - No restructuring of page content, navigation, or components beyond spacing/contrast.

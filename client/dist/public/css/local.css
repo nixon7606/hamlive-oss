@@ -14,11 +14,25 @@ body {
    Unified Page Layout
    ======================================================================== */
 
-/* For all pages — consistent vertical padding */
+/* Every page uses `container-fluid app-page`, so all pages share the same
+   vertical padding and the same horizontal gutter (container-fluid is 95% wide,
+   centered → a 2.5% gutter; 10% at ≥1600px) at every breakpoint. */
 .app-page { padding-top: 1.5rem; padding-bottom: 2rem; }
 
-/* For static/info pages — narrower container */
-.static-page { padding-top: 2rem; padding-bottom: 3rem; }
+/* Long-form text pages (guide, privacy, terms, cookie, data-privacy) add
+   `static-page` to narrow the content into a left-aligned reading column whose
+   left edge stays aligned with the full-width pages. The compound selector
+   (.app-page.static-page) outranks the .container-fluid max-width media rules
+   later in this file; margin-left tracks the container-fluid gutter so the left
+   edge matches at every breakpoint. */
+.app-page.static-page {
+    max-width: 920px;
+    margin-left: 2.5%;
+    margin-right: auto;
+}
+@media (min-width: 1600px) {
+    .app-page.static-page { margin-left: 10%; }
+}
 
 /* ========================================================================
    Typography — consistent across all pages
@@ -40,6 +54,28 @@ small, .small { font-size: 0.875em; color: var(--hl-tertiary); }
 a { color: var(--hl-primary); transition: color 0.15s ease; }
 a:hover { color: var(--hl-secondary); }
 a.text-muted:hover { color: var(--hl-primary) !important; }
+
+/* ========================================================================
+   Dark-background contrast — keep every element readable on the black theme
+   (targets WCAG AA: 4.5:1 normal text). Overrides the bootstrap layer in
+   main.min.css, which loads before this file.
+   ======================================================================== */
+
+/* Navbar links — were rgba(220,131,53,0.55) ≈ 2.8:1 (fails AA). Bump the
+   resting state to ≈ 5.4:1 while keeping hover/active brighter. */
+.navbar-dark .navbar-nav .nav-link {
+    color: rgba(220, 131, 53, 0.85);
+}
+.navbar-dark .navbar-nav .nav-link:hover,
+.navbar-dark .navbar-nav .nav-link:focus,
+.navbar-dark .navbar-nav .nav-link.active {
+    color: var(--hl-primary);
+}
+
+/* Footer copyright — was the dim tertiary purple; use a readable muted light. */
+.app-footer-copy {
+    color: rgba(240, 238, 222, 0.65);
+}
 
 /* ========================================================================
    Page Header (for all pages)
