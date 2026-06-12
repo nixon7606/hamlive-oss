@@ -9,6 +9,11 @@
 
 const API = '/api/admin';
 
+// Cache the most recently loaded rows so action handlers can look up labels by
+// id without re-interpolating strings into HTML attributes.
+let usersCache: any[] = [];
+let netsCache: any[] = [];
+
 function statusMsg(text: string, type: string = 'info') {
     const el = document.getElementById('admin-status');
     if (el) {
@@ -52,6 +57,7 @@ async function loadUsers() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const users = data.message || [];
+        usersCache = users;
         if (users.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No users found</td></tr>';
             return;
@@ -73,8 +79,8 @@ async function loadUsers() {
                 <td>${badges.join(' ') || '<span class="text-muted">Active</span>'}</td>
                 <td>${created}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline-light me-1" onclick="editUser('${u._id}')" title="Edit"><i class="bi bi-pencil"></i></button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="confirmDelete('${u._id}','${esc(u.callSign || u.email)}')" title="Delete"><i class="bi bi-trash"></i></button>
+                    <button class="btn btn-sm btn-outline-light me-1" data-action="edit-user" data-id="${u._id}" title="Edit"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" data-action="delete-user" data-id="${u._id}" title="Delete"><i class="bi bi-trash"></i></button>
                 </td>
             </tr>`;
         }).join('');
@@ -95,6 +101,7 @@ async function loadNets() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const nets = data.message || [];
+        netsCache = nets;
         if (nets.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No net profiles found</td></tr>';
             return;
@@ -127,8 +134,8 @@ async function loadNets() {
                 <td>${scheduleInfo}</td>
                 <td>${created}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline-warning me-1" onclick="manageSchedule('${n._id}','${esc(n.title)}')" title="Manage Schedule"><i class="bi bi-calendar-week"></i></button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="confirmNetDelete('${n._id}','${esc(n.title)}')" title="Delete Net"><i class="bi bi-trash"></i></button>
+                    <button class="btn btn-sm btn-outline-warning me-1" data-action="manage-schedule" data-id="${n._id}" title="Manage Schedule"><i class="bi bi-calendar-week"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" data-action="delete-net" data-id="${n._id}" title="Delete Net"><i class="bi bi-trash"></i></button>
                 </td>
             </tr>`;
         }).join('');
@@ -262,6 +269,43 @@ document.addEventListener('DOMContentLoaded', () => {
     loadStats();
     loadUsers();
 
+    // Delegated row-action handlers. Listeners live on the <tbody> (which is
+    // not replaced when its rows re-render) and read data-* attributes, so no
+    // inline onclick is needed — keeps us compatible with the CSP
+    // (script-src-attr 'none' blocks inline event handlers).
+    const usersTbody = document.getElementById('admin-users-tbody');
+    usersTbody?.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest('button[data-action]') as HTMLButtonElement | null;
+        if (!btn || !usersTbody.contains(btn)) return;
+        const id = btn.getAttribute('data-id') as string;
+        switch (btn.getAttribute('data-action')) {
+            case 'edit-user':
+                editUser(id);
+                break;
+            case 'delete-user': {
+                const u = usersCache.find((x: any) => x._id === id);
+                confirmDelete(id, u ? (u.callSign || u.email) : 'this user');
+                break;
+            }
+        }
+    });
+
+    const netsTbody = document.getElementById('admin-nets-tbody');
+    netsTbody?.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest('button[data-action]') as HTMLButtonElement | null;
+        if (!btn || !netsTbody.contains(btn)) return;
+        const id = btn.getAttribute('data-id') as string;
+        const n = netsCache.find((x: any) => x._id === id);
+        switch (btn.getAttribute('data-action')) {
+            case 'manage-schedule':
+                manageSchedule(id, n ? n.title : '');
+                break;
+            case 'delete-net':
+                confirmNetDelete(id, n ? n.title : 'this net');
+                break;
+        }
+    });
+
     // Tab switching — reload data when tabs change
     document.getElementById('nets-tab')?.addEventListener('shown.bs.tab', () => {
         loadNets();
@@ -317,9 +361,3 @@ document.addEventListener('DOMContentLoaded', () => {
         currentUserId = null;
     });
 });
-
-// Expose functions globally for inline onclick handlers
-(window as any).editUser = editUser;
-(window as any).confirmDelete = confirmDelete;
-(window as any).manageSchedule = manageSchedule;
-(window as any).confirmNetDelete = confirmNetDelete;

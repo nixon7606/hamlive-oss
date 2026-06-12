@@ -1,4 +1,6 @@
 declare const API = "/api/admin";
+declare let usersCache: any[];
+declare let netsCache: any[];
 declare function statusMsg(text: string, type?: string): void;
 declare function esc(s: string): string;
 declare function loadStats(): Promise<void>;
