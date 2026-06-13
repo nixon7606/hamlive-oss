@@ -23,6 +23,8 @@ const netProfileApi = new HttpClient('netprofile', '/api/data/netprofiles');
 document.getElementById('netprofile_reset_btn')?.addEventListener('click', () => {
     netProfileFormState.mode = 'new';
     (window as any).modeHandler();
+    (document.getElementById('input_schedule_enabled') as HTMLInputElement).checked = false;
+    (document.getElementById('schedule_settings') as HTMLElement).style.display = 'none';
 });
 document.getElementById('netowner_reset_btn')?.addEventListener('click', () => {
     netOwnerFormState.mode = 'new';
@@ -311,6 +313,24 @@ function refreshNetList() {
 
     (document.getElementById('input_npid_for_netprofile') as HTMLInputElement).value = res.data._id;
     (window as any).modeHandler();
+
+    const sched = res.data.schedule;
+    const schedEnabledEl = document.getElementById('input_schedule_enabled') as HTMLInputElement;
+    const schedSettingsEl = document.getElementById('schedule_settings') as HTMLElement;
+    if (sched && sched.enabled) {
+        schedEnabledEl.checked = true;
+        schedSettingsEl.style.display = 'block';
+        (document.getElementById('input_schedule_dow') as HTMLSelectElement).value = String(sched.dayOfWeek ?? 0);
+        if (sched.hour !== undefined && sched.minute !== undefined) {
+            (document.getElementById('input_schedule_time') as HTMLInputElement).value =
+                `${String(sched.hour).padStart(2, '0')}:${String(sched.minute).padStart(2, '0')}`;
+        }
+        (document.getElementById('input_schedule_tz') as HTMLSelectElement).value = sched.timezone || 'America/Denver';
+        (document.getElementById('input_schedule_notify') as HTMLInputElement).value = String(sched.notifyBeforeMinutes ?? 30);
+    } else {
+        schedEnabledEl.checked = false;
+        schedSettingsEl.style.display = 'none';
+    }
 };
 
 //called by netlist "delete" link
@@ -337,6 +357,22 @@ function np_submitHandler(e: Event) {
         notes: tinymce.get('input_notes').getContent(),
         modeDetails: formDataToSend.get('modedetails') as string
     };
+
+    const schedEnabled = (document.getElementById('input_schedule_enabled') as HTMLInputElement).checked;
+    let schedule: any = { enabled: false };
+    if (schedEnabled) {
+        const timeVal = (document.getElementById('input_schedule_time') as HTMLInputElement).value;
+        let hour = 0, minute = 0;
+        if (timeVal) { const p = timeVal.split(':'); hour = parseInt(p[0], 10); minute = parseInt(p[1], 10); }
+        schedule = {
+            dayOfWeek: parseInt((document.getElementById('input_schedule_dow') as HTMLSelectElement).value, 10),
+            hour, minute,
+            timezone: (document.getElementById('input_schedule_tz') as HTMLSelectElement).value,
+            notifyBeforeMinutes: parseInt((document.getElementById('input_schedule_notify') as HTMLInputElement).value, 10) || 30,
+            enabled: true
+        };
+    }
+    (dataPayload as any).schedule = schedule;
 
     if (netProfileFormState.mode === 'edit') {
         netProfileApi
@@ -436,77 +472,8 @@ setTimeout(() => {
     }
 }, 2000);
 
-/* ── Schedule Save/Load ── */
-
-function loadSchedule(npid: string) {
-    axios.get(`/api/data/netprofiles/${npid}`)
-        .then((res: any) => {
-            const s = res.data.schedule;
-            const enabled = document.getElementById('input_schedule_enabled') as HTMLInputElement;
-            (document.getElementById('input_schedule_npid') as HTMLInputElement).value = npid;
-            if (s && s.enabled) {
-                enabled.checked = true;
-                (document.getElementById('schedule_settings') as HTMLElement).style.display = 'block';
-                (document.getElementById('input_schedule_dow') as HTMLSelectElement).value = s.dayOfWeek ?? 0;
-                if (s.hour !== undefined && s.minute !== undefined) {
-                    const h = String(s.hour).padStart(2, '0');
-                    const m = String(s.minute).padStart(2, '0');
-                    (document.getElementById('input_schedule_time') as HTMLInputElement).value = `${h}:${m}`;
-                }
-                (document.getElementById('input_schedule_tz') as HTMLInputElement).value = s.timezone || 'America/Denver';
-                (document.getElementById('input_schedule_notify') as HTMLInputElement).value = s.notifyBeforeMinutes || 30;
-                (document.getElementById('input_schedule_notify_enabled') as HTMLInputElement).checked = true;
-            } else {
-                enabled.checked = false;
-                (document.getElementById('schedule_settings') as HTMLElement).style.display = 'none';
-            }
-        })
-        .catch((err: any) => {
-            document.getElementById('schedule_form_status')!.textContent = 'Failed to load schedule';
-            console.error(err);
-        });
-}
+/* ── Schedule toggle ── */
 
 (document.getElementById('input_schedule_enabled') as HTMLInputElement).addEventListener('change', function (this: HTMLInputElement) {
     (document.getElementById('schedule_settings') as HTMLElement).style.display = this.checked ? 'block' : 'none';
 });
-
-(document.getElementById('schedule_save_btn') as HTMLButtonElement).addEventListener('click', function () {
-    const npid = (document.getElementById('input_schedule_npid') as HTMLInputElement).value;
-    if (!npid) {
-        document.getElementById('schedule_form_status')!.textContent = 'Select a net first';
-        return;
-    }
-    const timeVal = (document.getElementById('input_schedule_time') as HTMLInputElement).value;
-    let hour = 0, minute = 0;
-    if (timeVal) {
-        const parts = timeVal.split(':');
-        hour = parseInt(parts[0], 10);
-        minute = parseInt(parts[1], 10);
-    }
-    const payload = {
-        schedule: (document.getElementById('input_schedule_enabled') as HTMLInputElement).checked ? {
-            dayOfWeek: parseInt((document.getElementById('input_schedule_dow') as HTMLSelectElement).value, 10),
-            hour,
-            minute,
-            timezone: (document.getElementById('input_schedule_tz') as HTMLInputElement).value,
-            notifyBeforeMinutes: parseInt((document.getElementById('input_schedule_notify') as HTMLInputElement).value, 10) || 30,
-            enabled: true
-        } : { enabled: false }
-    };
-    axios.patch(`/api/data/netprofiles/${npid}`, payload)
-        .then(() => {
-            document.getElementById('schedule_form_status')!.textContent = 'Schedule saved!';
-            setTimeout(() => { document.getElementById('schedule_form_status')!.textContent = ''; }, 3000);
-        })
-        .catch((err: any) => {
-            document.getElementById('schedule_form_status')!.textContent = 'Save failed: ' + (err.response?.data?.errorMessage || err.message);
-        });
-});
-
-// Patch netProfileEditByID to also load schedule
-const _origEdit = (window as any).netProfileEditByID;
-(window as any).netProfileEditByID = function (id: string) {
-    _origEdit(id);
-    loadSchedule(id);
-};

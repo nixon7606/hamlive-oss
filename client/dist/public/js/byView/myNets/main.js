@@ -16,6 +16,8 @@ const netProfileApi = new HttpClient('netprofile', '/api/data/netprofiles');
 document.getElementById('netprofile_reset_btn')?.addEventListener('click', () => {
     netProfileFormState.mode = 'new';
     window.modeHandler();
+    document.getElementById('input_schedule_enabled').checked = false;
+    document.getElementById('schedule_settings').style.display = 'none';
 });
 document.getElementById('netowner_reset_btn')?.addEventListener('click', () => {
     netOwnerFormState.mode = 'new';
@@ -235,6 +237,24 @@ window.netProfileEditByID = async function (id) {
     tinymce.get('input_notes').setContent(res.data.notes);
     document.getElementById('input_npid_for_netprofile').value = res.data._id;
     window.modeHandler();
+    const sched = res.data.schedule;
+    const schedEnabledEl = document.getElementById('input_schedule_enabled');
+    const schedSettingsEl = document.getElementById('schedule_settings');
+    if (sched && sched.enabled) {
+        schedEnabledEl.checked = true;
+        schedSettingsEl.style.display = 'block';
+        document.getElementById('input_schedule_dow').value = String(sched.dayOfWeek ?? 0);
+        if (sched.hour !== undefined && sched.minute !== undefined) {
+            document.getElementById('input_schedule_time').value =
+                `${String(sched.hour).padStart(2, '0')}:${String(sched.minute).padStart(2, '0')}`;
+        }
+        document.getElementById('input_schedule_tz').value = sched.timezone || 'America/Denver';
+        document.getElementById('input_schedule_notify').value = String(sched.notifyBeforeMinutes ?? 30);
+    }
+    else {
+        schedEnabledEl.checked = false;
+        schedSettingsEl.style.display = 'none';
+    }
 };
 window.netProfileDelByID = async function (id) {
     const res = await netProfileApi.delete(id);
@@ -254,6 +274,25 @@ function np_submitHandler(e) {
         notes: tinymce.get('input_notes').getContent(),
         modeDetails: formDataToSend.get('modedetails')
     };
+    const schedEnabled = document.getElementById('input_schedule_enabled').checked;
+    let schedule = { enabled: false };
+    if (schedEnabled) {
+        const timeVal = document.getElementById('input_schedule_time').value;
+        let hour = 0, minute = 0;
+        if (timeVal) {
+            const p = timeVal.split(':');
+            hour = parseInt(p[0], 10);
+            minute = parseInt(p[1], 10);
+        }
+        schedule = {
+            dayOfWeek: parseInt(document.getElementById('input_schedule_dow').value, 10),
+            hour, minute,
+            timezone: document.getElementById('input_schedule_tz').value,
+            notifyBeforeMinutes: parseInt(document.getElementById('input_schedule_notify').value, 10) || 30,
+            enabled: true
+        };
+    }
+    dataPayload.schedule = schedule;
     if (netProfileFormState.mode === 'edit') {
         netProfileApi
             .update(dataPayload, id)
@@ -342,73 +381,7 @@ setTimeout(() => {
             .setContent('Net Control should change this SAMPLE text to relevant info about the club/net. The contents here will be displayed to net attendees, momentarily, when the live net page loads<p>Echolink: XX#XX-L</p>\n<p><em>this is italicized</em></p>');
     }
 }, 2000);
-function loadSchedule(npid) {
-    axios.get(`/api/data/netprofiles/${npid}`)
-        .then((res) => {
-        const s = res.data.schedule;
-        const enabled = document.getElementById('input_schedule_enabled');
-        document.getElementById('input_schedule_npid').value = npid;
-        if (s && s.enabled) {
-            enabled.checked = true;
-            document.getElementById('schedule_settings').style.display = 'block';
-            document.getElementById('input_schedule_dow').value = s.dayOfWeek ?? 0;
-            if (s.hour !== undefined && s.minute !== undefined) {
-                const h = String(s.hour).padStart(2, '0');
-                const m = String(s.minute).padStart(2, '0');
-                document.getElementById('input_schedule_time').value = `${h}:${m}`;
-            }
-            document.getElementById('input_schedule_tz').value = s.timezone || 'America/Denver';
-            document.getElementById('input_schedule_notify').value = s.notifyBeforeMinutes || 30;
-            document.getElementById('input_schedule_notify_enabled').checked = true;
-        }
-        else {
-            enabled.checked = false;
-            document.getElementById('schedule_settings').style.display = 'none';
-        }
-    })
-        .catch((err) => {
-        document.getElementById('schedule_form_status').textContent = 'Failed to load schedule';
-        console.error(err);
-    });
-}
 document.getElementById('input_schedule_enabled').addEventListener('change', function () {
     document.getElementById('schedule_settings').style.display = this.checked ? 'block' : 'none';
 });
-document.getElementById('schedule_save_btn').addEventListener('click', function () {
-    const npid = document.getElementById('input_schedule_npid').value;
-    if (!npid) {
-        document.getElementById('schedule_form_status').textContent = 'Select a net first';
-        return;
-    }
-    const timeVal = document.getElementById('input_schedule_time').value;
-    let hour = 0, minute = 0;
-    if (timeVal) {
-        const parts = timeVal.split(':');
-        hour = parseInt(parts[0], 10);
-        minute = parseInt(parts[1], 10);
-    }
-    const payload = {
-        schedule: document.getElementById('input_schedule_enabled').checked ? {
-            dayOfWeek: parseInt(document.getElementById('input_schedule_dow').value, 10),
-            hour,
-            minute,
-            timezone: document.getElementById('input_schedule_tz').value,
-            notifyBeforeMinutes: parseInt(document.getElementById('input_schedule_notify').value, 10) || 30,
-            enabled: true
-        } : { enabled: false }
-    };
-    axios.patch(`/api/data/netprofiles/${npid}`, payload)
-        .then(() => {
-        document.getElementById('schedule_form_status').textContent = 'Schedule saved!';
-        setTimeout(() => { document.getElementById('schedule_form_status').textContent = ''; }, 3000);
-    })
-        .catch((err) => {
-        document.getElementById('schedule_form_status').textContent = 'Save failed: ' + (err.response?.data?.errorMessage || err.message);
-    });
-});
-const _origEdit = window.netProfileEditByID;
-window.netProfileEditByID = function (id) {
-    _origEdit(id);
-    loadSchedule(id);
-};
 //# sourceMappingURL=main.js.map

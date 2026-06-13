@@ -92,6 +92,53 @@
               <input type="hidden" name="input_netprofile_mode" id="input_netprofile_mode" />
 
               <input type="hidden" name="npid_for_netprofile" id="input_npid_for_netprofile" />
+
+              <p class="text-light h6 mt-3"><i class="bi bi-calendar-week text-secondary"></i> Recurring Schedule (for this net)</p>
+              <div class="mb-2">
+                <div class="form-check">
+                  <input type="checkbox" class="form-check-input" id="input_schedule_enabled">
+                  <label class="form-check-label text-light" for="input_schedule_enabled">Enable Recurring Schedule</label>
+                </div>
+              </div>
+              <div id="schedule_settings" style="display:none;">
+                <div class="mb-2">
+                  <label class="text-secondary small">Day of Week</label>
+                  <select class="form-control form-control-sm" id="input_schedule_dow">
+                    <option value="0">Sunday</option>
+                    <option value="1">Monday</option>
+                    <option value="2">Tuesday</option>
+                    <option value="3">Wednesday</option>
+                    <option value="4">Thursday</option>
+                    <option value="5">Friday</option>
+                    <option value="6">Saturday</option>
+                  </select>
+                </div>
+                <div class="mb-2">
+                  <label class="text-secondary small">Time (HH:MM)</label>
+                  <input type="time" class="form-control form-control-sm" id="input_schedule_time">
+                </div>
+                <div class="mb-2">
+                  <label class="text-secondary small">Timezone</label>
+                  <select class="form-control form-control-sm" id="input_schedule_tz">
+                    <option value="America/New_York">Eastern</option>
+                    <option value="America/Chicago">Central</option>
+                    <option value="America/Denver" selected>Mountain</option>
+                    <option value="America/Los_Angeles">Pacific</option>
+                    <option value="America/Anchorage">Alaska</option>
+                    <option value="Pacific/Honolulu">Hawaii</option>
+                    <option value="UTC">UTC</option>
+                  </select>
+                </div>
+                <div class="mb-2">
+                  <label class="text-secondary small">Notify minutes before</label>
+                  <input type="number" class="form-control form-control-sm" id="input_schedule_notify" min="5" max="1440" value="30">
+                </div>
+                <div class="form-check mb-2">
+                  <input type="checkbox" class="form-check-input" id="input_schedule_notify_enabled" checked>
+                  <label class="form-check-label text-light small" for="input_schedule_notify_enabled">Send email notification</label>
+                </div>
+              </div>
+
               <div class="d-flex">
                 <div class="me-auto">
                   <button type="submit" class="btn btn-sm btn-primary float-left">Save</button>
@@ -103,58 +150,6 @@
                 </div>
               </div>
             </form>
-          </div>
-
-          <!-- Schedule Section -->
-          <div class="app-card">
-            <p class="text-light h6 mb-3"><i class="bi bi-calendar-week text-secondary"></i> Net Schedule</p>
-            <p class="mb-2"><small class="text-light">[ <span id="schedule_form_status"></span> ]</small></p>
-            <div class="mb-2">
-              <div class="form-check">
-                <input type="checkbox" class="form-check-input" id="input_schedule_enabled">
-                <label class="form-check-label text-light" for="input_schedule_enabled">Enable Recurring Schedule</label>
-              </div>
-            </div>
-            <div id="schedule_settings" style="display:none;">
-              <div class="mb-2">
-                <label class="text-secondary small">Day of Week</label>
-                <select class="form-control form-control-sm" id="input_schedule_dow">
-                  <option value="0">Sunday</option>
-                  <option value="1">Monday</option>
-                  <option value="2">Tuesday</option>
-                  <option value="3">Wednesday</option>
-                  <option value="4">Thursday</option>
-                  <option value="5">Friday</option>
-                  <option value="6">Saturday</option>
-                </select>
-              </div>
-              <div class="mb-2">
-                <label class="text-secondary small">Time (HH:MM)</label>
-                <input type="time" class="form-control form-control-sm" id="input_schedule_time">
-              </div>
-              <div class="mb-2">
-                <label class="text-secondary small">Timezone</label>
-                <select class="form-control form-control-sm" id="input_schedule_tz">
-                  <option value="America/New_York">Eastern</option>
-                  <option value="America/Chicago">Central</option>
-                  <option value="America/Denver" selected>Mountain</option>
-                  <option value="America/Los_Angeles">Pacific</option>
-                  <option value="America/Anchorage">Alaska</option>
-                  <option value="Pacific/Honolulu">Hawaii</option>
-                  <option value="UTC">UTC</option>
-                </select>
-              </div>
-              <div class="mb-2">
-                <label class="text-secondary small">Notify minutes before</label>
-                <input type="number" class="form-control form-control-sm" id="input_schedule_notify" min="5" max="1440" value="30">
-              </div>
-              <div class="form-check mb-2">
-                <input type="checkbox" class="form-check-input" id="input_schedule_notify_enabled" checked>
-                <label class="form-check-label text-light small" for="input_schedule_notify_enabled">Send email notification</label>
-              </div>
-              <input type="hidden" id="input_schedule_npid">
-              <button type="button" class="btn btn-sm btn-outline-warning" id="schedule_save_btn">Save Schedule</button>
-            </div>
           </div>
         </div>
 
