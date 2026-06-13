@@ -16,6 +16,16 @@ const mongoose = require('mongoose');
 const { sendMagicSignInLink } = require('../routes/authRoutes');
 const { getSuppressions, removeSuppression } = require('../lib/sendgridSuppression');
 
+function toCsv(rows) {
+    const cols = ['createdAt', 'recipient', 'type', 'subject', 'status', 'sgMessageId'];
+    const esc = v => {
+        const s = v === undefined || v === null ? '' : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = rows.map(r => cols.map(c => esc(c === 'createdAt' && r[c] ? new Date(r[c]).toISOString() : r[c])).join(','));
+    return [cols.join(','), ...lines].join('\n');
+}
+
 /**
  * GET /api/admin/users — List all users
  */
@@ -164,21 +174,38 @@ const updateNetSchedule = async (req, res) => {
 };
 
 /**
- * GET /api/admin/email?recipient=<email> — delivery log + events for one recipient
+ * GET /api/admin/email?recipient=<email|callsign> — delivery log + events for one recipient.
+ * If the input has no '@', it is treated as a callsign and resolved to the user's email first.
  */
 const listEmailActivity = async (req, res) => {
     handleRequest(res, async () => {
-        const recipient = String(req.query.recipient || '').trim();
-        if (!recipient) return { message: { logs: [], events: [] } };
+        const input = String(req.query.recipient || '').trim();
+        if (!input) return { message: { logs: [], events: [], suppressions: [], resolved: null } };
+
+        let email = input;
+        let resolved = null;
+        if (!input.includes('@')) {
+            // Treat as a callsign → resolve to the user's email.
+            const UserProfile = getUserProfile();
+            const csEscaped = input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const user = await UserProfile.findOne({ callSign: new RegExp('^' + csEscaped + '$', 'i') })
+                .select('callSign email').lean();
+            if (!user) {
+                return { message: { logs: [], events: [], suppressions: [], resolved: null, notFound: 'callsign' } };
+            }
+            email = user.email;
+            resolved = { callSign: user.callSign, email: user.email };
+        }
+
         const EmailLog = getEmailLog();
         const EmailEvent = getEmailEvent();
-        const escaped = recipient.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const rx = new RegExp('^' + escaped + '$', 'i');
         const logs = await EmailLog.find({ recipient: rx }).sort({ createdAt: -1 }).limit(100).lean();
         const batchIds = logs.map(l => l.batchId).filter(Boolean);
         const events = await EmailEvent.find({ batchId: { $in: batchIds } }).sort({ timestamp: 1 }).lean();
-        const suppressions = await getSuppressions(recipient);
-        return { message: { logs, events, suppressions } };
+        const suppressions = await getSuppressions(email);
+        return { message: { logs, events, suppressions, resolved } };
     }, 'admin: listEmailActivity');
 };
 
@@ -210,5 +237,34 @@ const unsuppressEmail = async (req, res) => {
     }, 'admin: unsuppressEmail');
 };
 
-module.exports = { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity, resendSignInLink, unsuppressEmail };
+/**
+ * GET /api/admin/email/recent?from=<ISO>&to=<ISO>&format=json|csv
+ * Sends recorded in the window, newest first (capped), with a status summary.
+ */
+const recentEmails = async (req, res) => {
+    const CAP = 1000;
+    const to = req.query.to ? new Date(req.query.to) : new Date();
+    const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 24 * 3600 * 1000);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+        return res.status(400).json({ error: 'invalid from/to date' });
+    }
+    const EmailLog = getEmailLog();
+    const found = await EmailLog.find({ createdAt: { $gte: from, $lte: to } })
+        .sort({ createdAt: -1 }).limit(CAP + 1).lean();
+    const capped = found.length > CAP;
+    const rows = found.slice(0, CAP);
+
+    if (req.query.format === 'csv') {
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="email-sends.csv"');
+        return res.send(toCsv(rows));
+    }
+    handleRequest(res, async () => {
+        const summary = {};
+        for (const r of rows) summary[r.status] = (summary[r.status] || 0) + 1;
+        return { message: { rows, summary, capped, count: rows.length } };
+    }, 'admin: recentEmails');
+};
+
+module.exports = { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity, resendSignInLink, unsuppressEmail, recentEmails };
 

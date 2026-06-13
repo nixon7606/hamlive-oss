@@ -9,6 +9,18 @@ declare function loadUsers(): Promise<void>;
 declare function loadNets(): Promise<void>;
 declare const EVENT_COLORS: Record<string, string>;
 declare function loadEmailActivity(recipient: string): Promise<void>;
+declare function recentRangeFromControls(presetDays?: number): {
+    from: string;
+    to: string;
+};
+declare let lastRecentRange: {
+    from: string;
+    to: string;
+};
+declare function loadRecentEmails(range: {
+    from: string;
+    to: string;
+}): Promise<void>;
 declare let currentUserId: string | null;
 declare let currentUserEmail: string;
 declare function editUser(id: string): Promise<void>;
