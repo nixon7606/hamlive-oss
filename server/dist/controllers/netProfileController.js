@@ -7,6 +7,34 @@ const UserProfile = require('../models/userProfile').getUserProfile(null);
 const titleCase = require('ap-style-title-case');
 const { sanitizeNotes } = require('../lib/serverUtils');
 
+/**
+ * Validate a raw schedule input and return the normalized schedule subdocument
+ * (or undefined when no schedule given). Throws on out-of-range field values.
+ * Used by both create and update so the rules stay in one place.
+ */
+function buildAndValidateSchedule(input) {
+    if (!input) return undefined;
+    const s = input;
+    if (s.enabled !== false) {
+        if (s.dayOfWeek !== undefined && (s.dayOfWeek < 0 || s.dayOfWeek > 6)) {
+            throw new Error('dayOfWeek must be 0 (Sunday) through 6 (Saturday)');
+        }
+        if (s.hour !== undefined && (s.hour < 0 || s.hour > 23)) throw new Error('hour must be 0-23');
+        if (s.minute !== undefined && (s.minute < 0 || s.minute > 59)) throw new Error('minute must be 0-59');
+        if (s.notifyBeforeMinutes !== undefined && (s.notifyBeforeMinutes < 5 || s.notifyBeforeMinutes > 1440)) {
+            throw new Error('notifyBeforeMinutes must be 5-1440');
+        }
+    }
+    return {
+        dayOfWeek: s.dayOfWeek,
+        hour: s.hour,
+        minute: s.minute,
+        timezone: s.timezone || 'America/Denver',
+        notifyBeforeMinutes: s.notifyBeforeMinutes || 15,
+        enabled: s.enabled !== false
+    };
+}
+
 const netProfileList = async (req, res) => {
     let result;
 
@@ -73,33 +101,18 @@ const netProfileUpdate = async (req, res) => {
                 throw new Error('mode details required for CUSTOM or Digital Reflector modes');
             }
 
-            // Schedule guardrails
+            // Schedule guardrails (range validation via helper; async max-3 check kept here)
+            buildAndValidateSchedule(req.body.schedule); // throws on bad field ranges
             if (req.body.schedule && req.body.schedule.enabled !== false) {
-                const s = req.body.schedule;
-                if (s.dayOfWeek !== undefined && (s.dayOfWeek < 0 || s.dayOfWeek > 6)) {
-                    throw new Error('dayOfWeek must be 0 (Sunday) through 6 (Saturday)');
-                }
-                if (s.hour !== undefined && (s.hour < 0 || s.hour > 23)) {
-                    throw new Error('hour must be 0-23');
-                }
-                if (s.minute !== undefined && (s.minute < 0 || s.minute > 59)) {
-                    throw new Error('minute must be 0-59');
-                }
-                if (s.notifyBeforeMinutes !== undefined && (s.notifyBeforeMinutes < 5 || s.notifyBeforeMinutes > 1440)) {
-                    throw new Error('notifyBeforeMinutes must be 5-1440');
-                }
-
                 // Enforce max 3 scheduled nets per user
-                if (s.enabled !== false) {
-                    const NetProfile = require('../models/netProfile').getNetProfile(null);
-                    const existingScheduled = await NetProfile.countDocuments({
-                        _id: { $ne: id },
-                        owners: req.user._id,
-                        'schedule.enabled': true
-                    });
-                    if (existingScheduled >= 3) {
-                        throw new Error('Maximum 3 scheduled nets allowed. Disable an existing schedule first.');
-                    }
+                const NetProfile = require('../models/netProfile').getNetProfile(null);
+                const existingScheduled = await NetProfile.countDocuments({
+                    _id: { $ne: id },
+                    owners: req.user._id,
+                    'schedule.enabled': true
+                });
+                if (existingScheduled >= 3) {
+                    throw new Error('Maximum 3 scheduled nets allowed. Disable an existing schedule first.');
                 }
             }
 
@@ -115,14 +128,7 @@ const netProfileUpdate = async (req, res) => {
                         autoIn: req.body.autoIn ? true : false,
                         modeDetails: req.body.modeDetails && req.body.modeDetails.trim(),
                         notes: sanitizeNotes(req.body.notes),
-                        schedule: req.body.schedule ? {
-                            dayOfWeek: req.body.schedule.dayOfWeek,
-                            hour: req.body.schedule.hour,
-                            minute: req.body.schedule.minute,
-                            timezone: req.body.schedule.timezone || 'America/Denver',
-                            notifyBeforeMinutes: req.body.schedule.notifyBeforeMinutes || 15,
-                            enabled: req.body.schedule.enabled !== false
-                        } : undefined
+                        schedule: buildAndValidateSchedule(req.body.schedule)
                     },
                     { runValidators: true }
                 ))
@@ -197,21 +203,23 @@ const netProfileAddNetOwner = async (req, res) => {
 const netProfileCreatePost = async (req, res) => {
     console.debug(req.body);
 
-    const { title, frequency, mode, restrictedSigReports, autoIn, modeDetails, notes } = req.body;
-
-    const netprofile = new NetProfile({
-        title: typeof title === 'string' ? titleCase(title.trim()) : undefined,
-        frequency: typeof frequency === 'string' ? frequency.trim() : undefined,
-        mode: typeof mode === 'string' ? mode.trim() : undefined,
-        restrictedSigReports: restrictedSigReports ? true : false,
-        autoIn: autoIn ? true : false,
-        modeDetails: typeof modeDetails === 'string' ? modeDetails.trim() : undefined,
-        notes: sanitizeNotes(notes),
-        owners: req.user._id
-    });
+    const { title, frequency, mode, restrictedSigReports, autoIn, modeDetails, notes, schedule } = req.body;
 
     try {
         const isCustomOrReflectorMode = mode => ['CUSTOM', 'Reflector'].includes(mode);
+        const normalizedSchedule = buildAndValidateSchedule(schedule);
+
+        const netprofile = new NetProfile({
+            title: typeof title === 'string' ? titleCase(title.trim()) : undefined,
+            frequency: typeof frequency === 'string' ? frequency.trim() : undefined,
+            mode: typeof mode === 'string' ? mode.trim() : undefined,
+            restrictedSigReports: restrictedSigReports ? true : false,
+            autoIn: autoIn ? true : false,
+            modeDetails: typeof modeDetails === 'string' ? modeDetails.trim() : undefined,
+            notes: sanitizeNotes(notes),
+            owners: req.user._id,
+            schedule: normalizedSchedule
+        });
 
         if (!frequency && !isCustomOrReflectorMode(mode)) {
             throw new Error('empty frequency only permitted for CUSTOM or Reflector modes');
@@ -219,6 +227,14 @@ const netProfileCreatePost = async (req, res) => {
 
         if (isCustomOrReflectorMode(mode) && !modeDetails) {
             throw new Error('mode details required for CUSTOM or Reflector modes');
+        }
+
+        if (schedule && schedule.enabled !== false) {
+            const NetProfileM = require('../models/netProfile').getNetProfile(null);
+            const scheduledCount = await NetProfileM.countDocuments({ owners: req.user._id, 'schedule.enabled': true });
+            if (scheduledCount >= 3) {
+                throw new Error('Maximum 3 scheduled nets allowed. Disable an existing schedule first.');
+            }
         }
 
         if (req.user.myNets.length < res.locals.flexOpts['maxNetsPerUser']) {
@@ -261,6 +277,7 @@ const netProfileCreatePost = async (req, res) => {
 };
 
 module.exports = {
+    buildAndValidateSchedule,
     netProfileAddNetOwner,
     netProfileList,
     netProfileDetails,
