@@ -239,6 +239,11 @@ app.use(helmet({
             ],
             connectSrc: [
                 "'self'",
+                // emoji-picker-element fetches its emoji data JSON at runtime
+                // (emoji-picker-element-data@^1/.../data.json) — this is a fetch,
+                // so it needs connect-src, not script-src. Without it CSP blocks
+                // the fetch and the picker renders "Could not find emojis".
+                'cdn.jsdelivr.net',
                 'www.google-analytics.com',
                 'www.googletagmanager.com'
             ],
