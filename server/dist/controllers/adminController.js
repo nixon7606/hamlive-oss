@@ -40,16 +40,25 @@ function recordAudit(req, entry) {
 }
 
 /**
- * GET /api/admin/users — List all users
+ * GET /api/admin/users — List users with optional search + pagination
  */
 const listUsers = async (req, res) => {
     handleRequest(res, async () => {
         const UserProfile = getUserProfile();
-        const users = await UserProfile.find({})
-            .select('email callSign displayName location lastIp locked superUser newAccount policyConsent flaggedForDeletion createdAt lastLogin')
-            .sort({ createdAt: -1 })
-            .lean();
-        return { message: users };
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+        const search = String(req.query.search || '').trim();
+        let filter = {};
+        if (search) {
+            const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+            filter = { $or: [{ email: rx }, { callSign: rx }, { displayName: rx }] };
+        }
+        const sel = 'email callSign displayName location lastIp locked superUser newAccount policyConsent flaggedForDeletion createdAt lastLogin';
+        const [users, total] = await Promise.all([
+            UserProfile.find(filter).select(sel).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+            UserProfile.countDocuments(filter)
+        ]);
+        return { message: { users, total, page, limit } };
     }, 'admin: listUsers');
 };
 
