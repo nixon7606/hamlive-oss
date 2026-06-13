@@ -40,7 +40,7 @@
                 <input placeholder="Freq in MHz (leave blank for Reflector-based nets)" type="text" class="form-control" id="input_frequency" name="frequency" maxlength="20" />
               </div>
               <div class="form-group mb-sm-2">
-                <select onchange="modeHandler()" class="form-control" id="input_mode" name="mode">
+                <select class="form-control" id="input_mode" name="mode">
                   <option value="LSB">LSB</option>
                   <option value="USB">USB</option>
                   <option value="Reflector">Digital Reflector</option>
@@ -97,7 +97,7 @@
                   <button type="submit" class="btn btn-sm btn-primary float-left">Save</button>
                 </div>
                 <div>
-                  <button type="reset" class="btn btn-sm btn-secondary float-right" onclick='netProfileFormState.mode = "new" ; modeHandler()'>
+                  <button type="reset" class="btn btn-sm btn-secondary float-right" id="netprofile_reset_btn">
                     Reset/New
                   </button>
                 </div>
@@ -177,7 +177,7 @@
                   <button type="submit" class="btn btn-sm btn-primary float-left">Save</button>
                 </div>
                 <div>
-                  <button type="reset" class="btn btn-sm btn-secondary float-right" onclick='netOnwerFormState.mode = "new"'>
+                  <button type="reset" class="btn btn-sm btn-secondary float-right" id="netowner_reset_btn">
                     Reset
                   </button>
                 </div>

@@ -13,6 +13,16 @@ import { HttpClient, FormState } from '#@client/lib/old__clientUtils.js';
 const netProfileFormState = new FormState('netprofile', 'new');
 const netOwnerFormState = new FormState('netowner', 'new');
 const netProfileApi = new HttpClient('netprofile', '/api/data/netprofiles');
+document.getElementById('netprofile_reset_btn')?.addEventListener('click', () => {
+    netProfileFormState.mode = 'new';
+    window.modeHandler();
+});
+document.getElementById('netowner_reset_btn')?.addEventListener('click', () => {
+    netOwnerFormState.mode = 'new';
+});
+document.getElementById('input_mode')?.addEventListener('change', () => {
+    window.modeHandler();
+});
 window.netProfileFormState = netProfileFormState;
 window.formShow = function (id) {
     const netProfileDivElem = document.getElementById('formContainerNetProfile');
@@ -52,6 +62,35 @@ function refreshNetList() {
     if (oldList)
         oldList.remove();
     const netListContainerElem = document.getElementById('netListContainer');
+    if (!netListContainerElem._hlDelegated) {
+        netListContainerElem._hlDelegated = true;
+        netListContainerElem.addEventListener('click', (e) => {
+            const el = e.target.closest('[data-net-action]');
+            if (!el || !netListContainerElem.contains(el))
+                return;
+            const id = el.getAttribute('data-net-id');
+            switch (el.getAttribute('data-net-action')) {
+                case 'edit':
+                    e.preventDefault();
+                    window.netProfileEditByID(id);
+                    window.formShow('formContainerNetProfile');
+                    break;
+                case 'delete':
+                    e.preventDefault();
+                    window.netProfileDelByID(id);
+                    window.formShow('formContainerNetProfile');
+                    break;
+                case 'coowner':
+                    e.preventDefault();
+                    window.netOwnerFormPrep(id, el.getAttribute('data-net-title') || '');
+                    window.formShow('formContainerNetOwner');
+                    break;
+                case 'start-live':
+                    location.href = `/views/livenet/${id}`;
+                    break;
+            }
+        });
+    }
     netProfileApi
         .index()
         .then((netProfiles) => {
@@ -133,7 +172,8 @@ function refreshNetList() {
             }
             else {
                 buttonStartElem.setAttribute('class', 'btn btn-small btn-outline-danger');
-                buttonStartElem.setAttribute('onclick', `location.href='/views/livenet/${netProfile._id}';`);
+                buttonStartElem.setAttribute('data-net-action', 'start-live');
+                buttonStartElem.setAttribute('data-net-id', netProfile._id);
             }
             const iconElem = document.createElement('i');
             iconElem.setAttribute('class', 'bi bi-power');
@@ -147,21 +187,25 @@ function refreshNetList() {
             liElem.appendChild(smallElem);
             smallElem.append(' (');
             aEditElem.setAttribute('href', '#');
-            aEditElem.setAttribute('onclick', `netProfileEditByID('${netProfile._id}'); formShow('formContainerNetProfile'); return false;`);
+            aEditElem.setAttribute('data-net-action', 'edit');
+            aEditElem.setAttribute('data-net-id', netProfile._id);
             aEditElem.textContent = 'edit';
             smallElem.appendChild(aEditElem);
             smallElem.append(') ');
             if (!netProfile.liveNet) {
                 smallElem.append(' (');
                 aDeleteElem.setAttribute('href', '#');
-                aDeleteElem.setAttribute('onclick', `netProfileDelByID('${netProfile._id}'); formShow('formContainerNetProfile'); return false;`);
+                aDeleteElem.setAttribute('data-net-action', 'delete');
+                aDeleteElem.setAttribute('data-net-id', netProfile._id);
                 aDeleteElem.textContent = 'delete';
                 smallElem.appendChild(aDeleteElem);
                 smallElem.append(') ');
             }
             smallElem.append(' (');
             aNetOwnerElem.setAttribute('href', '#');
-            aNetOwnerElem.setAttribute('onclick', `netOwnerFormPrep('${netProfile._id}', "${netProfile.title}"); formShow('formContainerNetOwner'); return false;`);
+            aNetOwnerElem.setAttribute('data-net-action', 'coowner');
+            aNetOwnerElem.setAttribute('data-net-id', netProfile._id);
+            aNetOwnerElem.setAttribute('data-net-title', netProfile.title);
             aNetOwnerElem.textContent = '+co-owner';
             smallElem.appendChild(aNetOwnerElem);
             smallElem.append(') ');

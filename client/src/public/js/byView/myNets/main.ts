@@ -20,6 +20,19 @@ const netProfileFormState = new FormState('netprofile', 'new');
 const netOwnerFormState = new FormState('netowner', 'new');
 const netProfileApi = new HttpClient('netprofile', '/api/data/netprofiles');
 
+document.getElementById('netprofile_reset_btn')?.addEventListener('click', () => {
+    netProfileFormState.mode = 'new';
+    (window as any).modeHandler();
+});
+document.getElementById('netowner_reset_btn')?.addEventListener('click', () => {
+    netOwnerFormState.mode = 'new';
+});
+// Mode dropdown toggles required/optional fields. Wired here (not inline onchange)
+// because the CSP (script-src-attr 'none') blocks inline event-handler attributes.
+document.getElementById('input_mode')?.addEventListener('change', () => {
+    (window as any).modeHandler();
+});
+
 //Once we moved to es6 module imports, functions defined in modules are in their own namespace. In order to be accessible by
 //things like onClick(), the functions needed to be exposed to 'window':
 (window as any).netProfileFormState = netProfileFormState;
@@ -86,6 +99,35 @@ function refreshNetList() {
     // container
 
     const netListContainerElem = document.getElementById('netListContainer')!;
+
+    if (!(netListContainerElem as any)._hlDelegated) {
+        (netListContainerElem as any)._hlDelegated = true;
+        netListContainerElem.addEventListener('click', (e: Event) => {
+            const el = (e.target as HTMLElement).closest('[data-net-action]') as HTMLElement | null;
+            if (!el || !netListContainerElem.contains(el)) return;
+            const id = el.getAttribute('data-net-id') as string;
+            switch (el.getAttribute('data-net-action')) {
+                case 'edit':
+                    e.preventDefault();
+                    (window as any).netProfileEditByID(id);
+                    (window as any).formShow('formContainerNetProfile');
+                    break;
+                case 'delete':
+                    e.preventDefault();
+                    (window as any).netProfileDelByID(id);
+                    (window as any).formShow('formContainerNetProfile');
+                    break;
+                case 'coowner':
+                    e.preventDefault();
+                    (window as any).netOwnerFormPrep(id, el.getAttribute('data-net-title') || '');
+                    (window as any).formShow('formContainerNetOwner');
+                    break;
+                case 'start-live':
+                    location.href = `/views/livenet/${id}`;
+                    break;
+            }
+        });
+    }
 
     // get all netprofiles from server:
     netProfileApi
@@ -194,7 +236,8 @@ function refreshNetList() {
                     buttonStartElem.setAttribute('data-bs-target', `#modal-${netProfile._id}`);
                 } else {
                     buttonStartElem.setAttribute('class', 'btn btn-small btn-outline-danger');
-                    buttonStartElem.setAttribute('onclick', `location.href='/views/livenet/${netProfile._id}';`);
+                    buttonStartElem.setAttribute('data-net-action', 'start-live');
+                    buttonStartElem.setAttribute('data-net-id', netProfile._id);
                 }
 
                 const iconElem = document.createElement('i');
@@ -210,10 +253,8 @@ function refreshNetList() {
                 liElem.appendChild(smallElem);
                 smallElem.append(' (');
                 aEditElem.setAttribute('href', '#');
-                aEditElem.setAttribute(
-                    'onclick',
-                    `netProfileEditByID('${netProfile._id}'); formShow('formContainerNetProfile'); return false;`
-                );
+                aEditElem.setAttribute('data-net-action', 'edit');
+                aEditElem.setAttribute('data-net-id', netProfile._id);
                 aEditElem.textContent = 'edit';
                 smallElem.appendChild(aEditElem);
                 smallElem.append(') ');
@@ -221,10 +262,8 @@ function refreshNetList() {
                 if (!netProfile.liveNet) {
                     smallElem.append(' (');
                     aDeleteElem.setAttribute('href', '#');
-                    aDeleteElem.setAttribute(
-                        'onclick',
-                        `netProfileDelByID('${netProfile._id}'); formShow('formContainerNetProfile'); return false;`
-                    );
+                    aDeleteElem.setAttribute('data-net-action', 'delete');
+                    aDeleteElem.setAttribute('data-net-id', netProfile._id);
                     aDeleteElem.textContent = 'delete';
                     smallElem.appendChild(aDeleteElem);
                     smallElem.append(') ');
@@ -232,10 +271,9 @@ function refreshNetList() {
 
                 smallElem.append(' (');
                 aNetOwnerElem.setAttribute('href', '#');
-                aNetOwnerElem.setAttribute(
-                    'onclick',
-                    `netOwnerFormPrep('${netProfile._id}', "${netProfile.title}"); formShow('formContainerNetOwner'); return false;`
-                );
+                aNetOwnerElem.setAttribute('data-net-action', 'coowner');
+                aNetOwnerElem.setAttribute('data-net-id', netProfile._id);
+                aNetOwnerElem.setAttribute('data-net-title', netProfile.title);
                 aNetOwnerElem.textContent = '+co-owner';
                 smallElem.appendChild(aNetOwnerElem);
                 smallElem.append(') ');
