@@ -13,6 +13,7 @@ const API = '/api/admin';
 // id without re-interpolating strings into HTML attributes.
 let usersCache: any[] = [];
 let netsCache: any[] = [];
+let currentEmailRecipient = '';
 
 function statusMsg(text: string, type: string = 'info') {
     const el = document.getElementById('admin-status');
@@ -157,6 +158,7 @@ async function loadEmailActivity(recipient: string) {
     const box = document.getElementById('email-results');
     if (!box) return;
     if (!recipient) { box.innerHTML = '<p class="text-muted">Enter an email address to look up.</p>'; return; }
+    currentEmailRecipient = recipient;
     box.innerHTML = '<p class="text-muted">Loading…</p>';
     try {
         const res = await fetch(`${API}/email?recipient=${encodeURIComponent(recipient)}`);
@@ -167,7 +169,7 @@ async function loadEmailActivity(recipient: string) {
         if (logs.length === 0) { box.innerHTML = `<p class="text-muted">No emails found for ${esc(recipient)}.</p>`; return; }
         const byBatch: Record<string, any[]> = {};
         for (const ev of events) { (byBatch[ev.batchId] = byBatch[ev.batchId] || []).push(ev); }
-        box.innerHTML = logs.map((l: any) => {
+        const logsHtml = logs.map((l: any) => {
             const evs = (byBatch[l.batchId] || []).map((ev: any) => {
                 const color = EVENT_COLORS[ev.event] || 'secondary';
                 const when = ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '';
@@ -180,6 +182,18 @@ async function loadEmailActivity(recipient: string) {
                 <div class="mt-2">${evs}</div>
             </div>`;
         }).join('');
+        const suppressions = (data.message && data.message.suppressions) || [];
+        const supHtml = suppressions.length
+            ? `<div class="app-card mb-2" style="border-color: var(--hl-danger);">
+                 <div class="text-danger"><strong>Suppressed by SendGrid</strong> — future mail is being dropped:</div>
+                 ${suppressions.map((s: any) => `<div class="small mt-1 d-flex justify-content-between align-items-center">
+                     <span><span class="badge bg-danger">${esc(s.list)}</span> ${s.reason ? esc(s.reason) : ''}</span>
+                     <button class="app-btn app-btn-sm" data-email-action="unsuppress" data-list="${esc(s.list)}">Remove &amp; resend</button>
+                   </div>`).join('')}
+               </div>`
+            : '';
+        const controls = `<div class="mb-3"><button class="app-btn app-btn-primary app-btn-sm" data-email-action="resend">Resend sign-in link</button></div>`;
+        box.innerHTML = controls + supHtml + logsHtml;
     } catch (err) {
         box.innerHTML = `<p class="text-danger">Error: ${esc((err as Error).message)}</p>`;
     }
@@ -361,6 +375,37 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('email-search-input')?.addEventListener('keydown', (e) => {
         if ((e as KeyboardEvent).key === 'Enter') {
             loadEmailActivity((e.target as HTMLInputElement).value.trim());
+        }
+    });
+
+    const emailResults = document.getElementById('email-results');
+    emailResults?.addEventListener('click', async (e) => {
+        const btn = (e.target as HTMLElement).closest('button[data-email-action]') as HTMLButtonElement | null;
+        if (!btn || !emailResults.contains(btn)) return;
+        const action = btn.getAttribute('data-email-action');
+        const email = currentEmailRecipient;
+        if (!email) return;
+        btn.disabled = true;
+        try {
+            if (action === 'resend') {
+                const res = await fetch(`${API}/email/resend-login`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
+                });
+                if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+                statusMsg('Sign-in link resent', 'success');
+            } else if (action === 'unsuppress') {
+                const list = btn.getAttribute('data-list');
+                const res = await fetch(`${API}/email/unsuppress`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, list })
+                });
+                if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+                statusMsg('Suppression removed and link resent', 'success');
+                loadEmailActivity(email);
+            }
+        } catch (err) {
+            statusMsg(`Error: ${(err as Error).message}`, 'danger');
+        } finally {
+            btn.disabled = false;
         }
     });
 

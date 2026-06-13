@@ -2,6 +2,7 @@
 const API = '/api/admin';
 let usersCache = [];
 let netsCache = [];
+let currentEmailRecipient = '';
 function statusMsg(text, type = 'info') {
     const el = document.getElementById('admin-status');
     if (el) {
@@ -147,6 +148,7 @@ async function loadEmailActivity(recipient) {
         box.innerHTML = '<p class="text-muted">Enter an email address to look up.</p>';
         return;
     }
+    currentEmailRecipient = recipient;
     box.innerHTML = '<p class="text-muted">Loading…</p>';
     try {
         const res = await fetch(`${API}/email?recipient=${encodeURIComponent(recipient)}`);
@@ -163,7 +165,7 @@ async function loadEmailActivity(recipient) {
         for (const ev of events) {
             (byBatch[ev.batchId] = byBatch[ev.batchId] || []).push(ev);
         }
-        box.innerHTML = logs.map((l) => {
+        const logsHtml = logs.map((l) => {
             const evs = (byBatch[l.batchId] || []).map((ev) => {
                 const color = EVENT_COLORS[ev.event] || 'secondary';
                 const when = ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '';
@@ -176,6 +178,18 @@ async function loadEmailActivity(recipient) {
                 <div class="mt-2">${evs}</div>
             </div>`;
         }).join('');
+        const suppressions = (data.message && data.message.suppressions) || [];
+        const supHtml = suppressions.length
+            ? `<div class="app-card mb-2" style="border-color: var(--hl-danger);">
+                 <div class="text-danger"><strong>Suppressed by SendGrid</strong> — future mail is being dropped:</div>
+                 ${suppressions.map((s) => `<div class="small mt-1 d-flex justify-content-between align-items-center">
+                     <span><span class="badge bg-danger">${esc(s.list)}</span> ${s.reason ? esc(s.reason) : ''}</span>
+                     <button class="app-btn app-btn-sm" data-email-action="unsuppress" data-list="${esc(s.list)}">Remove &amp; resend</button>
+                   </div>`).join('')}
+               </div>`
+            : '';
+        const controls = `<div class="mb-3"><button class="app-btn app-btn-primary app-btn-sm" data-email-action="resend">Resend sign-in link</button></div>`;
+        box.innerHTML = controls + supHtml + logsHtml;
     }
     catch (err) {
         box.innerHTML = `<p class="text-danger">Error: ${esc(err.message)}</p>`;
@@ -354,6 +368,43 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('email-search-input')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             loadEmailActivity(e.target.value.trim());
+        }
+    });
+    const emailResults = document.getElementById('email-results');
+    emailResults?.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-email-action]');
+        if (!btn || !emailResults.contains(btn))
+            return;
+        const action = btn.getAttribute('data-email-action');
+        const email = currentEmailRecipient;
+        if (!email)
+            return;
+        btn.disabled = true;
+        try {
+            if (action === 'resend') {
+                const res = await fetch(`${API}/email/resend-login`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
+                });
+                if (!res.ok)
+                    throw new Error((await res.json()).error || 'Failed');
+                statusMsg('Sign-in link resent', 'success');
+            }
+            else if (action === 'unsuppress') {
+                const list = btn.getAttribute('data-list');
+                const res = await fetch(`${API}/email/unsuppress`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, list })
+                });
+                if (!res.ok)
+                    throw new Error((await res.json()).error || 'Failed');
+                statusMsg('Suppression removed and link resent', 'success');
+                loadEmailActivity(email);
+            }
+        }
+        catch (err) {
+            statusMsg(`Error: ${err.message}`, 'danger');
+        }
+        finally {
+            btn.disabled = false;
         }
     });
     document.getElementById('edit-save-btn')?.addEventListener('click', async () => {
