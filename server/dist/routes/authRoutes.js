@@ -278,4 +278,26 @@ router.get('/login', (req, res) => {
     res.redirect('/views/login');
 });
 
+/**
+ * Send a fresh magic sign-in link to an address using the same flow as
+ * /auth/magiclogin. Resolves with { devMagicLink } (non-null only when email
+ * delivery is disabled, mirroring the login route). For admin resend.
+ */
+function sendMagicSignInLink(email) {
+    return new Promise((resolve, reject) => {
+        const req = { body: { destination: email } };
+        const res = {
+            statusCode: 200,
+            status(code) { this.statusCode = code; return this; },
+            json(body) { resolve({ devMagicLink: req._devMagicLink || null, ...body }); return this; }
+        };
+        try {
+            magicLogin.send(req, res, err => (err ? reject(err) : resolve({ devMagicLink: req._devMagicLink || null })));
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
 module.exports = router;
+module.exports.sendMagicSignInLink = sendMagicSignInLink;
