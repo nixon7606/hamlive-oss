@@ -374,52 +374,45 @@ function np_submitHandler(e: Event) {
     }
     (dataPayload as any).schedule = schedule;
 
-    if (netProfileFormState.mode === 'edit') {
-        netProfileApi
-            .update(dataPayload, id)
-            .then((req: any) => {
-                console.debug('Update: ', req);
-                refreshNetList();
-                // reset form back to new
-                netProfileFormState.mode = 'new';
-            })
-            .catch((error: any) => {
-                if (error.response.data.errorMessage) {
-                    netProfileFormState.mesg('error', error.response.data.errorMessage);
-                    console.error(error.response.data.errorMessage);
-                } else {
-                    netProfileFormState.mesg('error', error);
-                    console.error(error);
-                }
+    const form = document.getElementById('netprofile_form') as HTMLFormElement;
+    const submitBtn = form.querySelector('button[type="submit"]') as HTMLButtonElement | null;
 
-                setTimeout(() => {
-                    netProfileFormState.mode = 'edit';
-                }, 8500);
-            });
-    } else if (netProfileFormState.mode === 'new') {
-        netProfileApi
-            .create(dataPayload)
-            .then((req: any) => {
-                console.debug('Create: ', req);
-                refreshNetList();
-                console.info('refreshNetList() just ran');
-            })
-            .catch((error: any) => {
-                if (error.response.data.errorMessage) {
-                    netProfileFormState.mesg('error', error.response.data.errorMessage);
-                    console.error(error.response.data.errorMessage);
-                } else {
-                    netProfileFormState.mesg('error', error);
-                    console.error(error);
-                }
-
-                setTimeout(() => {
-                    netProfileFormState.mode = 'new';
-                }, 8500);
-            });
-    } else {
+    const isEdit = netProfileFormState.mode === 'edit';
+    if (!isEdit && netProfileFormState.mode !== 'new') {
         console.error('No valid form mode for upload');
+        return;
     }
+
+    // Disable the button while the request is in flight so a second click can't
+    // fire a duplicate create (which previously surfaced as a confusing
+    // "net already named …" error).
+    if (submitBtn) submitBtn.disabled = true;
+
+    const request = isEdit ? netProfileApi.update(dataPayload, id) : netProfileApi.create(dataPayload);
+
+    request
+        .then((req: any) => {
+            console.debug(isEdit ? 'Update: ' : 'Create: ', req);
+            netProfileFormState.mesg('info', isEdit ? 'Net updated successfully' : 'Net created successfully');
+            refreshNetList();
+            // Reset the form for the next entry (clears fields so a re-submit
+            // can't duplicate the net) and return to "new" mode.
+            form.reset();
+            try { tinymce.get('input_notes')?.setContent(''); } catch { /* editor may not be ready */ }
+            (document.getElementById('input_npid_for_netprofile') as HTMLInputElement).value = '';
+            (document.getElementById('input_schedule_enabled') as HTMLInputElement).checked = false;
+            (document.getElementById('schedule_settings') as HTMLElement).style.display = 'none';
+            netProfileFormState.mode = 'new';
+            (window as any).modeHandler();
+        })
+        .catch((error: any) => {
+            const msg = error?.response?.data?.errorMessage || error?.message || 'Save failed';
+            netProfileFormState.mesg('error', msg);
+            console.error(msg);
+        })
+        .finally(() => {
+            if (submitBtn) submitBtn.disabled = false;
+        });
 }
 
 function netowner_submitHandler(e: Event) {

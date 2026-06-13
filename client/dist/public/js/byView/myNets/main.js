@@ -293,53 +293,41 @@ function np_submitHandler(e) {
         };
     }
     dataPayload.schedule = schedule;
-    if (netProfileFormState.mode === 'edit') {
-        netProfileApi
-            .update(dataPayload, id)
-            .then((req) => {
-            console.debug('Update: ', req);
-            refreshNetList();
-            netProfileFormState.mode = 'new';
-        })
-            .catch((error) => {
-            if (error.response.data.errorMessage) {
-                netProfileFormState.mesg('error', error.response.data.errorMessage);
-                console.error(error.response.data.errorMessage);
-            }
-            else {
-                netProfileFormState.mesg('error', error);
-                console.error(error);
-            }
-            setTimeout(() => {
-                netProfileFormState.mode = 'edit';
-            }, 8500);
-        });
-    }
-    else if (netProfileFormState.mode === 'new') {
-        netProfileApi
-            .create(dataPayload)
-            .then((req) => {
-            console.debug('Create: ', req);
-            refreshNetList();
-            console.info('refreshNetList() just ran');
-        })
-            .catch((error) => {
-            if (error.response.data.errorMessage) {
-                netProfileFormState.mesg('error', error.response.data.errorMessage);
-                console.error(error.response.data.errorMessage);
-            }
-            else {
-                netProfileFormState.mesg('error', error);
-                console.error(error);
-            }
-            setTimeout(() => {
-                netProfileFormState.mode = 'new';
-            }, 8500);
-        });
-    }
-    else {
+    const form = document.getElementById('netprofile_form');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const isEdit = netProfileFormState.mode === 'edit';
+    if (!isEdit && netProfileFormState.mode !== 'new') {
         console.error('No valid form mode for upload');
+        return;
     }
+    if (submitBtn)
+        submitBtn.disabled = true;
+    const request = isEdit ? netProfileApi.update(dataPayload, id) : netProfileApi.create(dataPayload);
+    request
+        .then((req) => {
+        console.debug(isEdit ? 'Update: ' : 'Create: ', req);
+        netProfileFormState.mesg('info', isEdit ? 'Net updated successfully' : 'Net created successfully');
+        refreshNetList();
+        form.reset();
+        try {
+            tinymce.get('input_notes')?.setContent('');
+        }
+        catch { }
+        document.getElementById('input_npid_for_netprofile').value = '';
+        document.getElementById('input_schedule_enabled').checked = false;
+        document.getElementById('schedule_settings').style.display = 'none';
+        netProfileFormState.mode = 'new';
+        window.modeHandler();
+    })
+        .catch((error) => {
+        const msg = error?.response?.data?.errorMessage || error?.message || 'Save failed';
+        netProfileFormState.mesg('error', msg);
+        console.error(msg);
+    })
+        .finally(() => {
+        if (submitBtn)
+            submitBtn.disabled = false;
+    });
 }
 function netowner_submitHandler(e) {
     e.preventDefault();
