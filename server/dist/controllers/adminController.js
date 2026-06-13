@@ -164,21 +164,38 @@ const updateNetSchedule = async (req, res) => {
 };
 
 /**
- * GET /api/admin/email?recipient=<email> — delivery log + events for one recipient
+ * GET /api/admin/email?recipient=<email|callsign> — delivery log + events for one recipient.
+ * If the input has no '@', it is treated as a callsign and resolved to the user's email first.
  */
 const listEmailActivity = async (req, res) => {
     handleRequest(res, async () => {
-        const recipient = String(req.query.recipient || '').trim();
-        if (!recipient) return { message: { logs: [], events: [] } };
+        const input = String(req.query.recipient || '').trim();
+        if (!input) return { message: { logs: [], events: [], suppressions: [], resolved: null } };
+
+        let email = input;
+        let resolved = null;
+        if (!input.includes('@')) {
+            // Treat as a callsign → resolve to the user's email.
+            const UserProfile = getUserProfile();
+            const csEscaped = input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const user = await UserProfile.findOne({ callSign: new RegExp('^' + csEscaped + '$', 'i') })
+                .select('callSign email').lean();
+            if (!user) {
+                return { message: { logs: [], events: [], suppressions: [], resolved: null, notFound: 'callsign' } };
+            }
+            email = user.email;
+            resolved = { callSign: user.callSign, email: user.email };
+        }
+
         const EmailLog = getEmailLog();
         const EmailEvent = getEmailEvent();
-        const escaped = recipient.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const rx = new RegExp('^' + escaped + '$', 'i');
         const logs = await EmailLog.find({ recipient: rx }).sort({ createdAt: -1 }).limit(100).lean();
         const batchIds = logs.map(l => l.batchId).filter(Boolean);
         const events = await EmailEvent.find({ batchId: { $in: batchIds } }).sort({ timestamp: 1 }).lean();
-        const suppressions = await getSuppressions(recipient);
-        return { message: { logs, events, suppressions } };
+        const suppressions = await getSuppressions(email);
+        return { message: { logs, events, suppressions, resolved } };
     }, 'admin: listEmailActivity');
 };
 
