@@ -292,16 +292,23 @@ app.get('/logout', (_req, res) => {
     res.redirect('/auth/logout');
 });
 
-// Scheduled net starter — checks every 60 seconds for matching schedules
-const { checkScheduledNets } = require('./lib/backgroundTasks/scheduledNetStarter');
-setInterval(() => {
-    checkScheduledNets().catch(err => {
-        const { logger } = require('./lib/logger');
-        logger.error(`ScheduledNetStarter interval error: ${err.message}`);
-    });
-}, 60_000);
-// Run once on startup too
-setTimeout(() => checkScheduledNets().catch(() => {}), 10_000);
+// Scheduled net starter — checks every 60 seconds for matching schedules.
+// Gated by config (default ON unless explicitly disabled). A host can turn this
+// off via SCHEDULED_NET_STARTER_ENABLED=false in .env — useful on a staging box
+// so it doesn't auto-start nets and email followers during testing.
+if (conf.background_tasks?.scheduledNetStarter?.enabled !== false) {
+    const { checkScheduledNets } = require('./lib/backgroundTasks/scheduledNetStarter');
+    setInterval(() => {
+        checkScheduledNets().catch(err => {
+            const { logger } = require('./lib/logger');
+            logger.error(`ScheduledNetStarter interval error: ${err.message}`);
+        });
+    }, 60_000);
+    // Run once on startup too
+    setTimeout(() => checkScheduledNets().catch(() => {}), 10_000);
+} else {
+    logger.warn('scheduledNetStarter disabled by config — 60s auto-start interval not started');
+}
 
 app.use((req, res) => {
     if (!res.headersSent) return res.status(404).render('404', populate(req, res, { VIEW: '404' }));

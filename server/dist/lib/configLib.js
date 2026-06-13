@@ -68,6 +68,14 @@ if (process.env.ANALYTICS_ENABLED !== undefined) {
     conf.analytics_enabled = process.env.ANALYTICS_ENABLED === 'true';
 }
 
+// Per-host background-task override. The repo ships scheduledNetStarter enabled
+// (see {dev,prod}Config.yaml); a host can disable its scheduled-net auto-start
+// without editing committed YAML by setting SCHEDULED_NET_STARTER_ENABLED=false
+// in its .env. Gates BOTH the tasksLoader run and the 60s interval in server.js.
+if (process.env.SCHEDULED_NET_STARTER_ENABLED !== undefined) {
+    _.set(conf, 'background_tasks.scheduledNetStarter.enabled', process.env.SCHEDULED_NET_STARTER_ENABLED === 'true');
+}
+
 // ---------------------------------------------------------------------------
 // Secret-strength guard
 // ---------------------------------------------------------------------------
