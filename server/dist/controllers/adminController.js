@@ -7,6 +7,7 @@
 
 const validator = require('validator');
 const { getUserProfile } = require('../models/userProfile');
+const { getAdminAudit } = require('../models/adminAudit');
 const { getNetProfile } = require('../models/netProfile');
 const { getLiveNet } = require('../models/liveNet');
 const { getEmailLog } = require('../models/emailLog');
@@ -25,6 +26,17 @@ function toCsv(rows) {
     };
     const lines = rows.map(r => cols.map(c => esc(c === 'createdAt' && r[c] ? new Date(r[c]).toISOString() : r[c])).join(','));
     return [cols.join(','), ...lines].join('\n');
+}
+
+function recordAudit(req, entry) {
+    try {
+        const AdminAudit = getAdminAudit();
+        AdminAudit.create({
+            actorId: req.user && req.user._id,
+            actorLabel: (req.user && (req.user.email || req.user.callSign)) || 'unknown',
+            ...entry
+        }).catch(err => logger.error(`recordAudit failed: ${err.message}`));
+    } catch (err) { logger.error(`recordAudit failed: ${err.message}`); }
 }
 
 /**
@@ -58,11 +70,32 @@ const updateUser = async (req, res) => {
             updates.callSign = updates.callSign.toUpperCase();
         }
         const UserProfile = getUserProfile();
+        // Fetch target first
+        const target = await UserProfile.findById(id).lean();
+        if (!target) throw new Error('User not found');
+        // Guardrail: self-lockout
+        if (String(id) === String(req.user && req.user._id)) {
+            if (updates.superUser === false || updates.locked === true) {
+                throw new Error('You cannot remove your own admin or lock your own account.');
+            }
+        }
+        // Guardrail: last-admin demotion
+        if (updates.superUser === false && target.superUser) {
+            const count = await UserProfile.countDocuments({ superUser: true });
+            if (count <= 1) throw new Error('Cannot remove the last remaining admin.');
+        }
         const user = await UserProfile.findByIdAndUpdate(id, updates, { new: true })
             .select('email callSign displayName location lastIp locked superUser')
             .lean();
         if (!user) throw new Error('User not found');
         logger.info(`admin: updated user ${user.email || user.callSign}`);
+        // Audit changes
+        if (updates.superUser !== undefined && updates.superUser !== target.superUser) {
+            recordAudit(req, { action: updates.superUser ? 'grant-admin' : 'revoke-admin', targetType: 'user', targetId: String(id), targetLabel: user.email || user.callSign });
+        }
+        if (updates.locked !== undefined && updates.locked !== target.locked) {
+            recordAudit(req, { action: updates.locked ? 'lock-user' : 'unlock-user', targetType: 'user', targetId: String(id), targetLabel: user.email || user.callSign });
+        }
         return { message: user };
     }, `admin: updateUser ${req.params.id}`);
 };
@@ -74,9 +107,22 @@ const deleteUser = async (req, res) => {
     handleRequest(res, async () => {
         const { id } = req.params;
         const UserProfile = getUserProfile();
+        // Guardrail: cannot delete self
+        if (String(id) === String(req.user && req.user._id)) {
+            throw new Error('Use account settings to delete your own account.');
+        }
+        // Fetch target first
+        const target = await UserProfile.findById(id).lean();
+        if (!target) throw new Error('User not found');
+        // Guardrail: last-admin deletion
+        if (target.superUser) {
+            const count = await UserProfile.countDocuments({ superUser: true });
+            if (count <= 1) throw new Error('Cannot delete the last remaining admin.');
+        }
         const user = await UserProfile.findByIdAndDelete(id).lean();
         if (!user) throw new Error('User not found');
         logger.info(`admin: deleted user ${user.email || user.callSign}`);
+        recordAudit(req, { action: 'delete-user', targetType: 'user', targetId: String(id), targetLabel: user.email || user.callSign });
         return { message: { deleted: true, email: user.email, callSign: user.callSign } };
     }, `admin: deleteUser ${req.params.id}`);
 };
@@ -142,6 +188,7 @@ const deleteNet = async (req, res) => {
         const np = await NetProfile.findByIdAndDelete(id).lean();
         if (!np) throw new Error('Net profile not found');
         logger.info(`admin: deleted net "${np.title}" (${id})`);
+        recordAudit(req, { action: 'delete-net', targetType: 'net', targetId: String(id), targetLabel: np.title });
         return { message: { deleted: true, title: np.title } };
     }, `admin: deleteNet ${req.params.id}`);
 };
@@ -220,6 +267,7 @@ const resendSignInLink = async (req, res) => {
     handleRequest(res, async () => {
         await sendMagicSignInLink(email);
         logger.info(`admin resend sign-in link to ${email}`);
+        recordAudit(req, { action: 'resend-login', targetType: 'email', targetLabel: email });
         return { message: { sent: true } };
     }, 'admin: resendSignInLink');
 };
@@ -236,6 +284,7 @@ const unsuppressEmail = async (req, res) => {
         await removeSuppression(email, list);
         await sendMagicSignInLink(email);
         logger.info(`admin removed ${list} suppression for ${email} and resent link`);
+        recordAudit(req, { action: 'unsuppress', targetType: 'email', targetLabel: email, details: list });
         return { message: { removed: true } };
     }, 'admin: unsuppressEmail');
 };
@@ -269,5 +318,21 @@ const recentEmails = async (req, res) => {
     }, 'admin: recentEmails');
 };
 
-module.exports = { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity, resendSignInLink, unsuppressEmail, recentEmails };
+/**
+ * GET /api/admin/audit — Paginated audit log, newest first
+ */
+const listAudit = async (req, res) => {
+    handleRequest(res, async () => {
+        const AdminAudit = getAdminAudit();
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+        const [entries, total] = await Promise.all([
+            AdminAudit.find({}).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+            AdminAudit.countDocuments({})
+        ]);
+        return { message: { entries, total, page, limit } };
+    }, 'admin: listAudit');
+};
+
+module.exports = { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity, resendSignInLink, unsuppressEmail, recentEmails, listAudit };
 
