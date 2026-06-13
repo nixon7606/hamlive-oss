@@ -68,4 +68,35 @@ if (process.env.ANALYTICS_ENABLED !== undefined) {
     conf.analytics_enabled = process.env.ANALYTICS_ENABLED === 'true';
 }
 
+// ---------------------------------------------------------------------------
+// Secret-strength guard
+// ---------------------------------------------------------------------------
+// Checks that signing secrets meet a minimum strength bar.  Returns an array
+// of human-readable problem strings (empty means all OK).  Kept as a pure
+// function so it can be unit-tested without side effects.
+const WEAK_DEFAULTS = ['dev-cookie-key-change-me', 'dev-magic-link-secret-change-me', 'change-me', 'changeme', 'secret'];
+function checkSecrets(c) {
+    const problems = [];
+    const check = (name, val) => {
+        if (!val || typeof val !== 'string' || val.length < 32 || WEAK_DEFAULTS.includes(val)) {
+            problems.push(`${name} is missing, too short (<32 chars), or a known default — set a strong unique value.`);
+        }
+    };
+    check('COOKIE_SESSION_KEY', c.cookie_session_key);
+    check('MAGIC_LINK_SECRET', c.magic_link_secret);
+    return problems;
+}
+
+const secretProblems = checkSecrets(conf);
+if (secretProblems.length) {
+    if (process.env.NODE_ENV === 'production') {
+        const msg = 'FATAL: insecure secrets — refusing to start in production:\n  - ' + secretProblems.join('\n  - ');
+        console.error(msg);
+        throw new Error(msg);
+    } else {
+        console.warn('WARNING: insecure secrets (OK for local dev, NEVER for production):\n  - ' + secretProblems.join('\n  - '));
+    }
+}
+
 module.exports.conf = conf;
+module.exports.checkSecrets = checkSecrets;
