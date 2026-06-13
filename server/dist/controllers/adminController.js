@@ -63,7 +63,7 @@ const listUsers = async (req, res) => {
             const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
             filter = { $or: [{ email: rx }, { callSign: rx }, { displayName: rx }] };
         }
-        const sel = 'email callSign displayName location lastIp locked superUser newAccount policyConsent flaggedForDeletion createdAt lastLogin';
+        const sel = 'email callSign displayName location lastIp locked superUser newAccount policyConsent flaggedForDeletion createdAt lastLogin lastAuthVia';
         const [users, total] = await Promise.all([
             UserProfile.find(filter).select(sel).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
             UserProfile.countDocuments(filter)

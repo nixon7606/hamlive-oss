@@ -9,6 +9,9 @@ declare let usersLimit: number;
 declare let auditPage: number;
 declare let auditTotal: number;
 declare let auditLimit: number;
+declare let auditActor: string;
+declare let auditAction: string;
+declare function auditFilterQuery(): string;
 declare let editUserWasSuper: boolean;
 declare function statusMsg(text: string, type?: string): void;
 declare function esc(s: string): string;
@@ -17,6 +20,7 @@ declare function loadUsers(): Promise<void>;
 declare function loadNets(): Promise<void>;
 declare function loadAudit(): Promise<void>;
 declare const EVENT_COLORS: Record<string, string>;
+declare function showEmailHistory(email: string): void;
 declare function loadEmailActivity(recipient: string): Promise<void>;
 declare function recentRangeFromControls(presetDays?: number): {
     from: string;

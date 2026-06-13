@@ -10,6 +10,16 @@ let usersLimit = 50;
 let auditPage = 1;
 let auditTotal = 0;
 let auditLimit = 50;
+let auditActor = '';
+let auditAction = '';
+function auditFilterQuery() {
+    let q = '';
+    if (auditActor)
+        q += `&actor=${encodeURIComponent(auditActor)}`;
+    if (auditAction)
+        q += `&action=${encodeURIComponent(auditAction)}`;
+    return q;
+}
 let editUserWasSuper = false;
 function statusMsg(text, type = 'info') {
     const el = document.getElementById('admin-status');
@@ -36,6 +46,9 @@ async function loadStats() {
         document.getElementById('stat-nets').textContent = s.totalNets ?? '-';
         document.getElementById('stat-live').textContent = s.liveNetsCount ?? '-';
         document.getElementById('stat-scheduled').textContent = s.scheduledNetsCount ?? '-';
+        const bounces = s.recentBounces ?? 0;
+        document.getElementById('stat-bounces').textContent = bounces;
+        document.getElementById('stat-bounces-card')?.classList.toggle('stat-alert', bounces > 0);
     }
     catch (err) {
         console.error('Stats error:', err);
@@ -78,6 +91,9 @@ async function loadUsers() {
                 badges.push('<span class="badge badge-new">New</span>');
             if (u.flaggedForDeletion)
                 badges.push('<span class="badge badge-flagged">Flagged</span>');
+            badges.push(u.lastAuthVia === 'google'
+                ? '<span class="badge badge-google">Google</span>'
+                : '<span class="badge badge-email">Email</span>');
             const created = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-';
             const ip = u.lastIp || '-';
             return `<tr>
@@ -90,6 +106,7 @@ async function loadUsers() {
                 <td>${created}</td>
                 <td>
                     <button class="btn btn-sm btn-outline-light me-1" data-action="edit-user" data-id="${u._id}" title="Edit"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-info me-1" data-action="email-history" data-id="${u._id}" title="View email history"><i class="bi bi-envelope"></i></button>
                     <button class="btn btn-sm btn-outline-danger" data-action="delete-user" data-id="${u._id}" title="Delete"><i class="bi bi-trash"></i></button>
                 </td>
             </tr>`;
@@ -160,7 +177,7 @@ async function loadAudit() {
         return;
     box.innerHTML = '<p class="text-muted">Loading…</p>';
     try {
-        const res = await fetch(`${API}/audit?page=${auditPage}`);
+        const res = await fetch(`${API}/audit?page=${auditPage}${auditFilterQuery()}`);
         if (!res.ok)
             throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -203,6 +220,16 @@ const EVENT_COLORS = {
     bounce: 'danger', dropped: 'danger', spamreport: 'danger', blocked: 'danger',
     deferred: 'warning', processed: 'secondary', queued: 'secondary'
 };
+function showEmailHistory(email) {
+    const tabBtn = document.getElementById('email-tab');
+    if (tabBtn && window.bootstrap?.Tab) {
+        window.bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+    }
+    const input = document.getElementById('email-search-input');
+    if (input)
+        input.value = email;
+    loadEmailActivity(email);
+}
 async function loadEmailActivity(recipient) {
     const box = document.getElementById('email-results');
     if (!box)
@@ -220,17 +247,33 @@ async function loadEmailActivity(recipient) {
         const data = await res.json();
         const resolved = data.message && data.message.resolved;
         const notFound = data.message && data.message.notFound;
+        if (resolved && resolved.email)
+            currentEmailRecipient = resolved.email;
         const banner = resolved
             ? `<div class="small text-secondary mb-2">Showing mail for <strong>${esc(resolved.callSign)}</strong> — ${esc(resolved.email)}</div>`
             : '';
         const logs = (data.message && data.message.logs) || [];
         const events = (data.message && data.message.events) || [];
+        const suppressions = (data.message && data.message.suppressions) || [];
+        const supHtml = suppressions.length
+            ? `<div class="app-card mb-2" style="border-color: var(--hl-danger);">
+                 <div class="text-danger"><strong>Suppressed by SendGrid</strong> — future mail is being dropped:</div>
+                 ${suppressions.map((s) => `<div class="small mt-1 d-flex justify-content-between align-items-center">
+                     <span><span class="badge bg-danger">${esc(s.list)}</span> ${s.reason ? esc(s.reason) : ''}</span>
+                     <button class="app-btn app-btn-sm" data-email-action="unsuppress" data-list="${esc(s.list)}">Remove &amp; resend</button>
+                   </div>`).join('')}
+               </div>`
+            : '';
+        const controls = currentEmailRecipient.includes('@')
+            ? `<div class="mb-3"><button class="app-btn app-btn-primary app-btn-sm" data-email-action="resend">Resend sign-in link</button></div>`
+            : '';
         if (logs.length === 0) {
-            if (notFound === 'callsign') {
+            if (notFound === 'callsign' && suppressions.length === 0) {
                 box.innerHTML = '<p class="text-muted">No account found for callsign "' + esc(recipient) + '". Try their email address, or use Recent Sends below.</p>';
                 return;
             }
-            box.innerHTML = `<p class="text-muted">No emails found for ${esc(recipient)}.</p>`;
+            const note = `<p class="text-muted">No send history recorded for ${esc(currentEmailRecipient)}.</p>`;
+            box.innerHTML = banner + controls + supHtml + note;
             return;
         }
         const byBatch = {};
@@ -250,17 +293,6 @@ async function loadEmailActivity(recipient) {
                 <div class="mt-2">${evs}</div>
             </div>`;
         }).join('');
-        const suppressions = (data.message && data.message.suppressions) || [];
-        const supHtml = suppressions.length
-            ? `<div class="app-card mb-2" style="border-color: var(--hl-danger);">
-                 <div class="text-danger"><strong>Suppressed by SendGrid</strong> — future mail is being dropped:</div>
-                 ${suppressions.map((s) => `<div class="small mt-1 d-flex justify-content-between align-items-center">
-                     <span><span class="badge bg-danger">${esc(s.list)}</span> ${s.reason ? esc(s.reason) : ''}</span>
-                     <button class="app-btn app-btn-sm" data-email-action="unsuppress" data-list="${esc(s.list)}">Remove &amp; resend</button>
-                   </div>`).join('')}
-               </div>`
-            : '';
-        const controls = `<div class="mb-3"><button class="app-btn app-btn-primary app-btn-sm" data-email-action="resend">Resend sign-in link</button></div>`;
         box.innerHTML = banner + controls + supHtml + logsHtml;
     }
     catch (err) {
@@ -452,6 +484,12 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'edit-user':
                 editUser(id);
                 break;
+            case 'email-history': {
+                const u = usersCache.find((x) => x._id === id);
+                if (u && u.email)
+                    showEmailHistory(u.email);
+                break;
+            }
             case 'delete-user': {
                 const u = usersCache.find((x) => x._id === id);
                 confirmDelete(id, u ? (u.callSign || u.email) : 'this user');
@@ -503,6 +541,36 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (dir === 'next')
             auditPage++;
         loadAudit();
+    });
+    const applyAuditFilters = () => {
+        auditActor = document.getElementById('audit-actor-input')?.value.trim() || '';
+        auditAction = document.getElementById('audit-action-input')?.value.trim() || '';
+        auditPage = 1;
+        loadAudit();
+    };
+    document.getElementById('audit-apply-btn')?.addEventListener('click', applyAuditFilters);
+    document.getElementById('audit-action-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter')
+            applyAuditFilters();
+    });
+    document.getElementById('audit-actor-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter')
+            applyAuditFilters();
+    });
+    document.getElementById('audit-clear-btn')?.addEventListener('click', () => {
+        const actorEl = document.getElementById('audit-actor-input');
+        const actionEl = document.getElementById('audit-action-input');
+        if (actorEl)
+            actorEl.value = '';
+        if (actionEl)
+            actionEl.value = '';
+        auditActor = '';
+        auditAction = '';
+        auditPage = 1;
+        loadAudit();
+    });
+    document.getElementById('audit-csv-btn')?.addEventListener('click', () => {
+        window.location.href = `${API}/audit?format=csv${auditFilterQuery()}`;
     });
     document.getElementById('nets-tab')?.addEventListener('shown.bs.tab', () => {
         loadNets();
