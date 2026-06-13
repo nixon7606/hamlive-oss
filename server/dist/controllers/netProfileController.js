@@ -173,20 +173,16 @@ const netProfileDelete = async (req, res) => {
 const netProfileAddNetOwner = async (req, res) => {
     const newOwnerEmail = req.body.email && req.body.email.trim();
     let result;
-    let netProfileDoc;
 
     try {
-        if (({ npresult: netProfileDoc } = await netOwnerCheck({ req }))) {
+        const { confirmed, npresult: netProfileDoc } = await netOwnerCheck({ req });
+        if (confirmed) {
             result = await addNetOwner({
                 newOwnerEmail,
                 netProfiles: netProfileDoc,
                 flexOpts: res.locals.flexOpts
             });
-
-            res.status(200).json({
-                endpointVersion: '1.0',
-                message: result
-            });
+            res.status(200).json({ endpointVersion: '1.0', message: result });
             logger.info('NETPROFILE_Controller: ' + result);
         } else {
             throw new Error('requestor must have net owner privileges');

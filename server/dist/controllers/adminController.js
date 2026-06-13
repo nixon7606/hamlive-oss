@@ -5,6 +5,7 @@
  * All endpoints require superUser role.
  */
 
+const validator = require('validator');
 const { getUserProfile } = require('../models/userProfile');
 const { getNetProfile } = require('../models/netProfile');
 const { getLiveNet } = require('../models/liveNet');
@@ -213,8 +214,9 @@ const listEmailActivity = async (req, res) => {
  * POST /api/admin/email/resend-login { email } — send a fresh magic sign-in link
  */
 const resendSignInLink = async (req, res) => {
-    const email = (req.body && req.body.email || '').trim();
-    if (!email) return res.status(400).json({ error: 'email is required' });
+    const rawEmail = req.body && req.body.email;
+    const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
+    if (!email || !validator.isEmail(email)) return res.status(400).json({ error: 'a valid email is required' });
     handleRequest(res, async () => {
         await sendMagicSignInLink(email);
         logger.info(`admin resend sign-in link to ${email}`);
@@ -226,9 +228,10 @@ const resendSignInLink = async (req, res) => {
  * POST /api/admin/email/unsuppress { email, list } — remove a suppression, then resend
  */
 const unsuppressEmail = async (req, res) => {
-    const email = (req.body && req.body.email || '').trim();
+    const rawEmail = req.body && req.body.email;
+    const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
     const list = req.body && req.body.list;
-    if (!email || !list) return res.status(400).json({ error: 'email and list are required' });
+    if (!email || !validator.isEmail(email) || !list) return res.status(400).json({ error: 'email and list are required' });
     handleRequest(res, async () => {
         await removeSuppression(email, list);
         await sendMagicSignInLink(email);

@@ -3,6 +3,7 @@
 const router = require('express').Router();
 const passport = require('passport');
 const rateLimit = require('express-rate-limit');
+const validator = require('validator');
 const { conf } = require('../lib/configLib');
 const { logger } = require('../lib/logger');
 const UserProfile = require('../models/userProfile').getUserProfile(null);
@@ -133,6 +134,10 @@ const magicLogin = new MagicLoginStrategy({
 
 passport.use(magicLogin);
 router.post('/magiclogin', magicLoginLimiter, (req, res, next) => {
+    const dest = req.body && req.body.destination;
+    if (typeof dest !== 'string' || !validator.isEmail(dest)) {
+        return res.status(400).json({ success: false, error: 'A valid email address is required.' });
+    }
     // When email delivery is disabled (local test drive), include the sign-in
     // link in the JSON response so the browser can show it — no logs needed.
     if (!emailEnabled) {
@@ -284,6 +289,9 @@ router.get('/login', (req, res) => {
  * delivery is disabled, mirroring the login route). For admin resend.
  */
 function sendMagicSignInLink(email) {
+    if (typeof email !== 'string' || !validator.isEmail(email)) {
+        return Promise.reject(new Error('invalid email'));
+    }
     return new Promise((resolve, reject) => {
         const req = { body: { destination: email } };
         const res = {
