@@ -8,7 +8,7 @@
 const router = require('express').Router();
 const { authCheck, REQ_LOGIN } = require('../lib/serverUtils');
 const { superAdminCheck } = require('../middleware/superAdminCheck');
-const { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity } = require('../controllers/adminController');
+const { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity, resendSignInLink } = require('../controllers/adminController');
 
 // All admin routes require login + superUser
 router.use(authCheck(REQ_LOGIN), superAdminCheck);
@@ -21,5 +21,6 @@ router.patch('/nets/:id', updateNetSchedule);
 router.delete('/nets/:id', deleteNet);
 router.get('/stats', getStats);
 router.get('/email', listEmailActivity);
+router.post('/email/resend-login', resendSignInLink);
 
 module.exports = router;

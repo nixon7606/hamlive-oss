@@ -13,6 +13,7 @@ const { getEmailEvent } = require('../models/emailEvent');
 const { handleRequest } = require('../lib/responseUtils');
 const { logger } = require('../lib/logger');
 const mongoose = require('mongoose');
+const { sendMagicSignInLink } = require('../routes/authRoutes');
 
 /**
  * GET /api/admin/users — List all users
@@ -179,4 +180,17 @@ const listEmailActivity = async (req, res) => {
     }, 'admin: listEmailActivity');
 };
 
-module.exports = { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity };
+/**
+ * POST /api/admin/email/resend-login { email } — send a fresh magic sign-in link
+ */
+const resendSignInLink = async (req, res) => {
+    const email = (req.body && req.body.email || '').trim();
+    if (!email) return res.status(400).json({ error: 'email is required' });
+    handleRequest(res, async () => {
+        await sendMagicSignInLink(email);
+        logger.info(`admin resend sign-in link to ${email}`);
+        return { message: { sent: true } };
+    }, 'admin: resendSignInLink');
+};
+
+module.exports = { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity, resendSignInLink };
