@@ -53,6 +53,9 @@
         <li class="nav-item" role="presentation">
           <button class="nav-link" id="email-tab" data-bs-toggle="tab" data-bs-target="#email-panel" type="button" role="tab"><i class="bi bi-envelope"></i> Email</button>
         </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="audit-tab" data-bs-toggle="tab" data-bs-target="#audit-panel" type="button" role="tab"><i class="bi bi-clipboard-check"></i> Audit</button>
+        </li>
     </ul>
 
     <div class="tab-content">
@@ -62,6 +65,12 @@
           <div class="app-card-header d-flex justify-content-between align-items-center">
             <span class="text-light"><i class="bi bi-people"></i> User Management</span>
             <span id="admin-status" class="small"></span>
+          </div>
+          <div class="d-flex flex-wrap gap-2 mb-2 align-items-center">
+            <input type="text" class="app-input" id="user-search-input" placeholder="search email / callsign / name" style="max-width: 320px;" />
+            <span class="text-muted small" id="users-page-info"></span>
+            <button class="app-btn app-btn-sm" id="users-prev" type="button" data-users-page="prev">Prev</button>
+            <button class="app-btn app-btn-sm" id="users-next" type="button" data-users-page="next">Next</button>
           </div>
           <div class="table-responsive">
             <table class="table table-dark table-striped table-hover admin-table">
@@ -109,6 +118,18 @@
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="audit-panel" role="tabpanel">
+        <div class="app-card">
+          <div class="app-card-header"><i class="bi bi-clipboard-check"></i> Admin Audit Log</div>
+          <div class="d-flex gap-2 mb-2 align-items-center">
+            <span class="text-muted small" id="audit-page-info"></span>
+            <button class="app-btn app-btn-sm" type="button" data-audit-page="prev">Prev</button>
+            <button class="app-btn app-btn-sm" type="button" data-audit-page="next">Next</button>
+          </div>
+          <div id="audit-results"></div>
         </div>
       </div>
 

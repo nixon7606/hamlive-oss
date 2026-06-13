@@ -15,6 +15,20 @@ let usersCache: any[] = [];
 let netsCache: any[] = [];
 let currentEmailRecipient = '';
 
+// User search + pagination state
+let usersPage = 1;
+let usersSearch = '';
+let usersTotal = 0;
+let usersLimit = 50;
+
+// Audit pagination state
+let auditPage = 1;
+let auditTotal = 0;
+let auditLimit = 50;
+
+// Grant-admin confirm state
+let editUserWasSuper = false;
+
 function statusMsg(text: string, type: string = 'info') {
     // NOTE: `type` must always be a hardcoded literal (e.g. 'success', 'danger') — never user data.
     const el = document.getElementById('admin-status');
@@ -55,11 +69,22 @@ async function loadUsers() {
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>';
     try {
-        const res = await fetch(`${API}/users`);
+        const res = await fetch(`${API}/users?search=${encodeURIComponent(usersSearch)}&page=${usersPage}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        const users = data.message || [];
+        const users = (data.message && data.message.users) || [];
         usersCache = users;
+        usersTotal = (data.message && data.message.total) || 0;
+        usersLimit = (data.message && data.message.limit) || 50;
+
+        // Update pagination info
+        const pageInfo = document.getElementById('users-page-info');
+        if (pageInfo) pageInfo.textContent = `Page ${usersPage} · ${usersTotal} users`;
+        const prevBtn = document.getElementById('users-prev') as HTMLButtonElement | null;
+        const nextBtn = document.getElementById('users-next') as HTMLButtonElement | null;
+        if (prevBtn) prevBtn.disabled = usersPage <= 1;
+        if (nextBtn) nextBtn.disabled = usersPage * usersLimit >= usersTotal;
+
         if (users.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No users found</td></tr>';
             return;
@@ -144,6 +169,52 @@ async function loadNets() {
     } catch (err) {
         tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-4">Failed to load nets</td></tr>';
         statusMsg(`Error loading nets: ${(err as Error).message}`, 'danger');
+    }
+}
+
+/* ── Audit Log ── */
+
+async function loadAudit() {
+    const box = document.getElementById('audit-results');
+    if (!box) return;
+    box.innerHTML = '<p class="text-muted">Loading…</p>';
+    try {
+        const res = await fetch(`${API}/audit?page=${auditPage}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const entries = (data.message && data.message.entries) || [];
+        auditTotal = (data.message && data.message.total) || 0;
+        auditLimit = (data.message && data.message.limit) || 50;
+
+        // Update pagination info
+        const pageInfo = document.getElementById('audit-page-info');
+        if (pageInfo) pageInfo.textContent = `Page ${auditPage} · ${auditTotal} entries`;
+        const auditPrev = document.querySelector('button[data-audit-page="prev"]') as HTMLButtonElement | null;
+        const auditNext = document.querySelector('button[data-audit-page="next"]') as HTMLButtonElement | null;
+        if (auditPrev) auditPrev.disabled = auditPage <= 1;
+        if (auditNext) auditNext.disabled = auditPage * auditLimit >= auditTotal;
+
+        if (entries.length === 0) {
+            box.innerHTML = '<p class="text-muted">No audit entries found.</p>';
+            return;
+        }
+        box.innerHTML = `<table class="table table-dark table-striped table-hover admin-table"><thead><tr>
+            <th>Time</th><th>Actor</th><th>Action</th><th>Target</th></tr></thead><tbody>${
+            entries.map((e: any) => {
+                const time = e.createdAt ? new Date(e.createdAt).toLocaleString() : '-';
+                const target = e.targetLabel
+                    ? (e.details ? `${esc(e.targetLabel)} — ${esc(e.details)}` : esc(e.targetLabel))
+                    : (e.targetId ? esc(e.targetId) : '-');
+                return `<tr>
+                    <td>${esc(time)}</td>
+                    <td>${esc(e.actorLabel || '-')}</td>
+                    <td>${esc(e.action || '-')}</td>
+                    <td>${target}</td>
+                </tr>`;
+            }).join('')
+        }</tbody></table>`;
+    } catch (err) {
+        box.innerHTML = `<p class="text-danger">Error: ${esc((err as Error).message)}</p>`;
     }
 }
 
@@ -265,12 +336,10 @@ let currentUserEmail = '';
 
 async function editUser(id: string) {
     try {
-        const res = await fetch(`${API}/users`);
-        const data = await res.json();
-        const users = data.message || [];
-        const user = users.find((u: any) => u._id === id);
+        const user = usersCache.find((u: any) => u._id === id);
         if (!user) { statusMsg('User not found', 'danger'); return; }
         currentUserId = id;
+        editUserWasSuper = !!user.superUser;
         (document.getElementById('edit-user-id') as HTMLInputElement).value = id;
         (document.getElementById('edit-email') as HTMLInputElement).value = user.email || '';
         (document.getElementById('edit-callsign') as HTMLInputElement).value = user.callSign || '';
@@ -419,12 +488,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // User search — debounced input
+    let userSearchTimer: ReturnType<typeof setTimeout> | null = null;
+    document.getElementById('user-search-input')?.addEventListener('input', (e) => {
+        if (userSearchTimer) clearTimeout(userSearchTimer);
+        userSearchTimer = setTimeout(() => {
+            usersSearch = (e.target as HTMLInputElement).value.trim();
+            usersPage = 1;
+            loadUsers();
+        }, 300);
+    });
+
+    // User pagination clicks
+    document.getElementById('users-prev')?.addEventListener('click', () => {
+        usersPage = Math.max(1, usersPage - 1);
+        loadUsers();
+    });
+    document.getElementById('users-next')?.addEventListener('click', () => {
+        usersPage++;
+        loadUsers();
+    });
+
+    // Audit pagination clicks (delegated on document since buttons are inside tab-pane)
+    document.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest('button[data-audit-page]') as HTMLButtonElement | null;
+        if (!btn) return;
+        const dir = btn.getAttribute('data-audit-page');
+        if (dir === 'prev') auditPage = Math.max(1, auditPage - 1);
+        else if (dir === 'next') auditPage++;
+        loadAudit();
+    });
+
     // Tab switching — reload data when tabs change
     document.getElementById('nets-tab')?.addEventListener('shown.bs.tab', () => {
         loadNets();
     });
     document.getElementById('users-tab')?.addEventListener('shown.bs.tab', () => {
         loadUsers();
+    });
+    document.getElementById('audit-tab')?.addEventListener('shown.bs.tab', () => {
+        loadAudit();
     });
 
     document.getElementById('email-search-btn')?.addEventListener('click', () => {
@@ -471,12 +574,16 @@ document.addEventListener('DOMContentLoaded', () => {
     (document.getElementById('edit-save-btn') as HTMLButtonElement)?.addEventListener('click', async () => {
         const id = (document.getElementById('edit-user-id') as HTMLInputElement).value;
         if (!id) return;
+        const superUserChecked = (document.getElementById('edit-superuser') as HTMLInputElement).checked;
+        if (superUserChecked !== editUserWasSuper) {
+            if (!confirm((superUserChecked ? 'Grant' : 'Revoke') + ' admin for this user?')) return;
+        }
         const payload = {
             displayName: (document.getElementById('edit-displayname') as HTMLInputElement).value.trim(),
             callSign: (document.getElementById('edit-callsign') as HTMLInputElement).value.trim(),
             location: (document.getElementById('edit-location') as HTMLInputElement).value.trim(),
             locked: (document.getElementById('edit-locked') as HTMLInputElement).checked,
-            superUser: (document.getElementById('edit-superuser') as HTMLInputElement).checked
+            superUser: superUserChecked
         };
         try {
             const res = await fetch(`${API}/users/${id}`, {
