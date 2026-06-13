@@ -116,10 +116,26 @@
         <div class="app-card">
           <div class="app-card-header"><i class="bi bi-envelope"></i> Email Delivery Lookup</div>
           <div class="d-flex gap-2 mb-3" style="max-width: 520px;">
-            <input type="email" class="app-input flex-grow-1" id="email-search-input" placeholder="recipient@example.com" />
+            <input type="text" class="app-input flex-grow-1" id="email-search-input" placeholder="email or callsign" />
             <button class="app-btn app-btn-primary" id="email-search-btn" type="button">Search</button>
           </div>
           <div id="email-results"></div>
+        </div>
+        <div class="app-card">
+          <div class="app-card-header"><i class="bi bi-clock-history"></i> Recent Sends</div>
+          <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+            <button class="app-btn app-btn-sm" data-recent-preset="1" type="button">Last 24h</button>
+            <button class="app-btn app-btn-sm" data-recent-preset="7" type="button">Last 7d</button>
+            <button class="app-btn app-btn-sm" data-recent-preset="30" type="button">Last 30d</button>
+            <span class="text-muted small">or</span>
+            <input type="date" class="app-input" id="recent-from" />
+            <span class="text-muted small">to</span>
+            <input type="date" class="app-input" id="recent-to" />
+            <button class="app-btn app-btn-primary app-btn-sm" id="recent-load-btn" type="button">Load</button>
+            <button class="app-btn app-btn-sm" id="recent-csv-btn" type="button">Download CSV</button>
+          </div>
+          <div id="recent-summary" class="small mb-2"></div>
+          <div id="recent-results"></div>
         </div>
       </div>
     </div>

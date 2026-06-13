@@ -155,9 +155,18 @@ async function loadEmailActivity(recipient) {
         if (!res.ok)
             throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+        const resolved = data.message && data.message.resolved;
+        const notFound = data.message && data.message.notFound;
+        const banner = resolved
+            ? `<div class="small text-secondary mb-2">Showing mail for <strong>${esc(resolved.callSign)}</strong> — ${esc(resolved.email)}</div>`
+            : '';
         const logs = (data.message && data.message.logs) || [];
         const events = (data.message && data.message.events) || [];
         if (logs.length === 0) {
+            if (notFound === 'callsign') {
+                box.innerHTML = '<p class="text-muted">No account found for callsign "' + esc(recipient) + '". Try their email address, or use Recent Sends below.</p>';
+                return;
+            }
             box.innerHTML = `<p class="text-muted">No emails found for ${esc(recipient)}.</p>`;
             return;
         }
@@ -189,7 +198,57 @@ async function loadEmailActivity(recipient) {
                </div>`
             : '';
         const controls = `<div class="mb-3"><button class="app-btn app-btn-primary app-btn-sm" data-email-action="resend">Resend sign-in link</button></div>`;
-        box.innerHTML = controls + supHtml + logsHtml;
+        box.innerHTML = banner + controls + supHtml + logsHtml;
+    }
+    catch (err) {
+        box.innerHTML = `<p class="text-danger">Error: ${esc(err.message)}</p>`;
+    }
+}
+function recentRangeFromControls(presetDays) {
+    const to = new Date();
+    let from;
+    if (presetDays) {
+        from = new Date(Date.now() - presetDays * 24 * 3600 * 1000);
+    }
+    else {
+        const f = document.getElementById('recent-from').value;
+        const t = document.getElementById('recent-to').value;
+        from = f ? new Date(f + 'T00:00:00') : new Date(Date.now() - 24 * 3600 * 1000);
+        if (t)
+            to.setTime(new Date(t + 'T23:59:59').getTime());
+    }
+    return { from: from.toISOString(), to: to.toISOString() };
+}
+let lastRecentRange = { from: '', to: '' };
+async function loadRecentEmails(range) {
+    lastRecentRange = range;
+    const box = document.getElementById('recent-results');
+    const sum = document.getElementById('recent-summary');
+    if (!box || !sum)
+        return;
+    box.innerHTML = '<p class="text-muted">Loading…</p>';
+    sum.innerHTML = '';
+    try {
+        const res = await fetch(`${API}/email/recent?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`);
+        if (!res.ok)
+            throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const rows = (data.message && data.message.rows) || [];
+        const summary = (data.message && data.message.summary) || {};
+        const capped = data.message && data.message.capped;
+        if (rows.length === 0) {
+            box.innerHTML = '<p class="text-muted">No sends in this window.</p>';
+            return;
+        }
+        sum.innerHTML = `${rows.length} sent` + Object.keys(summary).map(k => ` · ${esc(k)}: ${summary[k]}`).join('') + (capped ? ' · <span class="text-warning">(capped at 1000 — narrow the range or use CSV)</span>' : '');
+        box.innerHTML = `<table class="table table-dark table-striped table-hover admin-table"><thead><tr>
+            <th>Time</th><th>Recipient</th><th>Type</th><th>Subject</th><th>Status</th></tr></thead><tbody>${rows.map((r) => `<tr>
+                <td>${r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}</td>
+                <td>${esc(r.recipient)}</td>
+                <td>${esc(r.type)}</td>
+                <td>${esc(r.subject || '')}</td>
+                <td><span class="badge bg-${EVENT_COLORS[r.status] || 'secondary'}">${esc(r.status)}</span></td>
+            </tr>`).join('')}</tbody></table>`;
     }
     catch (err) {
         box.innerHTML = `<p class="text-danger">Error: ${esc(err.message)}</p>`;
@@ -455,6 +514,18 @@ document.addEventListener('DOMContentLoaded', () => {
             statusMsg(`Error deleting: ${err.message}`, 'danger');
         }
         currentUserId = null;
+    });
+    const emailPanel = document.getElementById('email-panel');
+    emailPanel?.addEventListener('click', (e) => {
+        const preset = e.target.closest('button[data-recent-preset]');
+        if (preset && emailPanel.contains(preset)) {
+            loadRecentEmails(recentRangeFromControls(parseInt(preset.getAttribute('data-recent-preset'), 10)));
+        }
+    });
+    document.getElementById('recent-load-btn')?.addEventListener('click', () => loadRecentEmails(recentRangeFromControls()));
+    document.getElementById('recent-csv-btn')?.addEventListener('click', () => {
+        const range = lastRecentRange.from ? lastRecentRange : recentRangeFromControls();
+        window.location.href = `${API}/email/recent?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}&format=csv`;
     });
 });
 //# sourceMappingURL=main.js.map
