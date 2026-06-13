@@ -28,6 +28,16 @@ function toCsv(rows) {
     return [cols.join(','), ...lines].join('\n');
 }
 
+function auditCsv(rows) {
+    const cols = ['createdAt', 'actorLabel', 'action', 'targetType', 'targetId', 'targetLabel', 'details'];
+    const esc = v => {
+        const s = v === undefined || v === null ? '' : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = rows.map(r => cols.map(c => esc(c === 'createdAt' && r[c] ? new Date(r[c]).toISOString() : r[c])).join(','));
+    return [cols.join(','), ...lines].join('\n');
+}
+
 function recordAudit(req, entry) {
     try {
         const AdminAudit = getAdminAudit();
@@ -174,15 +184,18 @@ const getStats = async (req, res) => {
         const UserProfile = getUserProfile(db);
         const NetProfile = getNetProfile(db);
         const LiveNet = getLiveNet(db);
+        const EmailEvent = getEmailEvent();
 
-        const [totalUsers, totalNets, liveNets, scheduledNets] = await Promise.all([
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+        const [totalUsers, totalNets, liveNets, scheduledNets, recentBounces] = await Promise.all([
             UserProfile.countDocuments({}),
             NetProfile.countDocuments({}),
             LiveNet.countDocuments({}),
-            NetProfile.countDocuments({ 'schedule.enabled': true })
+            NetProfile.countDocuments({ 'schedule.enabled': true }),
+            EmailEvent.countDocuments({ event: { $in: ['bounce', 'dropped', 'blocked'] }, timestamp: { $gte: sevenDaysAgo } })
         ]);
 
-        return { message: { totalUsers, totalNets, liveNetsCount: liveNets, scheduledNetsCount: scheduledNets } };
+        return { message: { totalUsers, totalNets, liveNetsCount: liveNets, scheduledNetsCount: scheduledNets, recentBounces } };
     }, 'admin: getStats');
 };
 
@@ -334,15 +347,43 @@ const recentEmails = async (req, res) => {
 
 /**
  * GET /api/admin/audit — Paginated audit log, newest first
+ * Optional query params:
+ *   actor   — case-insensitive substring match on actorLabel
+ *   action  — exact match on action
+ *   format  — 'csv' to download a CSV of the filtered set (up to 5000 rows)
  */
 const listAudit = async (req, res) => {
+    const AdminAudit = getAdminAudit();
+
+    // Build filter from optional query params
+    const filter = {};
+    if (req.query.actor) {
+        const escaped = req.query.actor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        filter.actorLabel = new RegExp(escaped, 'i');
+    }
+    if (req.query.action) {
+        filter.action = req.query.action;
+    }
+
+    // CSV export branch — bypass handleRequest, stream directly
+    if (req.query.format === 'csv') {
+        try {
+            const entries = await AdminAudit.find(filter).sort({ createdAt: -1 }).limit(5000).lean();
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', 'attachment; filename="admin-audit.csv"');
+            return res.send(auditCsv(entries));
+        } catch (err) {
+            logger.error(`listAudit CSV error: ${err.message}`);
+            return res.status(500).json({ error: 'failed to export audit log' });
+        }
+    }
+
     handleRequest(res, async () => {
-        const AdminAudit = getAdminAudit();
         const page = Math.max(1, parseInt(req.query.page, 10) || 1);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
         const [entries, total] = await Promise.all([
-            AdminAudit.find({}).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
-            AdminAudit.countDocuments({})
+            AdminAudit.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+            AdminAudit.countDocuments(filter)
         ]);
         return { message: { entries, total, page, limit } };
     }, 'admin: listAudit');
