@@ -83,7 +83,7 @@ const netProfileDetails = async (req, res) => {
 const netProfileUpdate = async (req, res) => {
     const id = req.params.id;
 
-    logger.debug(req.body);
+    logger.debug('netProfileUpdate: editing ' + req.params.id);
 
     try {
         const { confirmed, npresult } = await netOwnerCheck({ req });
@@ -197,8 +197,6 @@ const netProfileAddNetOwner = async (req, res) => {
 };
 
 const netProfileCreatePost = async (req, res) => {
-    console.debug(req.body);
-
     const { title, frequency, mode, restrictedSigReports, autoIn, modeDetails, notes, schedule } = req.body;
 
     try {

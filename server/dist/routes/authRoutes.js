@@ -93,7 +93,7 @@ const magicLogin = new MagicLoginStrategy({
         ).then(currentUser => {
             if (currentUser) {
                 //already have the user
-                logger.debug('Magic Login Auth-return user found: ', currentUser);
+                logger.debug('Magic Login Auth-return: user ' + (currentUser.callSign || currentUser.id));
                 if (currentUser.locked) {
                     logger.error(`Account locked for ${currentUser.email}`);
 
@@ -194,7 +194,7 @@ if (googleAuthEnabled) {
             ).then(currentUser => {
                 if (currentUser) {
                     //already have the user
-                    logger.debug('Google Auth-return user found: ', currentUser);
+                    logger.debug('Google Auth-return: user ' + (currentUser.callSign || currentUser.id));
 
                     if (currentUser.locked) {
                         logger.error(`Account locked for ${currentUser.email}`);

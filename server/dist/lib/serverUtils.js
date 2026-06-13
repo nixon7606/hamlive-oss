@@ -343,7 +343,7 @@ const qrzLookup = async (callSign, flexOpts, db = mongoose.connection) => {
         return { result: null, atQuota: false };
     }
 
-    qrzSessionKey && logger.info(`qrzLookup(${callSign}): using cached session: ${JSON.stringify(qrzSessionKey)}`);
+    qrzSessionKey && logger.debug(`qrzLookup(${callSign}): using cached session: ${String(qrzSessionKey).slice(0, 6)}…`);
 
     const { qrzSessionReqTimeoutMs, qrzDataReqTimeoutMs, qrzReqQuota } = flexOpts;
 
@@ -422,7 +422,7 @@ const qrzLookup = async (callSign, flexOpts, db = mongoose.connection) => {
 
             if (Number.isInteger(session?.Count)) {
                 if (session.Count < qrzReqQuota) {
-                    logger.info(`qrzLookup(${callSign}): QRZ service provided session: ${JSON.stringify(session.Key)}`);
+                    logger.debug(`qrzLookup(${callSign}): QRZ service provided session: ${String(session.Key).slice(0, 6)}…`);
                     return (qrzSessionKey = session.Key);
                 } else {
                     logger.error(
