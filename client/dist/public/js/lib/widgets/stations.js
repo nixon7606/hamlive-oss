@@ -3,6 +3,11 @@ import { UserAgentPersistentPreferences, getIconSvg, schedule, SchedulingMethod 
 import { LiveNetElement, StationTableMember } from './base.js';
 const logger = createLogger('lib/widgets/stations.ts');
 const prefs = new UserAgentPersistentPreferences();
+function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+}
 export class AvatarCell extends StationTableMember {
     defaultPhoto = '/img/marconi_88x96.jpg';
     get photoUrl() {
@@ -155,7 +160,7 @@ export class CallSignCell extends StationTableMember {
         }
         this.defaultElement.innerHTML = `
             <span class="inline-icon">
-                ${this.callSign} ${icon && getIconSvg(icon)}
+                ${escapeHtml(this.callSign)} ${icon && getIconSvg(icon)}
             </span>
         `;
         this.defaultElementCursorisPointer = Boolean(this.store?.stations.iAmCheckedIn && this.store?.stations.iAmAdmin && this.station?.checkedState);

@@ -6,7 +6,7 @@ let currentEmailRecipient = '';
 function statusMsg(text, type = 'info') {
     const el = document.getElementById('admin-status');
     if (el) {
-        el.innerHTML = `<span class="text-${type}">${text}</span>`;
+        el.innerHTML = `<span class="text-${type}">${esc(text)}</span>`;
         setTimeout(() => { el.innerHTML = ''; }, 5000);
     }
 }

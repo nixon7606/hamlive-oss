@@ -16,9 +16,10 @@ let netsCache: any[] = [];
 let currentEmailRecipient = '';
 
 function statusMsg(text: string, type: string = 'info') {
+    // NOTE: `type` must always be a hardcoded literal (e.g. 'success', 'danger') — never user data.
     const el = document.getElementById('admin-status');
     if (el) {
-        el.innerHTML = `<span class="text-${type}">${text}</span>`;
+        el.innerHTML = `<span class="text-${type}">${esc(text)}</span>`;
         setTimeout(() => { el.innerHTML = ''; }, 5000);
     }
 }
@@ -367,7 +368,7 @@ function confirmNetDelete(id: string, title: string) {
         const res = await fetch(`${API}/nets/${currentNetId}`, { method: 'DELETE' });
         if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Delete failed'); }
         bootstrap.Modal.getInstance(document.getElementById('deleteNetModal')!)?.hide();
-        statusMsg(`Net "${currentNetTitle}" deleted`, 'success');
+        statusMsg(`Net "${currentNetTitle}" deleted`, 'success'); // statusMsg() escapes its text
         loadNets();
         loadStats();
     } catch (err) {
