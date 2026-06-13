@@ -14,6 +14,7 @@ const { handleRequest } = require('../lib/responseUtils');
 const { logger } = require('../lib/logger');
 const mongoose = require('mongoose');
 const { sendMagicSignInLink } = require('../routes/authRoutes');
+const { getSuppressions, removeSuppression } = require('../lib/sendgridSuppression');
 
 /**
  * GET /api/admin/users — List all users
@@ -176,7 +177,8 @@ const listEmailActivity = async (req, res) => {
         const logs = await EmailLog.find({ recipient: rx }).sort({ createdAt: -1 }).limit(100).lean();
         const batchIds = logs.map(l => l.batchId).filter(Boolean);
         const events = await EmailEvent.find({ batchId: { $in: batchIds } }).sort({ timestamp: 1 }).lean();
-        return { message: { logs, events } };
+        const suppressions = await getSuppressions(recipient);
+        return { message: { logs, events, suppressions } };
     }, 'admin: listEmailActivity');
 };
 
@@ -193,4 +195,20 @@ const resendSignInLink = async (req, res) => {
     }, 'admin: resendSignInLink');
 };
 
-module.exports = { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity, resendSignInLink };
+/**
+ * POST /api/admin/email/unsuppress { email, list } — remove a suppression, then resend
+ */
+const unsuppressEmail = async (req, res) => {
+    const email = (req.body && req.body.email || '').trim();
+    const list = req.body && req.body.list;
+    if (!email || !list) return res.status(400).json({ error: 'email and list are required' });
+    handleRequest(res, async () => {
+        await removeSuppression(email, list);
+        await sendMagicSignInLink(email);
+        logger.info(`admin removed ${list} suppression for ${email} and resent link`);
+        return { message: { removed: true } };
+    }, 'admin: unsuppressEmail');
+};
+
+module.exports = { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity, resendSignInLink, unsuppressEmail };
+
