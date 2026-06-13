@@ -18,6 +18,12 @@ export const serverInfo: Readonly<ServerInfo> = (() => {
 
     const si = {
         ...dataset,
+        // nodeEnv and logLevel are intentionally NOT exposed in the server-info
+        // <meta> (not a client concern; dropped for hardening). Default them to
+        // safe values here so their absence — or an empty LOG_LEVEL — can never
+        // fail validation and take down all page JS (which breaks login, etc.).
+        nodeEnv: dataset['nodeEnv'] === 'development' ? 'development' : 'production',
+        logLevel: dataset['logLevel'] === 'debug' ? 'debug' : 'info',
         requestRateFactor: parseInt(dataset['requestRateFactor'] || '5'),
         httpClientTimeout: parseInt(dataset['httpClientTimeout'] || '2000'),
         awayInMs: parseInt(dataset['awayInMs'] || '20000'),
