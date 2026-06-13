@@ -207,8 +207,11 @@ app.use(helmet({
         useDefaults: true,
         directives: {
             defaultSrc: ["'self'"],
-            // Disable upgrade-insecure-requests in dev (plain HTTP on localhost)
-            upgradeInsecureRequests: isDev ? null : undefined,
+            // Enable upgrade-insecure-requests in production; disable it in dev
+            // (plain HTTP on localhost). Must be [] (an enabled directive with no
+            // value) for the prod case — helmet rejects `undefined` as an invalid
+            // directive value and throws at startup, only on the production path.
+            upgradeInsecureRequests: isDev ? null : [],
             scriptSrc: [
                 "'self'",
                 (req, res) => `'nonce-${res.locals.cspNonce}'`,
