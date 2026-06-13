@@ -309,22 +309,27 @@ const recentEmails = async (req, res) => {
     if (isNaN(from.getTime()) || isNaN(to.getTime())) {
         return res.status(400).json({ error: 'invalid from/to date' });
     }
-    const EmailLog = getEmailLog();
-    const found = await EmailLog.find({ createdAt: { $gte: from, $lte: to } })
-        .sort({ createdAt: -1 }).limit(CAP + 1).lean();
-    const capped = found.length > CAP;
-    const rows = found.slice(0, CAP);
+    try {
+        const EmailLog = getEmailLog();
+        const found = await EmailLog.find({ createdAt: { $gte: from, $lte: to } })
+            .sort({ createdAt: -1 }).limit(CAP + 1).lean();
+        const capped = found.length > CAP;
+        const rows = found.slice(0, CAP);
 
-    if (req.query.format === 'csv') {
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', 'attachment; filename="email-sends.csv"');
-        return res.send(toCsv(rows));
+        if (req.query.format === 'csv') {
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', 'attachment; filename="email-sends.csv"');
+            return res.send(toCsv(rows));
+        }
+        handleRequest(res, async () => {
+            const summary = {};
+            for (const r of rows) summary[r.status] = (summary[r.status] || 0) + 1;
+            return { message: { rows, summary, capped, count: rows.length } };
+        }, 'admin: recentEmails');
+    } catch (err) {
+        logger.error(`recentEmails DB error: ${err.message}`);
+        return res.status(500).json({ error: 'failed to load recent emails' });
     }
-    handleRequest(res, async () => {
-        const summary = {};
-        for (const r of rows) summary[r.status] = (summary[r.status] || 0) + 1;
-        return { message: { rows, summary, capped, count: rows.length } };
-    }, 'admin: recentEmails');
 };
 
 /**

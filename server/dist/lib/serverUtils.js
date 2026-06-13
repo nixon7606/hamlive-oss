@@ -63,8 +63,9 @@ const fetchChatLog = async ({ NPID, since }) => {
     return chatLog;
 };
 
-const sanitizeNotes = notes =>
-    sanitizeHtml(
+const sanitizeNotes = (notes = '') => {
+    if (typeof notes !== 'string') return '';
+    return sanitizeHtml(
         notes
             .replace(/\r?\n|\r/g, '')
             .replace(/"/g, '&#34;')
@@ -73,6 +74,7 @@ const sanitizeNotes = notes =>
             allowedTags: ['li', 'p', 'ul', 'b', 'br', 'em', 'i']
         }
     ) || '';
+};
 
 const getFlexOptionsByUser = async ({ user, cachedResponse = false, db = mongoose.connection }) => {
     let gOpts;

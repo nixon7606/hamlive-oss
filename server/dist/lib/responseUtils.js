@@ -106,9 +106,16 @@ const handleRequest = async (res, callback, successMessage) => {
         handleResponse.sendResponse(res, 'OK', result);
     }
     catch (err) {
-        const errorMessage = err instanceof Error ? err.message : typeof err === 'string' ? err : 'An unknown error occurred';
-        handleResponse.sendError(res, 'INTERNAL_SERVER_ERROR', errorMessage);
-        logger_js_1.logger.error(err instanceof Error ? err.stack : errorMessage);
+        const rawMessage = err instanceof Error ? err.message : typeof err === 'string' ? err : 'An unknown error occurred';
+        const isInternal = err != null &&
+            typeof err === 'object' &&
+            ((['MongoServerError', 'MongoError', 'ValidationError', 'CastError', 'MongooseError'].includes(err['name']) ||
+                typeof err['code'] === 'number' ||
+                (typeof err['code'] === 'string' &&
+                    /^E\d|11000/.test(String(err['code'])))));
+        const clientMsg = process.env['NODE_ENV'] === 'production' && isInternal ? 'An internal error occurred.' : rawMessage;
+        logger_js_1.logger.error(err instanceof Error ? err.stack : rawMessage);
+        handleResponse.sendError(res, 'INTERNAL_SERVER_ERROR', clientMsg);
     }
 };
 exports.handleRequest = handleRequest;

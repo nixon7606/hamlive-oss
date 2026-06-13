@@ -1,14 +1,17 @@
 /* hamlive-oss — MIT License. See LICENSE. */
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
 const { conf } = require('../lib/configLib');
 const { verifySignature } = require('../lib/sendgridWebhook');
 const { getEmailEvent } = require('../models/emailEvent');
 const { getEmailLog } = require('../models/emailLog');
 const { logger } = require('../lib/logger');
 
+const webhookLimiter = rateLimit({ windowMs: 60 * 1000, max: 240, standardHeaders: true, legacyHeaders: false });
+
 // Mounted with express.raw() so req.body is a Buffer (needed for signature check).
-router.post('/', async (req, res) => {
+router.post('/', webhookLimiter, async (req, res) => {
     const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
     const sig = req.get('X-Twilio-Email-Event-Webhook-Signature');
     const ts = req.get('X-Twilio-Email-Event-Webhook-Timestamp');
@@ -16,6 +19,10 @@ router.post('/', async (req, res) => {
 
     if (!verifySignature(raw, sig, ts, key)) {
         return res.status(401).json({ error: 'invalid signature' });
+    }
+
+    if (Math.abs(Math.floor(Date.now() / 1000) - parseInt(ts, 10)) > 600) {
+        return res.status(401).json({ error: 'stale timestamp' });
     }
 
     let events = [];
