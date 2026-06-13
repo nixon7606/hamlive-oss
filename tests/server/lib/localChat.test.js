@@ -90,6 +90,7 @@ jest.mock('../../../server/dist/lib/logger', () => ({
 }));
 
 const localChat = require('../../../server/dist/lib/localChat');
+const { chatBroadcaster } = require('../../../server/dist/lib/sseChat');
 
 let npid, userId, ncsId;
 
@@ -247,6 +248,26 @@ describe('toggleReaction()', () => {
   test('rejects invalid reaction type', async () => {
     const msg = await localChat.sendMessage({ npid, user: mockMember(), text: 'Test' });
     await expect(localChat.toggleReaction({ npid, messageId: msg.id, user: mockMember(), reactionType: 'invalid' })).rejects.toThrow('invalid reaction type');
+  });
+
+  // Regression: toggleReaction reads the message via a non-lean findById, so
+  // msg.reactions is a Mongoose Map. buildMessagePayload used Object.entries(),
+  // which returns [] for a Map — the broadcast carried empty reactions and the
+  // like never appeared live for other clients.
+  test('broadcasts the reaction (Map serialized, not dropped)', async () => {
+    const spy = jest.spyOn(chatBroadcaster, 'broadcastReaction').mockImplementation(() => {});
+    try {
+      const member = mockMember();
+      const msg = await localChat.sendMessage({ npid, user: member, text: 'Like this' });
+      await localChat.toggleReaction({ npid, messageId: msg.id, user: member, reactionType: 'like' });
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      const [, data] = spy.mock.calls[0];
+      expect(data.reactions.like).toBeDefined();
+      expect(data.reactions.like).toContain(member._id.toString());
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

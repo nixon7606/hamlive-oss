@@ -54,7 +54,15 @@ function getModels(db) {
 async function buildMessagePayload(msg, parentCache) {
     const reactions = {};
     if (msg.reactions && typeof msg.reactions === 'object') {
-        for (const [type, users] of Object.entries(msg.reactions)) {
+        // msg.reactions is a Mongoose Map on a hydrated doc (e.g. from
+        // toggleReaction's non-lean findById) but a plain object on a .lean()
+        // query (e.g. getMessages). Object.entries() returns [] for a Map, which
+        // silently dropped reactions from the broadcast — likes never appeared
+        // live. Use the Map's own iterator when it is a Map.
+        const entries = msg.reactions instanceof Map
+            ? msg.reactions.entries()
+            : Object.entries(msg.reactions);
+        for (const [type, users] of entries) {
             if (Array.isArray(users)) {
                 reactions[type] = users.map(u => u.toString ? u.toString() : u);
             }
