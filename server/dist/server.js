@@ -9,6 +9,7 @@ const app = express();
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { logger, httpLogger } = require('./lib/logger');
 const {
     addServerInfo,
@@ -187,10 +188,20 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '../../uploads'), { maxAge: 3600000 }));
 app.use(express.static(path.join(__dirname, '../../client/dist/public'), { maxAge: 7200000 }));
 
+// Per-request CSP nonce. A fresh random nonce is generated for every response
+// and exposed to EJS as `cspNonce`; each inline <script> stamps it via
+// nonce="<%= cspNonce %>". This lets us drop 'unsafe-inline' from script-src
+// (see scriptSrc below) — only our own inline scripts run, not injected ones.
+app.use((req, res, next) => {
+    res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+    next();
+});
+
 // Security headers via helmet. CSP allows the CDNs the app needs.
-// 'unsafe-inline' on script-src is required for the importmap JSON block
-// and Bootstrap tooltip inline init — removing it would require refactoring
-// those into external files. This is tracked as a future improvement.
+// script-src uses a per-request nonce (no 'unsafe-inline'): the only inline
+// scripts that run are ours, which carry nonce="<%= cspNonce %>". styleSrc
+// keeps 'unsafe-inline' — inline style attributes (Bootstrap, EJS) are not
+// practical to nonce.
 app.use(helmet({
     contentSecurityPolicy: {
         useDefaults: true,
@@ -200,7 +211,7 @@ app.use(helmet({
             upgradeInsecureRequests: isDev ? null : undefined,
             scriptSrc: [
                 "'self'",
-                "'unsafe-inline'",
+                (req, res) => `'nonce-${res.locals.cspNonce}'`,
                 'cdn.jsdelivr.net',
                 'www.googletagmanager.com'
             ],

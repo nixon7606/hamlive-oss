@@ -3,9 +3,9 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<script async src="/js/vendor/es-module-shims.js"></script>
+<script async src="/js/vendor/es-module-shims.js" nonce="<%= cspNonce %>"></script>
 <!-- immer vendored from: https://cdn.skypack.dev/-/immer@v10.1.1-hYAiji4iGQjFyGWIGnvY/dist=es2020,mode=imports,min/optimized/immer.js -->
-<script type="importmap">
+<script type="importmap" nonce="<%= cspNonce %>">
   {
         "imports": {
             "#@client/": "/js/",
