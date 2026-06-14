@@ -182,6 +182,20 @@ export class LocalChatConnection {
             return false;
         }
     }
+    async banFromMessage(messageId, reason, expiresAt) {
+        try {
+            const res = await fetch(`/api/chat/${this.npid}/message/${messageId}/ban`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason, expiresAt })
+            });
+            return res.ok;
+        }
+        catch (err) {
+            logger.error('Failed to ban from message:', err);
+            return false;
+        }
+    }
     async getMessages(since, limit = 100) {
         try {
             let url = `/api/chat/${this.npid}/messages?limit=${limit}`;

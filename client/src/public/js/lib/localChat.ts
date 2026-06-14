@@ -269,6 +269,23 @@ export class LocalChatConnection {
     }
 
     /**
+     * Ban the author of a message from this net's chat (NCS only).
+     */
+    async banFromMessage(messageId: string, reason: string, expiresAt: string | null): Promise<boolean> {
+        try {
+            const res = await fetch(`/api/chat/${this.npid}/message/${messageId}/ban`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason, expiresAt })
+            });
+            return res.ok;
+        } catch (err) {
+            logger.error('Failed to ban from message:', err);
+            return false;
+        }
+    }
+
+    /**
      * Fetch messages.
      */
     async getMessages(since?: string, limit = 100): Promise<LocalChatMessage[]> {

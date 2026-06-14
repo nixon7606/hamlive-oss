@@ -1,6 +1,6 @@
 import { createLogger } from '#@client/lib/logger.js';
 import { serverInfo } from '#@client/lib/serverInfo.js';
-import { getNpid, generateUUID, UserAgentPersistentPreferences } from '#@client/lib/clientUtils.js';
+import { getNpid, generateUUID, UserAgentPersistentPreferences, expiryFromPreset } from '#@client/lib/clientUtils.js';
 import { LocalChatConnection } from '#@client/lib/localChat.js';
 const logger = createLogger('lib/chat.ts');
 const prefs = new UserAgentPersistentPreferences();
@@ -379,6 +379,8 @@ export class ChatWidget extends HTMLElement {
         const msgEl = document.createElement('div');
         msgEl.className = 'chat-message';
         msgEl.dataset['messageId'] = msg.id;
+        msgEl.dataset['userId'] = msg.userId || '';
+        msgEl.dataset['callsign'] = msg.callSign || '';
         let messageContent = '';
         if (msg.text) {
             messageContent += `<span class="chat-text">${this.linkifyText(this.escapeHtml(msg.text))}</span>`;
@@ -396,6 +398,9 @@ export class ChatWidget extends HTMLElement {
         const reactionsHtml = this.renderReactions(msg);
         const moderateBtn = this.canModerate()
             ? `<button class="chat-action-btn chat-mod-btn chat-delete-btn" title="Delete message"><i class="bi bi-trash"></i></button>`
+                + (msg.userId && msg.userId !== this.currentUserId
+                    ? `<button class="chat-action-btn chat-mod-btn chat-ban-btn" title="Ban author"><i class="bi bi-slash-circle"></i></button>`
+                    : '')
             : '';
         msgEl.innerHTML = `
             <div class="chat-message-actions">
@@ -607,6 +612,12 @@ export class ChatWidget extends HTMLElement {
             if (confirm('Delete this message?')) {
                 void this.deleteMessage(messageId);
             }
+        });
+        const banBtn = msgEl.querySelector('.chat-ban-btn');
+        banBtn?.addEventListener('click', e => {
+            e.stopPropagation();
+            const callSign = msgEl.querySelector('.chat-username')?.textContent || msgEl.dataset['callsign'] || 'this user';
+            this.showBanDialog(messageId, callSign);
         });
         editBtn?.addEventListener('click', e => {
             e.stopPropagation();
@@ -1080,9 +1091,25 @@ export class ChatWidget extends HTMLElement {
                     }
                 });
                 actionsContainer.appendChild(deleteBtn);
+                const msgUserId = msgEl.dataset['userId'];
+                if (msgUserId && msgUserId !== this.currentUserId && !actionsContainer.querySelector('.chat-ban-btn')) {
+                    const banBtn = document.createElement('button');
+                    banBtn.className = 'chat-action-btn chat-mod-btn chat-ban-btn';
+                    banBtn.title = 'Ban author';
+                    banBtn.innerHTML = '<i class="bi bi-slash-circle"></i>';
+                    banBtn.addEventListener('click', e => {
+                        e.stopPropagation();
+                        const messageId = msgEl.dataset['messageId'];
+                        const callSign = msgEl.querySelector('.chat-username')?.textContent || msgEl.dataset['callsign'] || 'this user';
+                        if (messageId)
+                            this.showBanDialog(messageId, callSign);
+                    });
+                    actionsContainer.appendChild(banBtn);
+                }
             }
             else if (!canMod && existingDeleteBtn) {
                 existingDeleteBtn.remove();
+                actionsContainer.querySelector('.chat-ban-btn')?.remove();
             }
         });
     }
@@ -1257,6 +1284,57 @@ export class ChatWidget extends HTMLElement {
                 overlay.remove();
         }, { once: true });
         document.body.appendChild(overlay);
+    }
+    showBanDialog(messageId, callSign) {
+        const overlay = document.createElement('div');
+        overlay.className = 'chat-ban-dialog';
+        overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; display: flex; align-items: center; justify-content: center;';
+        overlay.innerHTML = `
+            <div style="background: var(--hl-dark, #1f2733); color: var(--hl-light); padding: 16px; border-radius: 6px; width: 320px; max-width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+                <div style="font-weight: 600; margin-bottom: 8px;">Ban ${this.escapeHtml(callSign)} from chat</div>
+                <label style="font-size: 12px;">Reason</label>
+                <input class="ban-reason" type="text" value="Disruptive behavior" maxlength="200"
+                    style="width: 100%; margin: 4px 0 10px; padding: 6px; border-radius: 4px; border: 1px solid #444; background:#11161d; color:#fff;">
+                <label style="font-size: 12px;">Duration</label>
+                <select class="ban-duration" style="width: 100%; margin: 4px 0 8px; padding: 6px; border-radius: 4px;">
+                    <option value="permanent">Permanent</option>
+                    <option value="1h">1 hour</option>
+                    <option value="24h">24 hours</option>
+                    <option value="7d">7 days</option>
+                    <option value="custom">Custom…</option>
+                </select>
+                <input class="ban-custom" type="datetime-local" style="width: 100%; margin-bottom: 10px; padding: 6px; display: none;">
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button class="ban-cancel" style="padding: 6px 12px;">Cancel</button>
+                    <button class="ban-confirm" style="padding: 6px 12px; background:#dc3545; color:#fff; border:none; border-radius:4px;">Ban</button>
+                </div>
+            </div>`;
+        const close = () => overlay.remove();
+        const durationSel = overlay.querySelector('.ban-duration');
+        const customInput = overlay.querySelector('.ban-custom');
+        durationSel.addEventListener('change', () => {
+            customInput.style.display = durationSel.value === 'custom' ? 'block' : 'none';
+        });
+        overlay.querySelector('.ban-cancel')?.addEventListener('click', close);
+        overlay.addEventListener('click', e => { if (e.target === overlay)
+            close(); });
+        overlay.querySelector('.ban-confirm')?.addEventListener('click', () => {
+            const reason = overlay.querySelector('.ban-reason').value.trim() || 'No reason given';
+            const expiresAt = expiryFromPreset(durationSel.value, customInput.value);
+            close();
+            void this.banAuthor(messageId, reason, expiresAt);
+        });
+        document.body.appendChild(overlay);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape')
+                close();
+        }, { once: true });
+    }
+    async banAuthor(messageId, reason, expiresAt) {
+        if (!this.connection)
+            return;
+        const ok = await this.connection.banFromMessage(messageId, reason, expiresAt);
+        this.showChatNotice(ok ? 'User banned from chat.' : 'Failed to ban user.');
     }
     handleSlashAutocomplete() {
         const textInput = this.querySelector('.chat-text-input');

@@ -851,3 +851,23 @@ export const slugifyFilename = (filename: string): string => {
 
     return `${slugifiedName}${extension}`;
 };
+
+/**
+ * Convert a ban-duration preset into an ISO expiry string (or null = permanent).
+ * preset: 'permanent' | '1h' | '24h' | '7d' | 'custom'
+ * customIso: a datetime-local value when preset === 'custom'
+ */
+export function expiryFromPreset(preset: string, customIso?: string): string | null {
+    const now = Date.now();
+    switch (preset) {
+        case '1h': return new Date(now + 3600_000).toISOString();
+        case '24h': return new Date(now + 24 * 3600_000).toISOString();
+        case '7d': return new Date(now + 7 * 24 * 3600_000).toISOString();
+        case 'custom': {
+            if (!customIso) return null;
+            const d = new Date(customIso);
+            return isNaN(d.getTime()) ? null : d.toISOString();
+        }
+        default: return null; // permanent
+    }
+}

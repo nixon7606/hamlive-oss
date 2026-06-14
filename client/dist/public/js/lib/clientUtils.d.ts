@@ -138,5 +138,6 @@ export interface FileParts {
 }
 export declare const getFileParts: (filename: string) => FileParts;
 export declare const slugifyFilename: (filename: string) => string;
+export declare function expiryFromPreset(preset: string, customIso?: string): string | null;
 export {};
 //# sourceMappingURL=clientUtils.d.ts.map

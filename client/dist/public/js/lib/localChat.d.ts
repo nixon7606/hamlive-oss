@@ -53,6 +53,7 @@ export declare class LocalChatConnection {
     sendTyping(isTyping: boolean): Promise<void>;
     editMessage(messageId: string, newText: string): Promise<boolean>;
     toggleReaction(messageId: string, reactionType: string): Promise<boolean>;
+    banFromMessage(messageId: string, reason: string, expiresAt: string | null): Promise<boolean>;
     getMessages(since?: string, limit?: number): Promise<LocalChatMessage[]>;
     getOlderMessages(before: string, limit?: number): Promise<LocalChatMessage[]>;
     getReplies(parentMessageId: string, limit?: number): Promise<LocalChatMessage[]>;

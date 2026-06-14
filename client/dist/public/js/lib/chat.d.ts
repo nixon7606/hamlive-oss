@@ -77,6 +77,8 @@ export declare class ChatWidget extends HTMLElement implements StoreSubscriber {
     private setupScrollListener;
     private updateLatestButton;
     private showLightbox;
+    private showBanDialog;
+    private banAuthor;
     private handleSlashAutocomplete;
     private disconnect;
     private linkifyText;
