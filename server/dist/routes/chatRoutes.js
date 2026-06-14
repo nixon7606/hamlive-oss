@@ -23,6 +23,7 @@ const {
     getBannedUsers,
     broadcastTyping,
     getThreadMessages,
+    banFromMessage,
     chatBroadcaster
 } = require('../lib/localChat');
 const { logger } = require('../lib/logger');
@@ -190,6 +191,32 @@ router.delete('/:id/message/:messageId', generalLimiter, authCheck(REQ_CALLSIGN)
         });
         return { message: result };
     }, `deleteMessage(): ${req.user?.callSign} deleted ${req.params.messageId}`);
+});
+
+// ============================================================================
+// POST /api/chat/:id/message/:messageId/ban — Ban the message author (NCS only)
+// ============================================================================
+router.post('/:id/message/:messageId/ban', generalLimiter, authCheck(REQ_CALLSIGN), (req, res) => {
+    handleRequest(res, async () => {
+        const npid = req.params.id;
+        const { messageId } = req.params;
+        if (!isNpid(npid)) throw new Error(`Invalid NPID: ${npid}`);
+        if (!messageId) throw new Error('Missing messageId');
+        if (!req.user || !req.user._id) throw new Error('Missing user object');
+        const { reason, expiresAt } = req.body || {};
+        const result = await banFromMessage({
+            npid,
+            messageId,
+            reason: typeof reason === 'string' ? reason.slice(0, 200) : 'No reason given',
+            expiresAt: expiresAt || null,
+            moderator: {
+                callSign: req.user.callSign || 'unknown',
+                userProfile: req.user._id,
+                userProfileId: req.user._id.toString()
+            }
+        });
+        return { message: { banned: result.callSign } };
+    }, `banFromMessage(): ${req.user?.callSign} banned author of ${req.params.messageId}`);
 });
 
 // ============================================================================

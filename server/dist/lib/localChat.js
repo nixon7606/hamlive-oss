@@ -446,6 +446,35 @@ async function banUser({ npid, userProfileId, callSign, reason, bannedBy, expire
 }
 
 /**
+ * Ban the author of a message from a net's chat (NCS only).
+ * Derives the target user from the message itself.
+ */
+async function banFromMessage({ npid, messageId, reason, expiresAt = null, moderator }) {
+    const { ChatMessage } = getModels();
+    const canModerate = await checkUserCanModerate(npid, moderator.userProfileId);
+    if (!canModerate) throw new Error('Insufficient permissions: only NCS can ban');
+
+    const msg = await ChatMessage.findById(messageId);
+    if (!msg) throw new Error('Message not found');
+    if (msg.netProfile.toString() !== npid.toString()) throw new Error('Message not in this net');
+    if (!msg.userProfile) throw new Error('Message author has no account');
+
+    const targetUserProfileId = msg.userProfile.toString();
+    if (targetUserProfileId === moderator.userProfileId.toString()) {
+        throw new Error('You cannot ban yourself');
+    }
+
+    return banUser({
+        npid,
+        userProfileId: targetUserProfileId,
+        callSign: msg.callSign || 'UNKNOWN',
+        reason: reason || 'No reason given',
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        bannedBy: { callSign: moderator.callSign, userProfile: moderator.userProfile }
+    });
+}
+
+/**
  * Unban a user from chat.
  */
 async function unbanUser({ npid, userProfileId, callSign, unbannedBy }) {
@@ -628,6 +657,7 @@ module.exports = {
     fetchChatHistory,
     checkIsBanned,
     banUser,
+    banFromMessage,
     unbanUser,
     getBannedUsers,
     broadcastTyping,

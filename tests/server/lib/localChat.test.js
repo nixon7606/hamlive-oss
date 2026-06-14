@@ -408,6 +408,47 @@ describe('Ban/Unban', () => {
   });
 });
 
+describe('banFromMessage()', () => {
+  test('NCS bans the author of a message', async () => {
+    const msg = await localChat.sendMessage({ npid, user: mockMember(), text: 'spammy' });
+    const result = await localChat.banFromMessage({
+      npid, messageId: msg.id, reason: 'Disruptive',
+      moderator: { callSign: 'NCS001', userProfile: ncsId, userProfileId: ncsId }
+    });
+    expect(result.callSign).toBe('KD5SPR');
+    const banned = await localChat.checkIsBanned({ npid, userProfileId: userId });
+    expect(banned).not.toBeNull();
+    expect(banned.reason).toBe('Disruptive');
+  });
+
+  test('non-moderator cannot ban', async () => {
+    const msg = await localChat.sendMessage({ npid, user: mockMember(), text: 'hi' });
+    await expect(localChat.banFromMessage({
+      npid, messageId: msg.id, reason: 'x',
+      moderator: { callSign: 'KD5SPR', userProfile: userId, userProfileId: userId }
+    })).rejects.toThrow(/only NCS|permission/i);
+  });
+
+  test('cannot ban yourself', async () => {
+    const msg = await localChat.sendMessage({ npid, user: mockNcs(), text: 'mine' });
+    await expect(localChat.banFromMessage({
+      npid, messageId: msg.id, reason: 'x',
+      moderator: { callSign: 'NCS001', userProfile: ncsId, userProfileId: ncsId }
+    })).rejects.toThrow(/yourself/i);
+  });
+
+  test('passes expiresAt through to the ban', async () => {
+    const msg = await localChat.sendMessage({ npid, user: mockMember(), text: 'spammy' });
+    const when = new Date(Date.now() + 3600_000).toISOString();
+    await localChat.banFromMessage({
+      npid, messageId: msg.id, reason: 'Disruptive', expiresAt: when,
+      moderator: { callSign: 'NCS001', userProfile: ncsId, userProfileId: ncsId }
+    });
+    const banned = await localChat.checkIsBanned({ npid, userProfileId: userId });
+    expect(new Date(banned.expiresAt).getTime()).toBe(new Date(when).getTime());
+  });
+});
+
 describe('broadcastTyping()', () => {
   test('broadcasts typing event without throwing', () => {
     expect(() => localChat.broadcastTyping({ npid, callSign: 'KD5SPR', isTyping: true })).not.toThrow();
