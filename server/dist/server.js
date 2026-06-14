@@ -237,7 +237,10 @@ app.use(helmet({
             imgSrc: [
                 "'self'",
                 'data:',
-                '*.gravatar.com'
+                '*.gravatar.com',
+                // Google sign-in profile photos (lh3/lh4/...googleusercontent.com);
+                // without this, Google users' avatars are blocked by CSP and render broken.
+                '*.googleusercontent.com'
             ],
             frameSrc: [
                 'www.youtube.com'
