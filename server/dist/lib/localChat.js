@@ -395,7 +395,8 @@ async function checkIsBanned({ npid, userProfileId }) {
     const activeBan = await ChatBan.findOne({
         netProfile: npid,
         userProfile: userProfileId,
-        unbannedAt: null
+        unbannedAt: null,
+        $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }]
     }).lean();
     return activeBan || null;
 }
@@ -486,15 +487,17 @@ async function getBannedUsers(npid) {
     const { ChatBan } = getModels();
     const bans = await ChatBan.find({
         netProfile: npid,
-        unbannedAt: null
+        unbannedAt: null,
+        $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }]
     }).sort({ createdAt: -1 }).lean();
-    
+
     return bans.map(b => ({
         id: b._id.toString(),
         callSign: b.callSign,
         reason: b.reason,
         bannedBy: b.bannedBy.callSign,
-        bannedAt: b.createdAt.toISOString()
+        bannedAt: b.createdAt.toISOString(),
+        expiresAt: b.expiresAt ? b.expiresAt.toISOString() : null
     }));
 }
 

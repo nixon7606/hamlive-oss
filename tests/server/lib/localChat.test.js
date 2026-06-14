@@ -376,6 +376,36 @@ describe('Ban/Unban', () => {
     expect(bans.length).toBe(1);
     expect(bans[0].callSign).toBe('KD5SPR');
   });
+
+  test('checkIsBanned ignores an expired ban', async () => {
+    await localChat.banUser({
+      npid, userProfileId: userId, callSign: 'KD5SPR', reason: 'Spam',
+      bannedBy: { callSign: 'NCS001', userProfile: ncsId },
+      expiresAt: new Date(Date.now() - 60_000) // expired 1 min ago
+    });
+    const result = await localChat.checkIsBanned({ npid, userProfileId: userId });
+    expect(result).toBeNull();
+  });
+
+  test('checkIsBanned honors a future-dated ban', async () => {
+    await localChat.banUser({
+      npid, userProfileId: userId, callSign: 'KD5SPR', reason: 'Spam',
+      bannedBy: { callSign: 'NCS001', userProfile: ncsId },
+      expiresAt: new Date(Date.now() + 60_000) // expires in 1 min
+    });
+    const result = await localChat.checkIsBanned({ npid, userProfileId: userId });
+    expect(result).not.toBeNull();
+  });
+
+  test('getBannedUsers excludes expired bans', async () => {
+    await localChat.banUser({
+      npid, userProfileId: userId, callSign: 'KD5SPR', reason: 'Spam',
+      bannedBy: { callSign: 'NCS001', userProfile: ncsId },
+      expiresAt: new Date(Date.now() - 60_000)
+    });
+    const bans = await localChat.getBannedUsers(npid);
+    expect(bans).toHaveLength(0);
+  });
 });
 
 describe('broadcastTyping()', () => {
