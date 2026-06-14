@@ -11,6 +11,7 @@ const GoogleStrategy = require('passport-google-oauth20');
 const MagicLoginStrategy = require('passport-magic-login').default;
 const gravatar = require('gravatar');
 const { EmailBase, emailEnabled } = require('../lib/userNotification');
+const { isCurrentlyLocked } = require('../lib/serverUtils');
 
 // Rate limit magic-link requests per IP to prevent email-bombing.
 // The cooldown in EmailBase.sendMailToAddrs() catches per-recipient abuse
@@ -94,7 +95,7 @@ const magicLogin = new MagicLoginStrategy({
             if (currentUser) {
                 //already have the user
                 logger.debug('Magic Login Auth-return: user ' + (currentUser.callSign || currentUser.id));
-                if (currentUser.locked) {
+                if (isCurrentlyLocked(currentUser)) {
                     logger.error(`Account locked for ${currentUser.email}`);
 
                     done(null, false);
@@ -196,7 +197,7 @@ if (googleAuthEnabled) {
                     //already have the user
                     logger.debug('Google Auth-return: user ' + (currentUser.callSign || currentUser.id));
 
-                    if (currentUser.locked) {
+                    if (isCurrentlyLocked(currentUser)) {
                         logger.error(`Account locked for ${currentUser.email}`);
 
                         done(null, false);

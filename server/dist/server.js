@@ -17,7 +17,8 @@ const {
     flexOpts,
     publicEndpoints,
     cookieSessionKeepAlive,
-    cookieSessionStubs
+    cookieSessionStubs,
+    isCurrentlyLocked
 } = require('./lib/serverUtils');
 const mongoose = require('mongoose');
 const authRoutes = require('./routes/authRoutes');
@@ -164,6 +165,10 @@ passport.serializeUser((user, done) => {
 });
 passport.deserializeUser((id, done) => {
     UserProfile.findById(id).then(user => {
+        if (isCurrentlyLocked(user)) {
+            // Account banned → drop the session immediately (takes effect next request).
+            return done(null, false);
+        }
         done(null, user);
     }).catch(err => {
         logger.error(`deserializeUser error for id ${id}: ${err.message}`);
