@@ -232,9 +232,12 @@ async function editMessage({ npid, messageId, user, newText }) {
     await msg.save();
 
     const payload = await buildMessagePayload(msg);
-    // Broadcast edit as a full message update
+    // Broadcast edit as a full message update. Must use broadcastUpdate (SSE
+    // 'chat-update' → client 'message.updated', updates in place); the generic
+    // broadcast() sends 'chat-message', which the client treats as a NEW message
+    // and appends — duplicating the message instead of editing it.
     try {
-        chatBroadcaster.broadcast(npid, { ...payload, _event: 'update' });
+        chatBroadcaster.broadcastUpdate(npid, payload);
     } catch (e) {
         logger.warn(`Chat: broadcastEdit failed for net ${npid}: ${e.message}`);
     }
