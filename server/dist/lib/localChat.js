@@ -404,14 +404,15 @@ async function checkIsBanned({ npid, userProfileId }) {
  * Ban a user from chat.
  * Returns the ban record.
  */
-async function banUser({ npid, userProfileId, callSign, reason, bannedBy }) {
+async function banUser({ npid, userProfileId, callSign, reason, bannedBy, expiresAt = null }) {
     const { ChatBan } = getModels();
-    
-    // Check for existing active ban
+
+    // Check for existing active ban (an expired prior ban does not block re-ban)
     const existing = await ChatBan.findOne({
         netProfile: npid,
         userProfile: userProfileId,
-        unbannedAt: null
+        unbannedAt: null,
+        $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }]
     });
     if (existing) {
         throw new Error(`banUser(): ${callSign} is already banned`);
@@ -422,6 +423,7 @@ async function banUser({ npid, userProfileId, callSign, reason, bannedBy }) {
         userProfile: userProfileId,
         callSign: callSign.toUpperCase(),
         reason: reason || 'No reason given',
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
         bannedBy: {
             callSign: bannedBy.callSign,
             userProfile: bannedBy.userProfile
@@ -451,7 +453,8 @@ async function unbanUser({ npid, userProfileId, callSign, unbannedBy }) {
     const ban = await ChatBan.findOne({
         netProfile: npid,
         userProfile: userProfileId,
-        unbannedAt: null
+        unbannedAt: null,
+        $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }]
     });
     if (!ban) {
         throw new Error(`unbanUser(): ${callSign} is not currently banned`);

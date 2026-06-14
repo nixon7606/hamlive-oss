@@ -50,7 +50,13 @@ const chatBanSchema = new Schema(
         unbannedBy: {
             callSign: { type: String },
             userProfile: { type: Schema.Types.ObjectId, ref: 'UserProfile' }
-        }
+        },
+        // Optional expiry — when set and in the past, the ban is inert (auto-lifts).
+        // null = permanent.
+        expiresAt: {
+            type: Date,
+            default: null
+        },
     },
     {
         timestamps: true // adds createdAt, updatedAt

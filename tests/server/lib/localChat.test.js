@@ -46,7 +46,8 @@ const testChatBanSchema = new Schema({
   unbannedBy: {
     callSign: { type: String },
     userProfile: { type: Schema.Types.ObjectId, ref: 'TestUserProfile' }
-  }
+  },
+  expiresAt: { type: Date, default: null },
 }, { timestamps: true });
 
 const testNetProfileSchema = new Schema({ title: String });
@@ -332,6 +333,7 @@ describe('Ban/Unban', () => {
     const ban = await localChat.banUser({ npid, userProfileId: userId, callSign: 'KD5SPR', reason: 'Spam', bannedBy: { callSign: 'NCS001', userProfile: ncsId } });
     expect(ban.callSign).toBe('KD5SPR');
     expect(ban.reason).toBe('Spam');
+    expect(ban.expiresAt).toBeNull();
   });
 
   test('checkIsBanned returns null for unbanned user', async () => {
@@ -356,6 +358,16 @@ describe('Ban/Unban', () => {
     await localChat.unbanUser({ npid, userProfileId: userId, callSign: 'KD5SPR', unbannedBy: { callSign: 'NCS002', userProfile: ncsId } });
     const result = await localChat.checkIsBanned({ npid, userProfileId: userId });
     expect(result).toBeNull();
+  });
+
+  test('banUser persists expiresAt', async () => {
+    const when = new Date(Date.now() + 3600_000);
+    const ban = await localChat.banUser({
+      npid, userProfileId: userId, callSign: 'KD5SPR', reason: 'Spam',
+      bannedBy: { callSign: 'NCS001', userProfile: ncsId },
+      expiresAt: when
+    });
+    expect(ban.expiresAt?.getTime()).toBe(when.getTime());
   });
 
   test('getBannedUsers returns active bans', async () => {
