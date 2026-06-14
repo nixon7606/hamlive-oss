@@ -2,6 +2,8 @@
 
 const router = require('express').Router();
 const passport = require('passport');
+const rateLimit = require('express-rate-limit');
+const validator = require('validator');
 const { conf } = require('../lib/configLib');
 const { logger } = require('../lib/logger');
 const UserProfile = require('../models/userProfile').getUserProfile(null);
@@ -9,6 +11,21 @@ const GoogleStrategy = require('passport-google-oauth20');
 const MagicLoginStrategy = require('passport-magic-login').default;
 const gravatar = require('gravatar');
 const { EmailBase, emailEnabled } = require('../lib/userNotification');
+const { isCurrentlyLocked } = require('../lib/serverUtils');
+
+// Rate limit magic-link requests per IP to prevent email-bombing.
+// The cooldown in EmailBase.sendMailToAddrs() catches per-recipient abuse
+// across all features; this HTTP-layer limiter reduces server load from
+// rapid-fire requests and adds defense-in-depth.
+const magicLoginLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,   // 5-minute window
+    max: 5,                      // 5 requests per window per IP
+    standardHeaders: true,       // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false,
+    message: {
+        error: 'Too many sign-in attempts. Please try again in a few minutes.'
+    }
+});
 
 //MagicLogin Auth:
 const magicLogin = new MagicLoginStrategy({
@@ -35,6 +52,7 @@ const magicLogin = new MagicLoginStrategy({
         try {
             const email = new EmailBase({
                 subject: 'Sign in to netcontrol.live',
+                type: 'magic-login',
                 message:
                     `<div style="background-color:#f4f2ec; padding:24px 12px; font-family:Arial,Helvetica,sans-serif;">` +
                     `<table role="presentation" align="center" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; background-color:#ffffff; border:1px solid #e2ddd0; border-radius:10px; overflow:hidden;">` +
@@ -71,13 +89,13 @@ const magicLogin = new MagicLoginStrategy({
             {
                 lastLogin: Date.now(),
                 lastAuthVia: 'email',
-                photo: gravatar.url(payload.destination, { protocol: 'https' })
+                photo: (gravatar.url(payload.destination, { protocol: 'https' }) || '').replace(/^\/\//, 'https://')
             }
         ).then(currentUser => {
             if (currentUser) {
                 //already have the user
-                logger.debug('Magic Login Auth-return user found: ', currentUser);
-                if (currentUser.locked) {
+                logger.debug('Magic Login Auth-return: user ' + (currentUser.callSign || currentUser.id));
+                if (isCurrentlyLocked(currentUser)) {
                     logger.error(`Account locked for ${currentUser.email}`);
 
                     done(null, false);
@@ -88,15 +106,15 @@ const magicLogin = new MagicLoginStrategy({
                 // if not, create user in our db
                 new UserProfile({
                     lastAuthVia: 'email',
-                    displayName: '',
+                    displayName: payload.destination.split('@')[0].slice(0, 40) || 'New User',
                     flexOptions: {
                         option: {}
                     },
                     email: payload.destination,
-                    photo: gravatar.url(payload.destination),
+                    photo: (gravatar.url(payload.destination, { protocol: 'https' }) || '').replace(/^\/\//, 'https://'),
                     newAccount: true
                 })
-                    .save({ validateBeforeSave: false })
+                    .save()
                     .then(newUser => {
                         logger.info('new partial user account created (email link)' + newUser);
                         done(null, newUser);
@@ -111,12 +129,16 @@ const magicLogin = new MagicLoginStrategy({
     },
 
     jwtOptions: {
-        expiresIn: '30 days'
+        expiresIn: '24h'
     }
 });
 
 passport.use(magicLogin);
-router.post('/magiclogin', (req, res, next) => {
+router.post('/magiclogin', magicLoginLimiter, (req, res, next) => {
+    const dest = req.body && req.body.destination;
+    if (typeof dest !== 'string' || !validator.isEmail(dest)) {
+        return res.status(400).json({ success: false, error: 'A valid email address is required.' });
+    }
     // When email delivery is disabled (local test drive), include the sign-in
     // link in the JSON response so the browser can show it — no logs needed.
     if (!emailEnabled) {
@@ -128,6 +150,11 @@ router.post('/magiclogin', (req, res, next) => {
 // router.get('/magiclogin/callback', passport.authenticate('magiclogin'));
 router.get('/magiclogin/callback', passport.authenticate('magiclogin'), (req, res) => {
     if (req.user) {
+        // Save IP address asynchronously (non-blocking)
+        const ip = req.ip || req.connection?.remoteAddress || '';
+        UserProfile.findOneAndUpdate({ _id: req.user._id }, { lastIp: ip }).catch(err => {
+            logger.debug(`Failed to save IP for ${req.user.callSign || req.user.email}: ${err.message}`);
+        });
         if (req.user.callSign) {
             res.redirect('/views/dashboard');
         } else {
@@ -163,14 +190,14 @@ if (googleAuthEnabled) {
                 {
                     lastLogin: Date.now(),
                     lastAuthVia: 'google',
-                    photo: profile.photos[0].value
+                    photo: (profile.photos[0].value || '').replace(/^\/\//, 'https://')
                 }
             ).then(currentUser => {
                 if (currentUser) {
                     //already have the user
-                    logger.debug('Google Auth-return user found: ', currentUser);
+                    logger.debug('Google Auth-return: user ' + (currentUser.callSign || currentUser.id));
 
-                    if (currentUser.locked) {
+                    if (isCurrentlyLocked(currentUser)) {
                         logger.error(`Account locked for ${currentUser.email}`);
 
                         done(null, false);
@@ -187,7 +214,7 @@ if (googleAuthEnabled) {
                             option: {}
                         },
                         email: profile.emails[0].value,
-                        photo: profile.photos[0].value,
+                        photo: (profile.photos[0].value || '').replace(/^\/\//, 'https://'),
                         newAccount: true
                     })
                         .save()
@@ -198,6 +225,8 @@ if (googleAuthEnabled) {
                         .catch(err => {
                             logger.error(err.stack);
                             logger.error('Likely data validation error. Missing required info on user creation?');
+                            done(null, false);
+                            logger.info('Google auth profile save failed — passport sent false, user will retry');
                         });
                 }
             });
@@ -224,6 +253,7 @@ router.get('/google/redirect', passport.authenticate('google'), (req, res) => {
 // google specific auth, specify what we want from google (scope)
 router.get(
     '/google',
+    magicLoginLimiter,
     passport.authenticate('google', {
         scope: ['profile', 'email']
     })
@@ -254,4 +284,29 @@ router.get('/login', (req, res) => {
     res.redirect('/views/login');
 });
 
+/**
+ * Send a fresh magic sign-in link to an address using the same flow as
+ * /auth/magiclogin. Resolves with { devMagicLink } (non-null only when email
+ * delivery is disabled, mirroring the login route). For admin resend.
+ */
+function sendMagicSignInLink(email) {
+    if (typeof email !== 'string' || !validator.isEmail(email)) {
+        return Promise.reject(new Error('invalid email'));
+    }
+    return new Promise((resolve, reject) => {
+        const req = { body: { destination: email } };
+        const res = {
+            statusCode: 200,
+            status(code) { this.statusCode = code; return this; },
+            json(body) { resolve({ devMagicLink: req._devMagicLink || null, ...body }); return this; }
+        };
+        try {
+            magicLogin.send(req, res, err => (err ? reject(err) : resolve({ devMagicLink: req._devMagicLink || null })));
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
 module.exports = router;
+module.exports.sendMagicSignInLink = sendMagicSignInLink;

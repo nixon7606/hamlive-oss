@@ -36,6 +36,8 @@ const fromEnv = {
     cookie_session_key: process.env.COOKIE_SESSION_KEY,
     magic_link_secret: process.env.MAGIC_LINK_SECRET,
     sendgrid_api_key: process.env.SENDGRID_API_KEY,
+    sendgrid_webhook_verification_key: process.env.SENDGRID_WEBHOOK_VERIFICATION_KEY,
+    chat_upload_dir: process.env.CHAT_UPLOAD_DIR,
     stream_api_key: process.env.STREAM_API_KEY,
     stream_api_secret: process.env.STREAM_API_SECRET,
     google_client_id: process.env.GOOGLE_CLIENT_ID,
@@ -66,4 +68,43 @@ if (process.env.ANALYTICS_ENABLED !== undefined) {
     conf.analytics_enabled = process.env.ANALYTICS_ENABLED === 'true';
 }
 
+// Per-host background-task override. The repo ships scheduledNetStarter enabled
+// (see {dev,prod}Config.yaml); a host can disable its scheduled-net auto-start
+// without editing committed YAML by setting SCHEDULED_NET_STARTER_ENABLED=false
+// in its .env. Gates BOTH the tasksLoader run and the 60s interval in server.js.
+if (process.env.SCHEDULED_NET_STARTER_ENABLED !== undefined) {
+    _.set(conf, 'background_tasks.scheduledNetStarter.enabled', process.env.SCHEDULED_NET_STARTER_ENABLED === 'true');
+}
+
+// ---------------------------------------------------------------------------
+// Secret-strength guard
+// ---------------------------------------------------------------------------
+// Checks that signing secrets meet a minimum strength bar.  Returns an array
+// of human-readable problem strings (empty means all OK).  Kept as a pure
+// function so it can be unit-tested without side effects.
+const WEAK_DEFAULTS = ['dev-cookie-key-change-me', 'dev-magic-link-secret-change-me', 'change-me', 'changeme', 'secret'];
+function checkSecrets(c) {
+    const problems = [];
+    const check = (name, val) => {
+        if (!val || typeof val !== 'string' || val.length < 32 || WEAK_DEFAULTS.includes(val)) {
+            problems.push(`${name} is missing, too short (<32 chars), or a known default — set a strong unique value.`);
+        }
+    };
+    check('COOKIE_SESSION_KEY', c.cookie_session_key);
+    check('MAGIC_LINK_SECRET', c.magic_link_secret);
+    return problems;
+}
+
+const secretProblems = checkSecrets(conf);
+if (secretProblems.length) {
+    if (process.env.NODE_ENV === 'production') {
+        const msg = 'FATAL: insecure secrets — refusing to start in production:\n  - ' + secretProblems.join('\n  - ');
+        console.error(msg);
+        throw new Error(msg);
+    } else {
+        console.warn('WARNING: insecure secrets (OK for local dev, NEVER for production):\n  - ' + secretProblems.join('\n  - '));
+    }
+}
+
 module.exports.conf = conf;
+module.exports.checkSecrets = checkSecrets;

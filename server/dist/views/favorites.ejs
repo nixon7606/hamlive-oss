@@ -11,10 +11,10 @@
       <%- include('./partials/adTopBar') %>
     <%- include('./partials/navbar', {user: user}) %>
 
-    <div class="container" id="rowContainer">
+    <div class="container-fluid app-page">
       <div class="row">
-        <div class="col p-md-2 pb-md-0 m-md-3">
-          <ul class="nav nav-tabs">
+        <div class="col">
+          <ul class="nav app-tabs">
             <li class="nav-item">
               <a class="nav-link" href="/views/myaccount">Account</a>
             </li>
@@ -41,7 +41,7 @@
               </ul>
             </li>
             <li class="nav-item">
-              <a class="nav-link active bg-secondary" href="#">Favorites</a>
+              <a class="nav-link active" href="#">Favorites</a>
             </li>
           </ul>
         </div>

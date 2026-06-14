@@ -3,123 +3,122 @@
 <!-- hamlive-oss — MIT License. See LICENSE. -->
 
 <head>
-  <%- include('./partials/head') %> <%- include('./partials/pageTopFeatures') %>
+  <%- include('./partials/head') %> <%- include('./partials/pageTopFeatures') %> <%- include('./partials/featureAppLayout') %>
 
   <title><%= server.appName %> - Account Settings <%if (server.logLevel !== "info") {%> (<%= server.logLevel %>) <%}%></title>
-    </head>
-    <body class="bg-dark">
-      <%- include('./partials/adTopBar') %>
-    <%- include('./partials/navbar', {user: user}) %>
+</head>
+<body class="bg-dark text-light">
+  <%- include('./partials/adTopBar') %>
+  <%- include('./partials/navbar', {user: user}) %>
 
-    <div class="modal fade modal-dialog modal-dialog-scrollable" id="consent_modal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="staticBackdropLabel" aria-hidden="true">
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="staticBackdropLabel">Policy Consent</h5>
-          </div>
-          <div class="modal-body">
-            By clicking "Accept" you:
+  <div class="modal fade modal-dialog modal-dialog-scrollable" id="consent_modal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="staticBackdropLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="staticBackdropLabel">Policy Consent</h5>
+        </div>
+        <div class="modal-body">
+          By clicking "Accept" you:
 
-            <ul>
-              <li>
-                Agree to our website's cookie use
-                <br />
-                as described in our
-                <a href="/views/cookiepolicy">Cookie Policy</a>
-              </li>
-              <li>
-                Agree to our website's
-                <a href="/views/privacypolicy">Privacy Policy</a>
-              </li>
-              <li>
-                Agree to our website's
-                <a href="/views/termsofuse">Terms of Use</a>
-              </li>
+          <ul>
+            <li>
+              Agree to our website's cookie use
+              <br />
+              as described in our
+              <a href="/views/cookiepolicy">Cookie Policy</a>
+            </li>
+            <li>
+              Agree to our website's
+              <a href="/views/privacypolicy">Privacy Policy</a>
+            </li>
+            <li>
+              Agree to our website's
+              <a href="/views/termsofuse">Terms of Use</a>
+            </li>
 
-              <li>Confirm that you are at least *18 years of age</li>
-            </ul>
-          </div>
-          <div class="modal-footer">
-            <button type="button" id="consent_decline" class="btn btn-secondary">Decline</button>
-            <button type="button" id="consent_accept" class="btn btn-primary">Accept</button>
-          </div>
+            <li>Confirm that you are at least *18 years of age</li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="consent_decline" class="btn btn-secondary">Decline</button>
+          <button type="button" id="consent_accept" class="btn btn-primary">Accept</button>
         </div>
       </div>
     </div>
+  </div>
 
-    <div class="container">
-      <div class="row">
-        <div class="col p-md-2 m-md-3">
-          <ul class="nav nav-tabs">
-            <li class="nav-item">
-              <a class="nav-link active bg-secondary" href="#">Account</a>
-            </li>
-            <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle" data-bs-toggle="dropdown" href="#" role="button">
-                Your Privacy
-              </a>
-              <ul class="dropdown-menu bg-secondary">
-                <li>
-                  <a class="dropdown-item" href="/views/dataprivacy">Data Privacy Options</a>
-                </li>
-                <li>
-                  <hr class="dropdown-divider" />
-                </li>
-                <li>
-                  <a class="dropdown-item" href="/views/privacypolicy">Privacy Policy</a>
-                </li>
-                <li>
-                  <a class="dropdown-item" href="/views/cookiepolicy">Cookie Policy</a>
-                </li>
-                <li>
-                  <a class="dropdown-item" href="/views/termsofuse">Terms of Use</a>
-                </li>
-              </ul>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="/views/favorites">Favorites</a>
-            </li>
-          </ul>
-        </div>
-      </div>
+  <div class="container-fluid app-page">
+    <ul class="nav app-tabs">
+      <li class="nav-item">
+        <a class="nav-link active" href="#">Account</a>
+      </li>
+      <li class="nav-item dropdown">
+        <a class="nav-link dropdown-toggle" data-bs-toggle="dropdown" href="#" role="button">
+          Your Privacy
+        </a>
+        <ul class="dropdown-menu bg-secondary">
+          <li>
+            <a class="dropdown-item" href="/views/dataprivacy">Data Privacy Options</a>
+          </li>
+          <li>
+            <hr class="dropdown-divider" />
+          </li>
+          <li>
+            <a class="dropdown-item" href="/views/privacypolicy">Privacy Policy</a>
+          </li>
+          <li>
+            <a class="dropdown-item" href="/views/cookiepolicy">Cookie Policy</a>
+          </li>
+          <li>
+            <a class="dropdown-item" href="/views/termsofuse">Terms of Use</a>
+          </li>
+        </ul>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="/views/favorites">Favorites</a>
+      </li>
+    </ul>
 
+    <div class="app-card">
       <form id="userprofile_form">
-        <div class="row">
-          <div class="col-8 mt-1">
-            <!-- Status Text Set by FormState object -->
-            <span class="text-light ms-md-3">
-              [
-              <span id="userprofile_form_status"></span>
-              ]
+        <div class="row mb-3">
+          <div class="col">
+            <span class="text-light">
+              [ <span id="userprofile_form_status"></span> ]
             </span>
           </div>
         </div>
 
-        <div class="row">
-          <div class="col-sm-4 mb-2 mt-1 mt-sm-2 ms-md-3">
+        <div class="row mb-2">
+          <div class="col-sm-4">
             <input type="text" class="form-control" id="input_display_name" name="display_name" placeholder="Display Name" maxlength="20" minlength="2" required />
           </div>
-          <div class="col-sm-4 mb-2 mt-1 mt-sm-2">
-            <input type="text" class="form-control" id="input_callsign" name="callsign" placeholder="Call Sign" maxlength="7" minlength="3" required />
+          <div class="col-sm-4">
+            <input type="text" class="form-control" id="input_callsign" name="callsign" placeholder="Callsign" maxlength="7" minlength="3" required />
           </div>
         </div>
 
-        <div class="row">
-          <div class="col-sm-4 mb-2 ms-md-3">
-            <input type="text" class="form-control" id="input_location" name="location" maxlength="24" minlength="5" placeholder="Location ..." />
+        <div class="row mb-3">
+          <div class="col-sm-4 d-flex gap-2">
+            <input type="text" class="form-control" id="input_location" name="location" maxlength="24" minlength="5" placeholder="Location (auto-filled from QRZ)" />
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="qr_lookup_btn" title="Look up location from QRZ">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-search" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg>
+            </button>
           </div>
         </div>
 
         <input type="hidden" name="userprofile_mode" id="input_userprofile_mode" />
         <input type="hidden" name="id" id="input_id" />
-        <button class="btn btn-primary btn-md ms-md-3" type="submit">Save</button>
+        <button class="btn btn-primary" type="submit">Save</button>
       </form>
     </div>
-    <!-- Bootstrap needs to load before my code (below), so I can use bootstrap.Modal -->
-    <%- include('./partials/pageBottomFeatures') %>
+  </div>
 
-    <script src="/js/byView/<%= VIEW %>/main.js" type="module"></script>
-    </body>
-    <%- include('./partials/footer') %>
+  <!-- Bootstrap needs to load before my code (below), so I can use bootstrap.Modal -->
+  <%- include('./partials/pageBottomFeatures') %>
+
+  <script src="/js/byView/<%= VIEW %>/main.js" type="module"></script>
+</body>
+<%- include('./partials/footer') %>
 
 </html>

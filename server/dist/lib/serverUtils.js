@@ -1,9 +1,7 @@
 /* hamlive-oss — MIT License. See LICENSE. */
 
 const mongoose = require('mongoose');
-// NEW: Use GetStream.io chat history instead of Roomlio
-// WHY: Roomlio is defunct, GetStream is the replacement
-const { fetchChatHistory } = require('./streamChat');
+const { fetchChatHistory } = require('./localChat');
 const listEndpoints = require('express-list-endpoints');
 const sanitizeHtml = require('sanitize-html');
 const { nameCase } = require('@foundernest/namecase');
@@ -65,8 +63,9 @@ const fetchChatLog = async ({ NPID, since }) => {
     return chatLog;
 };
 
-const sanitizeNotes = notes =>
-    sanitizeHtml(
+const sanitizeNotes = (notes = '') => {
+    if (typeof notes !== 'string') return '';
+    return sanitizeHtml(
         notes
             .replace(/\r?\n|\r/g, '')
             .replace(/"/g, '&#34;')
@@ -75,6 +74,7 @@ const sanitizeNotes = notes =>
             allowedTags: ['li', 'p', 'ul', 'b', 'br', 'em', 'i']
         }
     ) || '';
+};
 
 const getFlexOptionsByUser = async ({ user, cachedResponse = false, db = mongoose.connection }) => {
     let gOpts;
@@ -182,6 +182,7 @@ const addServerInfo = async (req, res, next) => {
 
         const { NODE_ENV: nodeEnv, LOG_LEVEL: logLevel } = process.env;
         const { callSign = null, displayName = null, id: userId = null, newAccount = false } = req.user || {};
+        const superUser = req.user?.superUser || false;
         const { gracePeriodDays, ads, requestRateFactor, httpClientTimeout, chat, analytics, awayInMs } =
             res.locals.flexOpts || {};
         const { applogname: appLogName, cmd_help_url: cmdHelpUrl = '', app_name: appName = 'Ham.Live' } =
@@ -230,7 +231,8 @@ const addServerInfo = async (req, res, next) => {
                 displayName,
                 userId,
                 newAccount,
-                chat,
+                chat: true,
+                superUser,
                 okToAdvertise,
                 analytics: analyticsEnabled ? analytics : false
             }
@@ -301,29 +303,37 @@ const toTitleCase = str => {
 };
 
 const resolveLocation = async ({ lat, lon }) => {
-    const key = conf.geo_key;
-
     logger.debug(`resolving: ${lat}, ${lon}`);
-
-    // Reverse geocoding is optional; skip cleanly when no GEO_KEY is configured.
-    if (!key) {
-        logger.debug('resolveLocation() disabled (no GEO_KEY configured)');
-        return { location: '' };
-    }
 
     if (!lat || !lon) {
         throw new Error('resolveLocation() missing coordinates params');
     }
 
-    const rawResponse = await axios.get(fillTemplate(conf.geo_endpoint, { lat, lon, key }));
-
-    const { municipality, countrySubdivision, country, countryCode } = rawResponse.data.addresses[0].address;
-
-    if (countryCode === 'US') {
-        return { location: `${municipality}, ${countrySubdivision}` };
-    } else {
-        return { location: `${municipality} (${country})` };
+    // Free OpenStreetMap reverse geocoding — no API key required
+    try {
+        const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
+        const rawResponse = await axios.get(nominatimUrl, {
+            timeout: 5000,
+            headers: { 'User-Agent': 'Ham.Live-OSS/1.0 (community edition)' }
+        });
+        const { address } = rawResponse.data;
+        if (address) {
+            const city = address.city || address.town || address.village || address.municipality || '';
+            const state = address.state || '';
+            const country = address.country_code || '';
+            if (country === 'us') {
+                return { location: `${city}, ${state}` };
+            } else if (city && country) {
+                return { location: `${city} (${country.toUpperCase()})` };
+            } else if (city) {
+                return { location: city };
+            }
+        }
+    } catch (err) {
+        logger.debug(`Nominatim geocoding failed: ${err.message}`);
     }
+
+    return { location: '' };
 };
 
 const qrzLookup = async (callSign, flexOpts, db = mongoose.connection) => {
@@ -335,7 +345,7 @@ const qrzLookup = async (callSign, flexOpts, db = mongoose.connection) => {
         return { result: null, atQuota: false };
     }
 
-    qrzSessionKey && logger.info(`qrzLookup(${callSign}): using cached session: ${JSON.stringify(qrzSessionKey)}`);
+    qrzSessionKey && logger.debug(`qrzLookup(${callSign}): using cached session: ${String(qrzSessionKey).slice(0, 6)}…`);
 
     const { qrzSessionReqTimeoutMs, qrzDataReqTimeoutMs, qrzReqQuota } = flexOpts;
 
@@ -414,7 +424,7 @@ const qrzLookup = async (callSign, flexOpts, db = mongoose.connection) => {
 
             if (Number.isInteger(session?.Count)) {
                 if (session.Count < qrzReqQuota) {
-                    logger.info(`qrzLookup(${callSign}): QRZ service provided session: ${JSON.stringify(session.Key)}`);
+                    logger.debug(`qrzLookup(${callSign}): QRZ service provided session: ${String(session.Key).slice(0, 6)}…`);
                     return (qrzSessionKey = session.Key);
                 } else {
                     logger.error(
@@ -581,29 +591,99 @@ const qrzLookup = async (callSign, flexOpts, db = mongoose.connection) => {
     }
 };
 
+/**
+ * True when a user account is currently locked/banned, honoring an optional
+ * lockedUntil expiry (a past lockedUntil auto-lifts the lock). Single source of
+ * truth used by deserializeUser and the login strategies.
+ */
+const isCurrentlyLocked = user => {
+    if (!user || !user.locked) return false;
+    if (!user.lockedUntil) return true; // permanent
+    return new Date(user.lockedUntil).getTime() > Date.now();
+};
+
 const authCheck = options => {
     return (req, res, next) => {
+        let called = false;
+
         if (options & REQ_LOGIN) {
             if (req.user) {
-                next();
+                called = true;
             } else {
                 logger.debug('authCheck() login missing!');
-                res.redirect('/views/login');
+                return res.redirect('/views/login');
             }
         }
 
         if (options & REQ_CALLSIGN) {
             if (req.user && req.user.callSign) {
-                next();
+                called = true;
             } else {
                 logger.debug('authCheck() callsign missing!');
-                res.redirect('/views/myaccount?cswarn=true');
+                return res.redirect('/views/myaccount?cswarn=true');
             }
         }
+
+        if (called) return next();
+
+        // If neither flag matched, allow (no-op)
+        next();
     };
 };
 
 const hoursToMilliseconds = hours => hours * 60 * 60 * 1000;
+
+// QRZ-based location resolver for My Account auto-population
+const qrzResolveLocation = async ({ callSign, user, db = mongoose.connection }) => {
+    if (!callSign) return { location: '' };
+    
+    try {
+        // Try user-specific flexOptions first, fall back to global
+        let flexOptions = {};
+        if (user?.flexOptions) {
+            flexOptions = await getFlexOptionsByUser({ user, cachedResponse: false, db });
+        }
+        if (!flexOptions || Object.keys(flexOptions).length === 0) {
+            // Fetch global FlexOption directly
+            const FlexOption = getFlexOption(db);
+            const gOpts = await FlexOption.findOne({ scope: 'global' });
+            if (gOpts?.option) {
+                flexOptions = gOpts.option;
+            }
+        }
+        if (!flexOptions || Object.keys(flexOptions).length === 0) {
+            logger.debug(`qrzResolveLocation(${callSign}): no flex options available`);
+            return { location: '' };
+        }
+        
+        const { result } = await qrzLookup(callSign.toUpperCase(), flexOptions, db);
+        if (!result) return { location: '' };
+        
+        // The QRZ lookup builds location as "City, STATE" or "City (COUNTRY)"
+        if (result.location) {
+            return { location: result.location };
+        }
+        
+        // Build from raw fields if location wasn't pre-computed
+        const country = result.country || '';
+        const state = result.state || '';
+        const addr2 = result.addr2 || '';
+        
+        if (country?.includes('United States')) {
+            const city = (result.addr2 || '').replace(/,?\s*$/, '');
+            return { location: `${city}, ${state.toUpperCase()}` };
+        } else if (addr2 && country) {
+            return { location: `${addr2} (${country})` };
+        } else if (addr2) {
+            return { location: addr2 };
+        }
+        
+        return { location: '' };
+    } catch (err) {
+        logger.error(`qrzResolveLocation(${callSign}): ${err.message}`);
+        return { location: '' };
+    }
+};
 
 module.exports = {
     addServerInfo,
@@ -611,11 +691,13 @@ module.exports = {
     cookieSessionKeepAlive,
     cookieSessionStubs,
     authCheck,
+    isCurrentlyLocked,
     flexOpts,
     getFlexOptionsByUser,
     wellFormedCall,
     resolveLocation,
     qrzLookup,
+    qrzResolveLocation,
     sanitizeNotes,
     publicEndpoints,
     hoursToMilliseconds,

@@ -7,19 +7,19 @@
 
   <title><%= server.appName %> - Waiting... <%if (server.logLevel !== "info") {%> (<%= server.logLevel %>) <%}%></title>
     </head>
-    <body class="bg-dark">
+    <body class="bg-dark text-light">
       <%- include('./partials/adTopBar') %>
     <%- include('./partials/navbar', {user: user}) %>
 
-    <div class="container-fluid">
-      <div class="mt-20 pt-20 d-flex justify-content-center align-items-center netwait">
+    <div class="container-fluid app-page">
+      <div class="mt-4 d-flex justify-content-center align-items-center netwait">
         <div>
-          <span class="align-middle text-light" id="netTitle" style="font-size: 1.8em"></span>
+          <span class="align-middle text-light h3" id="netTitle"></span>
           <span class="text-tertiary align-bottom">
             <% if (user && !PERM) { %>
-            <i class="bi bi-star favicon pt-2" style="font-size: 1.8em" id="fav-<%= NPID %>"></i>
+            <i class="bi bi-star favicon pt-2 fs-1" id="fav-<%= NPID %>"></i>
             <%} else { %>
-            <i class="d-none bi bi-star favicon pt-2" style="font-size: 1.8em" id="fav-<%= NPID %>"></i>
+            <i class="d-none bi bi-star favicon pt-2 fs-1" id="fav-<%= NPID %>"></i>
             <% } %>
           </span>
 

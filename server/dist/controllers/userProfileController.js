@@ -8,6 +8,14 @@ const InitialReg = require('../models/initialRegTracker').getInitialReg(null);
 const { getFlexOptionsByUser } = require('../lib/serverUtils');
 const { flagAccountForDeletion } = require('../lib/sharedNetOps');
 
+const PUBLIC_USER_FIELDS = ['_id', 'displayName', 'callSign', 'location', 'newAccount', 'policyConsent', 'flaggedForDeletion'];
+function publicUser(doc) {
+    const o = doc.toObject ? doc.toObject() : doc;
+    const out = {};
+    for (const k of PUBLIC_USER_FIELDS) if (o[k] !== undefined) out[k] = o[k];
+    return out;
+}
+
 const userProfileDetails = async (req, res) => {
     handleRequest(
         res,
@@ -167,7 +175,7 @@ const userProfileUpdate = async (req, res) => {
             });
 
             logger.info('USERPROFILE_Controller: User profile updated: ' + updatedUserProfileDoc.id);
-            return updatedUserProfileDoc.toObject();
+            return publicUser(updatedUserProfileDoc);
         },
         `USERPROFILE_Controller: User profile updated: ${req.user.id}`
     );
@@ -182,7 +190,7 @@ const userProfileDelete = async (req, res) => {
             if (!req.user.policyConsent) {
                 logger.info('USERPROFILE_Controller: IMMEDIATELY deleting account upid:' + id);
                 const deletedProfile = await UserProfile.findByIdAndDelete(id);
-                return deletedProfile.toObject() || {};
+                return deletedProfile ? publicUser(deletedProfile) : {};
             } else {
                 const userProfileDoc = await UserProfile.findById(id);
                 if (!userProfileDoc) {
@@ -194,7 +202,7 @@ const userProfileDelete = async (req, res) => {
                     throw new Error(`error flagging account upid:${id} for deletion`);
                 }
 
-                return flaggedAccount.toObject() || {};
+                return publicUser(flaggedAccount);
             }
         },
         `USERPROFILE_Controller: User profile deleted: ${req.user.id}`
@@ -218,7 +226,7 @@ const userProfileUnDelete = async (req, res) => {
             );
 
             logger.info('USERPROFILE_Controller: Deletion flag removed for ' + result.callSign);
-            return result.toObject() || {};
+            return publicUser(result);
         },
         `USERPROFILE_Controller: Deletion flag removed for user: ${req.user.id}`
     );

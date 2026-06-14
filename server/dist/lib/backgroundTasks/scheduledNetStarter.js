@@ -1,0 +1,182 @@
+/* hamlive-oss — MIT License. See LICENSE. */
+
+/**
+ * ScheduledNetStarter — Checks every 60s for nets with matching schedules.
+ * When found, creates a LiveNet with countdown timer and sends email notifications.
+ *
+ * Runs via setInterval in server.js (not PluginBase, since the task loader is one-shot).
+ */
+
+const { logger } = require('../logger');
+const { NetAnnounceStart } = require('../userNotification');
+
+/**
+ * Check all NetProfiles for matching schedules and start any that are due.
+ */
+async function checkScheduledNets() {
+    const mongoose = require('mongoose');
+    const db = mongoose.connection;
+    const { getNetProfile } = require('../../models/netProfile');
+    const { getLiveNet } = require('../../models/liveNet');
+    const { getStationInteraction } = require('../../models/stationInteraction');
+    const { createChatChannel } = require('../localChat');
+    const UserProfile = require('../../models/userProfile').getUserProfile(db);
+
+    const NetProfile = getNetProfile(db);
+    const LiveNet = getLiveNet(db);
+    const StationInteraction = getStationInteraction(db);
+    const now = new Date();
+
+    try {
+        const profiles = await NetProfile.find({
+            'schedule.enabled': true,
+            liveNet: { $exists: false }
+        }).lean();
+
+        let started = 0;
+        for (const profile of profiles) {
+            const sched = profile.schedule || {};
+            if (!sched.enabled || sched.dayOfWeek === undefined || sched.hour === undefined || sched.minute === undefined) continue;
+
+            if (!isTimeMatch(now, sched)) continue;
+
+            logger.info(`ScheduledNetStarter: time match for "${profile.title}"`);
+            try {
+                await startScheduledNet(profile, { NetProfile, LiveNet, StationInteraction, UserProfile, db });
+                started++;
+            } catch (err) {
+                logger.error(`ScheduledNetStarter: failed for "${profile.title}": ${err.message}`);
+            }
+        }
+
+        if (started > 0) {
+            logger.info(`ScheduledNetStarter: started ${started} scheduled net(s)`);
+        }
+    } catch (err) {
+        logger.error(`ScheduledNetStarter: error: ${err.message}`);
+    }
+}
+
+/**
+ * Check if current time matches schedule in the profile's timezone.
+ */
+function isTimeMatch(now, sched) {
+    const tz = sched.timezone || 'America/Denver';
+    try {
+        const formatter = new Intl.DateTimeFormat('en-CA', {
+            timeZone: tz,
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            weekday: 'long',
+            hour: '2-digit', hour12: false,
+            minute: '2-digit', hourCycle: 'h23'
+        });
+        const parts = formatter.formatToParts(now);
+        const weekday = parts.find(p => p.type === 'weekday')?.value || '';
+        const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+        const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
+
+        const weekdayMap = {
+            'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
+            'Thursday': 4, 'Friday': 5, 'Saturday': 6
+        };
+        const currentDow = weekdayMap[weekday] ?? -1;
+
+        if (currentDow !== sched.dayOfWeek) return false;
+        if (hour !== sched.hour) return false;
+        const diff = minute - sched.minute;
+        return diff >= 0 && diff <= 1;
+    } catch (err) {
+        logger.debug(`ScheduledNetStarter: timezone error for ${tz}: ${err.message}`);
+        return false;
+    }
+}
+
+/**
+ * Start a scheduled net: create LiveNet, set up chat, notify followers.
+ */
+async function startScheduledNet(profile, { NetProfile, LiveNet, StationInteraction, UserProfile, db }) {
+    // Re-check to avoid race conditions
+    const fresh = await NetProfile.findById(profile._id);
+    if (!fresh || fresh.liveNet) {
+        logger.debug(`ScheduledNetStarter: "${profile.title}" already active, skipping`);
+        return;
+    }
+
+    const ownerId = fresh.owners?.[0];
+    if (!ownerId) {
+        logger.warn(`ScheduledNetStarter: "${profile.title}" has no owners`);
+        return;
+    }
+
+    const owner = await UserProfile.findById(ownerId).lean();
+    if (!owner) {
+        logger.warn(`ScheduledNetStarter: owner not found for "${profile.title}"`);
+        return;
+    }
+
+    const notifyMin = Math.min(Math.max(fresh.schedule?.notifyBeforeMinutes || 30, 5), 120);
+
+    const interaction = new StationInteraction({
+        netProfile: fresh._id,
+        callSign: owner.callSign || 'SCHEDULED',
+        displayName: owner.displayName || 'Scheduled Net',
+        location: owner.location || '',
+        photo: owner.photo || '',
+        email: owner.email || '',
+        createdBy: 'scheduler',
+        role: 'netcontrol',
+        checkedState: true,
+        checkedInAt: new Date(),
+        userProfile: ownerId,
+        sigReports: { rst: {} }
+    });
+    await interaction.save();
+
+    const liveNet = new LiveNet({
+        countdownTimer: notifyMin,
+        netProfile: fresh._id,
+        netControl: ownerId,
+        url: `/views/livenet/${fresh._id}`,
+        lookupTable: {
+            [owner.callSign?.toUpperCase() || 'SCHEDULED']: {
+                stationInteraction: interaction._id
+            }
+        }
+    });
+    const lnResult = await liveNet.save();
+
+    interaction.liveNet = lnResult._id;
+    await interaction.save();
+
+    fresh.liveNet = lnResult._id;
+    await fresh.save();
+
+    logger.info(`ScheduledNetStarter: started "${fresh.title}"`);
+
+    // Chat
+    try {
+        await createChatChannel({
+            npid: fresh._id,
+            netTitle: fresh.title,
+            createdById: ownerId.toString()
+        });
+    } catch (e) {
+        logger.warn(`ScheduledNetStarter: chat error for "${fresh.title}": ${e.message}`);
+    }
+
+    // Email followers
+    if (fresh.followers?.length && fresh.schedule?.notifyBeforeEnabled !== false) {
+        try {
+            const email = new NetAnnounceStart({
+                netControl: owner.callSign || 'Scheduled Net',
+                netProfileDoc: fresh,
+                liveNetDoc: lnResult
+            });
+            await email.sendMailToUPIDs({ upids: fresh.followers, db });
+        } catch (e) {
+            logger.warn(`ScheduledNetStarter: email error for "${fresh.title}": ${e.message}`);
+        }
+    }
+}
+
+module.exports = { checkScheduledNets, startScheduledNet, isTimeMatch };

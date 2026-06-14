@@ -29,6 +29,13 @@
             <strong>Settings</strong>
           </a>
         </li>
+        <% if (user.superUser) { %>
+        <li class="nav-item" role="none">
+          <a href="/views/admin" class="nav-link h6" role="menuitem" tabindex="0" style="color: #ffc107;">
+            <strong><i class="bi bi-shield-lock"></i> Admin</strong>
+          </a>
+        </li>
+        <% } %>
         <% if (user.isLoggedIn) { %>
         <li class="nav-item" role="none">
           <a href="/auth/logout" class="nav-link h6" role="menuitem" tabindex="0">

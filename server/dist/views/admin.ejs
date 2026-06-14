@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- hamlive-oss — MIT License. See LICENSE. -->
+
+<head>
+  <%- include('./partials/head') %> <%- include('./partials/pageTopFeatures') %> <%- include('./partials/featureAppLayout') %>
+  <title><%= server.appName %> - Admin <%if (server.logLevel !== "info") {%> (<%= server.logLevel %>) <%}%></title>
+  <style>
+    .admin-table { font-size: 13px; margin-bottom: 0; }
+    .admin-table th { position: sticky; top: 0; background: var(--hl-dark); z-index: 1; border-bottom: 1px solid rgba(163, 118, 195, 0.15); }
+    .admin-table td { vertical-align: middle; }
+    .badge-locked { background: #dc3545; }
+    .badge-super { background: #ffc107; color: #000; }
+    .badge-new { background: #17a2b8; }
+    .badge-flagged { background: #6c757d; }
+    .badge-live { background: #3cce3c; color: #000; }
+    .badge-scheduled { background: #6eb8c0; color: #000; }
+    .badge-waiting { background: #ffc107; color: #000; }
+    .badge-google { background: #4285F4; }
+    .badge-email { background: #6f5b8f; }
+    .ip-cell { font-family: monospace; font-size: 11px; color: var(--hl-tertiary); }
+    .freq-mode { font-size: 11px; color: var(--hl-secondary); }
+    .app-stat-card.stat-alert { border-color: #dc3545; }
+    .app-stat-card.stat-alert .stat-value { color: #ff6b6b; }
+  </style>
+</head>
+
+<body class="bg-dark text-light">
+  <%- include('./partials/adTopBar') %>
+  <%- include('./partials/navbar') %>
+
+  <div class="container-fluid app-page">
+    <!-- Stats Bar -->
+    <div class="row g-3 mb-4" id="admin-stats-row">
+      <div class="col-6 col-md">
+        <div class="app-stat-card"><div class="stat-value" id="stat-users">-</div><div class="stat-label">Users</div></div>
+      </div>
+      <div class="col-6 col-md">
+        <div class="app-stat-card"><div class="stat-value" id="stat-nets">-</div><div class="stat-label">Net Profiles</div></div>
+      </div>
+      <div class="col-6 col-md">
+        <div class="app-stat-card"><div class="stat-value" id="stat-live">-</div><div class="stat-label">Live Nets</div></div>
+      </div>
+      <div class="col-6 col-md">
+        <div class="app-stat-card"><div class="stat-value" id="stat-scheduled">-</div><div class="stat-label">Scheduled</div></div>
+      </div>
+      <div class="col-6 col-md">
+        <div class="app-stat-card" id="stat-bounces-card"><div class="stat-value" id="stat-bounces">-</div><div class="stat-label">Bounces (7d)</div></div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav app-tabs" id="adminTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-panel" type="button" role="tab"><i class="bi bi-people"></i> Users</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="nets-tab" data-bs-toggle="tab" data-bs-target="#nets-panel" type="button" role="tab"><i class="bi bi-broadcast"></i> Nets</button>
+      </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="email-tab" data-bs-toggle="tab" data-bs-target="#email-panel" type="button" role="tab"><i class="bi bi-envelope"></i> Email</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="audit-tab" data-bs-toggle="tab" data-bs-target="#audit-panel" type="button" role="tab"><i class="bi bi-clipboard-check"></i> Audit</button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+      <!-- Users Tab -->
+      <div class="tab-pane fade show active" id="users-panel" role="tabpanel">
+        <div class="app-card">
+          <div class="app-card-header d-flex justify-content-between align-items-center">
+            <span class="text-light"><i class="bi bi-people"></i> User Management</span>
+            <span id="admin-status" class="small"></span>
+          </div>
+          <div class="d-flex flex-wrap gap-2 mb-2 align-items-center">
+            <input type="text" class="app-input" id="user-search-input" placeholder="search email / callsign / name" style="max-width: 320px;" />
+            <span class="text-muted small" id="users-page-info"></span>
+            <button class="app-btn app-btn-sm" id="users-prev" type="button" data-users-page="prev">Prev</button>
+            <button class="app-btn app-btn-sm" id="users-next" type="button" data-users-page="next">Next</button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-dark table-striped table-hover admin-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>CallSign</th>
+                  <th>Name</th>
+                  <th>Location</th>
+                  <th>IP</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="admin-users-tbody">
+                <tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Nets Tab -->
+      <div class="tab-pane fade" id="nets-panel" role="tabpanel">
+        <div class="app-card">
+          <div class="app-card-header">
+            <span class="text-light"><i class="bi bi-broadcast"></i> Net Profiles</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-dark table-striped table-hover admin-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Freq / Mode</th>
+                  <th>Owners</th>
+                  <th>Status</th>
+                  <th>Schedule</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="admin-nets-tbody">
+                <tr><td colspan="7" class="text-center text-muted py-4">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="audit-panel" role="tabpanel">
+        <div class="app-card">
+          <div class="app-card-header"><i class="bi bi-clipboard-check"></i> Admin Audit Log</div>
+          <div class="d-flex flex-wrap gap-2 mb-2 align-items-center">
+            <input type="text" class="app-input" id="audit-actor-input" placeholder="actor (email/callsign)" style="max-width: 240px;" />
+            <input type="text" class="app-input" id="audit-action-input" placeholder="action (exact)" style="max-width: 200px;" />
+            <button class="app-btn app-btn-primary app-btn-sm" id="audit-apply-btn" type="button">Apply</button>
+            <button class="app-btn app-btn-sm" id="audit-clear-btn" type="button">Clear</button>
+            <button class="app-btn app-btn-sm" id="audit-csv-btn" type="button">Download CSV</button>
+          </div>
+          <div class="d-flex gap-2 mb-2 align-items-center">
+            <span class="text-muted small" id="audit-page-info"></span>
+            <button class="app-btn app-btn-sm" type="button" data-audit-page="prev">Prev</button>
+            <button class="app-btn app-btn-sm" type="button" data-audit-page="next">Next</button>
+          </div>
+          <div id="audit-results"></div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="email-panel" role="tabpanel">
+        <div class="app-card">
+          <div class="app-card-header"><i class="bi bi-envelope"></i> Email Delivery Lookup</div>
+          <div class="d-flex gap-2 mb-3" style="max-width: 520px;">
+            <input type="text" class="app-input flex-grow-1" id="email-search-input" placeholder="email or callsign" />
+            <button class="app-btn app-btn-primary" id="email-search-btn" type="button">Search</button>
+          </div>
+          <div id="email-results"></div>
+        </div>
+        <div class="app-card">
+          <div class="app-card-header"><i class="bi bi-clock-history"></i> Recent Sends</div>
+          <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+            <button class="app-btn app-btn-sm" data-recent-preset="1" type="button">Last 24h</button>
+            <button class="app-btn app-btn-sm" data-recent-preset="7" type="button">Last 7d</button>
+            <button class="app-btn app-btn-sm" data-recent-preset="30" type="button">Last 30d</button>
+            <span class="text-muted small">or</span>
+            <input type="date" class="app-input" id="recent-from" />
+            <span class="text-muted small">to</span>
+            <input type="date" class="app-input" id="recent-to" />
+            <button class="app-btn app-btn-primary app-btn-sm" id="recent-load-btn" type="button">Load</button>
+            <button class="app-btn app-btn-sm" id="recent-csv-btn" type="button">Download CSV</button>
+          </div>
+          <div id="recent-summary" class="small mb-2"></div>
+          <div id="recent-results"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit User Modal -->
+  <div class="modal fade app-modal" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit User</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="edit-user-id">
+          <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="text" class="form-control" id="edit-email" readonly>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">CallSign</label>
+            <input type="text" class="form-control" id="edit-callsign" maxlength="14">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Display Name</label>
+            <input type="text" class="form-control" id="edit-displayname" maxlength="40">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Location</label>
+            <input type="text" class="form-control" id="edit-location" maxlength="24">
+          </div>
+          <div class="mb-2">
+            <label class="form-label d-block">Account ban</label>
+            <button type="button" class="btn btn-sm btn-outline-danger" id="edit-ban-btn">Ban</button>
+            <span id="edit-ban-status" class="ms-2 small text-muted"></span>
+            <input type="hidden" id="edit-locked" value="false">
+            <div id="edit-ban-expiry-wrap" class="mt-2" style="display:none;">
+              <label class="form-label small">Duration</label>
+              <select id="edit-lock-duration" class="form-select form-select-sm">
+                <option value="permanent">Permanent</option>
+                <option value="1h">1 hour</option>
+                <option value="24h">24 hours</option>
+                <option value="7d">7 days</option>
+                <option value="custom">Custom…</option>
+              </select>
+              <input type="datetime-local" id="edit-lock-custom" class="form-control form-control-sm mt-1" style="display:none;">
+            </div>
+          </div>
+          <div class="form-check mb-2">
+            <input type="checkbox" class="form-check-input" id="edit-superuser">
+            <label class="form-check-label" for="edit-superuser">Super Admin</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="edit-save-btn">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal fade app-modal" id="deleteUserModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title text-danger">Delete User</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="delete-user-body">
+          Are you sure you want to delete this user?
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="delete-confirm-btn">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Schedule Management Modal -->
+  <div class="modal fade app-modal" id="scheduleModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-calendar-week text-secondary"></i> Schedule: <span id="sched-net-title"></span></h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="sched-net-id">
+          <div class="d-flex justify-content-between mb-3">
+            <span>Status: <strong id="sched-status" class="text-muted">Unknown</strong></span>
+          </div>
+          <div class="form-check mb-3">
+            <input type="checkbox" class="form-check-input" id="sched-enabled">
+            <label class="form-check-label" for="sched-enabled">Schedule Enabled</label>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Day of Week</label>
+            <select class="form-control" id="sched-day">
+              <option value="0">Sunday</option>
+              <option value="1">Monday</option>
+              <option value="2">Tuesday</option>
+              <option value="3">Wednesday</option>
+              <option value="4">Thursday</option>
+              <option value="5">Friday</option>
+              <option value="6">Saturday</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Time</label>
+            <input type="time" class="form-control" id="sched-time">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="sched-save-btn">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Net Confirmation Modal -->
+  <div class="modal fade app-modal" id="deleteNetModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title text-danger">Delete Net</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="delete-net-body">
+          Are you sure you want to delete this net?
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="delete-net-confirm-btn">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('./partials/pageBottomFeatures') %>
+  <script src="/js/byView/admin/main.js" type="module"></script>
+</body>
+<%- include('./partials/footer') %>
+
+</html>

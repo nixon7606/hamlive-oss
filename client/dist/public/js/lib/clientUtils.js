@@ -692,4 +692,19 @@ export const slugifyFilename = (filename) => {
         .replace(/_+/g, '_');
     return `${slugifiedName}${extension}`;
 };
+export function expiryFromPreset(preset, customIso) {
+    const now = Date.now();
+    switch (preset) {
+        case '1h': return new Date(now + 3600_000).toISOString();
+        case '24h': return new Date(now + 24 * 3600_000).toISOString();
+        case '7d': return new Date(now + 7 * 24 * 3600_000).toISOString();
+        case 'custom': {
+            if (!customIso)
+                return null;
+            const d = new Date(customIso);
+            return isNaN(d.getTime()) ? null : d.toISOString();
+        }
+        default: return null;
+    }
+}
 //# sourceMappingURL=clientUtils.js.map

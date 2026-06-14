@@ -110,3 +110,6 @@ test.js
 
 # Local DB backup archives produced by server/dist/bin/dbBackup.js
 backups/
+
+# Chat image uploads (in-house chat replacement for GetStream)
+uploads/

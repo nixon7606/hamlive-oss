@@ -1,19 +1,9 @@
-import { StreamChat } from 'stream-chat';
 import { createLogger } from '#@client/lib/logger.js';
 import { serverInfo } from '#@client/lib/serverInfo.js';
-import { getNpid, generateUUID, UserAgentPersistentPreferences } from '#@client/lib/clientUtils.js';
+import { getNpid, generateUUID, UserAgentPersistentPreferences, expiryFromPreset } from '#@client/lib/clientUtils.js';
+import { LocalChatConnection } from '#@client/lib/localChat.js';
 const logger = createLogger('lib/chat.ts');
 const prefs = new UserAgentPersistentPreferences();
-const isChatTokenResponse = (obj) => {
-    if (typeof obj !== 'object' || obj === null)
-        return false;
-    const response = obj;
-    return (typeof response.token === 'string' &&
-        typeof response.userId === 'string' &&
-        typeof response.channelId === 'string' &&
-        typeof response.channelType === 'string' &&
-        typeof response.apiKey === 'string');
-};
 const REACTIONS = [
     { type: 'like', emoji: '👍' },
     { type: 'love', emoji: '❤️' },
@@ -24,13 +14,25 @@ export class ChatWidget extends HTMLElement {
     uuid = generateUUID();
     _online = true;
     store = null;
-    client = null;
-    channel = null;
+    connection = null;
     npid = getNpid();
     level;
     initialized = false;
-    currentUserId = null;
+    messages = [];
     lastKnownLevel;
+    currentUserId = null;
+    selfCallSign = null;
+    replyingTo = null;
+    typingTimers = new Map();
+    typingDebounceTimer = null;
+    wasTyping = false;
+    isBanned = null;
+    lastRenderedDate = null;
+    lastRenderedCallSign = null;
+    unreadCount = 0;
+    isScrolledUp = false;
+    scrollListener = null;
+    visibilityHandler = null;
     documentClickHandler = null;
     beforeUnloadHandler = null;
     connectedCallback() {
@@ -55,29 +57,37 @@ export class ChatWidget extends HTMLElement {
         this.lastKnownLevel = level;
         try {
             logger.info(`Chat initializing with level ${level} from presence`);
-            const chatConfig = await this.fetchToken();
-            if (!chatConfig) {
-                logger.info('Chat is disabled on this server (GetStream not configured) — skipping chat.');
+            const conn = new LocalChatConnection();
+            this.connection = conn;
+            const session = await conn.getSession();
+            if (!session || !session.enabled) {
+                logger.info('Chat is disabled on this server — skipping chat.');
                 return;
             }
-            this.client = StreamChat.getInstance(chatConfig.apiKey);
-            this.currentUserId = chatConfig.userId;
-            const tokenProvider = async () => {
-                logger.info('Token provider: fetching fresh token');
-                const freshConfig = await this.fetchToken();
-                if (!freshConfig)
-                    throw new Error('Chat token unavailable');
-                return freshConfig.token;
-            };
-            await this.client.connectUser({ id: chatConfig.userId }, tokenProvider);
-            this.channel = this.client.channel(chatConfig.channelType, chatConfig.channelId);
-            await this.channel.watch();
-            logger.info(`Watching channel ${chatConfig.channelId}`);
+            this.currentUserId = session.userId;
+            this.selfCallSign = (session.callSign || '').toUpperCase();
+            if (session.banned && typeof session.banned === 'object') {
+                this.isBanned = session.banned;
+                logger.info(`User is banned from chat: ${this.isBanned.reason}`);
+            }
+            conn.connect();
             this.store.subscribe(this);
-            this.setupChannelListeners();
+            this.setupConnectionListeners();
             this.initialized = true;
             this.render();
+            const existingMessages = await conn.getMessages();
+            if (existingMessages && existingMessages.length > 0) {
+                this.messages = existingMessages;
+            }
             this.loadMessages();
+            this.setupScrollListener();
+            this.visibilityHandler = () => {
+                if (!document.hidden) {
+                    this.unreadCount = 0;
+                    this.updateLatestButton();
+                }
+            };
+            document.addEventListener('visibilitychange', this.visibilityHandler);
             if (level <= 1) {
                 this.showCommandTip();
             }
@@ -267,6 +277,15 @@ export class ChatWidget extends HTMLElement {
                         <p>Connecting to chat...</p>
                     </div>
                 </div>
+                <div class="chat-typing-indicator d-none px-2 py-1" style="color: var(--hl-tertiary); font-size: 12px; font-style: italic; min-height: 20px;"></div>
+                <div class="chat-reply-indicator d-none" style="display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--hl-quaternary); border-top: 1px solid var(--hl-tertiary); font-size: 12px;">
+                    <i class="bi bi-reply-fill" style="color: var(--hl-secondary);"></i>
+                    <span style="flex: 1;">
+                        <span class="chat-reply-name" style="color: var(--hl-secondary); font-weight: 600;"></span>
+                        <span class="chat-reply-text" style="color: var(--hl-tertiary);"></span>
+                    </span>
+                    <button class="chat-reply-cancel btn btn-sm p-0" style="background: none; border: none; color: var(--hl-tertiary); cursor: pointer;">&times;</button>
+                </div>
                 <div class="chat-input-wrapper">
                     <input type="text" class="chat-text-input" placeholder="Message..." maxlength="500">
                     <div class="chat-emoji-wrapper">
@@ -303,13 +322,12 @@ export class ChatWidget extends HTMLElement {
         }
     }
     loadMessages() {
-        if (!this.channel)
+        if (!this.connection)
             return;
         const messagesContainer = this.querySelector('.chat-messages');
         if (!messagesContainer)
             return;
-        const messages = this.channel.state.messages;
-        if (messages.length === 0) {
+        if (this.messages.length === 0) {
             messagesContainer.innerHTML = `
                 <div class="text-center text-muted p-4">
                     <p>No messages yet. Say hello!</p>
@@ -318,82 +336,116 @@ export class ChatWidget extends HTMLElement {
             return;
         }
         messagesContainer.innerHTML = '';
-        messages.forEach(msg => this.renderMessage(msg));
+        this.lastRenderedDate = null;
+        this.lastRenderedCallSign = null;
+        this.messages.forEach(msg => this.renderMessage(msg));
         this.scrollToBottom();
     }
     renderMessage(msg) {
         const messagesContainer = this.querySelector('.chat-messages');
-        if (!messagesContainer || !this.client)
+        if (!messagesContainer)
             return;
-        const user = msg.user;
-        const rawName = user?.name || user?.callSign || 'Unknown';
+        const msgDate = new Date(msg.createdAt);
+        const msgDateKey = this.dateKey(msgDate);
+        const smartTs = this.formatSmartTimestamp(msgDate);
+        const isSameCallSign = msg.callSign && msg.callSign === this.lastRenderedCallSign;
+        if (msgDateKey !== this.lastRenderedDate) {
+            this.lastRenderedDate = msgDateKey;
+            const sep = document.createElement('div');
+            sep.className = 'chat-date-separator';
+            sep.style.cssText = 'text-align: center; font-size: 11px; color: var(--hl-tertiary); padding: 8px 0 4px; opacity: 0.7;';
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const msgDay = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate());
+            const diff = Math.round((today.getTime() - msgDay.getTime()) / 86400000);
+            let label;
+            if (diff === 0)
+                label = 'Today';
+            else if (diff === 1)
+                label = 'Yesterday';
+            else
+                label = msgDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+            sep.textContent = label;
+            messagesContainer.appendChild(sep);
+        }
+        const rawName = msg.displayName || msg.callSign || 'Unknown';
         const usernameHtml = this.formatUsername(rawName);
-        const timestamp = new Date(msg.created_at || '').toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        const isEdited = msg.message_text_updated_at && msg.message_text_updated_at !== msg.created_at;
+        const isEdited = msg.edited;
         const editedIndicator = isEdited ? '<span class="chat-edited">(edited)</span>' : '';
-        const isOwnMessage = user?.id === this.currentUserId;
+        const isOwnMessage = msg.userId === this.currentUserId;
         const editBtn = isOwnMessage
             ? `<button class="chat-action-btn chat-edit-btn" title="Edit message"><i class="bi bi-pencil"></i></button>`
             : '';
         const msgEl = document.createElement('div');
         msgEl.className = 'chat-message';
         msgEl.dataset['messageId'] = msg.id;
+        msgEl.dataset['userId'] = msg.userId || '';
+        msgEl.dataset['callsign'] = msg.callSign || '';
         let messageContent = '';
         if (msg.text) {
             messageContent += `<span class="chat-text">${this.linkifyText(this.escapeHtml(msg.text))}</span>`;
         }
-        if (msg.attachments && msg.attachments.length > 0) {
-            msg.attachments.forEach((att) => {
-                if (att.type === 'image') {
-                    const imageUrl = att.image_url || att.thumb_url || '';
-                    const fullUrl = att.asset_url || att.image_url || '';
-                    messageContent += `
-                        <div class="mt-1">
-                            <img src="${this.escapeHtml(imageUrl)}" 
-                                 alt="Shared image" 
-                                 class="img-fluid rounded" 
-                                 style="max-height: 200px; cursor: pointer; border: 1px solid var(--hl-quaternary);"
-                                 onclick="window.open('${this.escapeHtml(fullUrl)}', '_blank')">
-                        </div>
-                    `;
-                }
-            });
+        if (msg.imageUrl) {
+            messageContent += `
+                <div class="mt-1">
+                    <img src="${this.escapeHtml(msg.imageUrl)}"
+                         alt="Shared image"
+                         class="chat-image img-fluid rounded chat-image-clickable"
+                         style="max-height: 200px; cursor: pointer; border: 1px solid var(--hl-quaternary);">
+                </div>
+            `;
         }
         const reactionsHtml = this.renderReactions(msg);
         const moderateBtn = this.canModerate()
             ? `<button class="chat-action-btn chat-mod-btn chat-delete-btn" title="Delete message"><i class="bi bi-trash"></i></button>`
+                + (msg.userId && msg.userId !== this.currentUserId
+                    ? `<button class="chat-action-btn chat-mod-btn chat-ban-btn" title="Ban author"><i class="bi bi-slash-circle"></i></button>`
+                    : '')
             : '';
         msgEl.innerHTML = `
             <div class="chat-message-actions">
                 ${editBtn}
                 <button class="chat-action-btn chat-react-btn" title="React"><i class="bi bi-emoji-smile"></i></button>
+                <button class="chat-action-btn chat-reply-btn" title="Reply"><i class="bi bi-reply"></i></button>
                 ${moderateBtn}
             </div>
             <div class="chat-reaction-picker">
                 ${REACTIONS.map(r => `<button data-reaction="${r.type}">${r.emoji}</button>`).join('')}
             </div>
-            <span class="chat-username">${usernameHtml}</span>
-            <span class="chat-timestamp ms-2">${timestamp}</span>
+            ${isSameCallSign ? '' : `<span class="chat-username">${usernameHtml}</span>`}
+            <span class="chat-timestamp ms-2">${smartTs}</span>
             ${editedIndicator}
+            ${msg.parentMessage ? this.renderReplySnippet(msg) : ''}
             <div class="chat-message-content">${messageContent}</div>
+            ${msg.replyCount && msg.replyCount > 0 ? `<div class="chat-reply-count" style="margin-top: 4px; font-size: 11px; color: var(--hl-secondary); cursor: pointer;"><i class="bi bi-reply-fill"></i> ${msg.replyCount} ${msg.replyCount === 1 ? 'reply' : 'replies'}</div>` : ''}
             <div class="chat-reactions">${reactionsHtml}</div>
         `;
+        if (isSameCallSign) {
+            msgEl.style.paddingTop = '2px';
+            msgEl.style.borderTop = '1px solid rgba(240, 238, 222, 0.08)';
+        }
+        this.lastRenderedCallSign = msg.callSign || null;
         this.setupMessageActions(msgEl, msg.id, msg.text || '');
         const placeholder = messagesContainer.querySelector('.text-muted');
         if (placeholder)
             placeholder.remove();
         messagesContainer.appendChild(msgEl);
     }
+    renderReplySnippet(msg) {
+        const callsign = msg.parentCallSign || 'someone';
+        const preview = msg.parentText ? this.escapeHtml(msg.parentText.slice(0, 60)) : '';
+        return preview
+            ? `<div style="font-size: 11px; color: var(--hl-tertiary); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><i class="bi bi-reply-fill" style="font-size: 10px;"></i> <strong>${this.escapeHtml(callsign)}</strong>: ${preview}</div>`
+            : `<div style="font-size: 11px; color: var(--hl-tertiary); margin-bottom: 2px;"><i class="bi bi-reply-fill" style="font-size: 10px;"></i> Replying to <strong>${this.escapeHtml(callsign)}</strong></div>`;
+    }
     renderReactions(msg) {
-        const reactionCounts = msg.reaction_counts || {};
-        const ownReactions = (msg.own_reactions || []);
-        const ownReactionTypes = new Set(ownReactions.map(r => r.type));
-        return REACTIONS.filter(r => reactionCounts[r.type])
+        const reactions = msg.reactions || {};
+        const ownReactionTypes = new Set(this.currentUserId ? Object.entries(reactions)
+            .filter(([, users]) => users.includes(this.currentUserId))
+            .map(([type]) => type) : []);
+        return REACTIONS.filter(r => reactions[r.type] && reactions[r.type].length > 0)
             .map(r => {
-            const count = reactionCounts[r.type] || 0;
+            const count = reactions[r.type]?.length || 0;
             const isMine = ownReactionTypes.has(r.type);
             return `<span class="chat-reaction${isMine ? ' mine' : ''}" data-reaction="${r.type}">
                     ${r.emoji}<span class="chat-reaction-count">${count}</span>
@@ -401,14 +453,15 @@ export class ChatWidget extends HTMLElement {
         })
             .join('');
     }
-    setupChannelListeners() {
-        if (!this.channel)
+    setupConnectionListeners() {
+        if (!this.connection)
             return;
-        this.channel.on('message.new', this.handleNewMessage.bind(this));
-        this.channel.on('message.deleted', this.handleDeletedMessage.bind(this));
-        this.channel.on('message.updated', this.handleUpdatedMessage.bind(this));
-        this.channel.on('reaction.new', this.handleReactionUpdate.bind(this));
-        this.channel.on('reaction.deleted', this.handleReactionUpdate.bind(this));
+        this.connection.on('message.new', this.handleNewMessage.bind(this));
+        this.connection.on('message.updated', this.handleUpdatedMessage.bind(this));
+        this.connection.on('message.deleted', this.handleDeletedMessage.bind(this));
+        this.connection.on('reaction', this.handleReaction.bind(this));
+        this.connection.on('typing', this.handleTypingEvent.bind(this));
+        this.connection.on('ban', this.handleBanEvent.bind(this));
     }
     setupInputListeners() {
         const sendBtn = this.querySelector('.chat-send-btn');
@@ -418,11 +471,17 @@ export class ChatWidget extends HTMLElement {
         const emojiPickerWrapper = this.querySelector('.chat-emoji-picker');
         const emojiPicker = this.querySelector('emoji-picker');
         sendBtn?.addEventListener('click', () => void this.sendMessage());
-        textInput?.addEventListener('keypress', e => {
+        textInput?.addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 void this.sendMessage();
             }
+            else if (e.key === 'Escape' && this.replyingTo) {
+                this.cancelReply();
+            }
+        });
+        textInput?.addEventListener('input', () => {
+            this.handleInputTyping();
         });
         fileInput?.addEventListener('change', e => {
             const file = e.target.files?.[0];
@@ -443,9 +502,9 @@ export class ChatWidget extends HTMLElement {
                 const unicode = detail.unicode;
                 textInput.value = textInput.value.slice(0, start) + unicode + textInput.value.slice(end);
                 textInput.selectionStart = textInput.selectionEnd = start + unicode.length;
-                textInput.focus();
             }
             emojiPickerWrapper?.classList.remove('show');
+            setTimeout(() => textInput?.focus(), 100);
         });
         this.documentClickHandler = (e) => {
             if (!emojiPickerWrapper?.contains(e.target) && !emojiBtn?.contains(e.target)) {
@@ -453,6 +512,49 @@ export class ChatWidget extends HTMLElement {
             }
         };
         document.addEventListener('click', this.documentClickHandler);
+        const replyCancel = this.querySelector('.chat-reply-cancel');
+        replyCancel?.addEventListener('click', () => this.cancelReply());
+        textInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.replyingTo) {
+                this.cancelReply();
+                textInput.blur();
+            }
+        });
+        textInput?.addEventListener('input', () => {
+            this.handleSlashAutocomplete();
+        });
+        textInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                const dd = this.querySelector('.chat-slash-dropdown');
+                if (dd && !dd.classList.contains('d-none')) {
+                    e.preventDefault();
+                    const active = dd.querySelector('.chat-slash-active');
+                    if (active) {
+                        const nxt = active.nextElementSibling;
+                        if (nxt) {
+                            active.classList.remove('chat-slash-active');
+                            nxt.classList.add('chat-slash-active');
+                        }
+                    }
+                    else {
+                        const first = dd.querySelector('div');
+                        if (first)
+                            first.classList.add('chat-slash-active');
+                    }
+                }
+            }
+            if (e.key === 'Enter') {
+                const dd = this.querySelector('.chat-slash-dropdown');
+                if (dd && !dd.classList.contains('d-none')) {
+                    const active = dd.querySelector('.chat-slash-active');
+                    if (active && textInput) {
+                        e.preventDefault();
+                        textInput.value = active.textContent || '';
+                        dd.classList.add('d-none');
+                    }
+                }
+            }
+        });
         this.beforeUnloadHandler = () => this.disconnect();
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
     }
@@ -461,10 +563,23 @@ export class ChatWidget extends HTMLElement {
         const picker = msgEl.querySelector('.chat-reaction-picker');
         const deleteBtn = msgEl.querySelector('.chat-delete-btn');
         const editBtn = msgEl.querySelector('.chat-edit-btn');
+        const replyBtn = msgEl.querySelector('.chat-reply-btn');
         const reactions = msgEl.querySelectorAll('.chat-reaction');
         reactBtn?.addEventListener('click', e => {
             e.stopPropagation();
             picker?.classList.toggle('show');
+        });
+        replyBtn?.addEventListener('click', e => {
+            e.stopPropagation();
+            const callSign = msgEl.querySelector('.chat-username')?.textContent || 'Unknown';
+            const textEl = msgEl.querySelector('.chat-text');
+            const text = textEl?.textContent || '';
+            this.startReply(messageId, callSign, text);
+        });
+        const replyCountEl = msgEl.querySelector('.chat-reply-count');
+        replyCountEl?.addEventListener('click', e => {
+            e.stopPropagation();
+            void this.loadThread(messageId, msgEl);
         });
         picker?.querySelectorAll('button').forEach(btn => {
             btn.addEventListener('click', e => {
@@ -474,6 +589,14 @@ export class ChatWidget extends HTMLElement {
                     void this.toggleReaction(messageId, reactionType);
                 }
                 picker.classList.remove('show');
+            });
+        });
+        const chatImages = msgEl.querySelectorAll('.chat-image');
+        chatImages.forEach(img => {
+            img.addEventListener('click', () => {
+                const src = img.getAttribute('src');
+                if (src)
+                    this.showLightbox(src);
             });
         });
         reactions.forEach(reaction => {
@@ -490,6 +613,12 @@ export class ChatWidget extends HTMLElement {
                 void this.deleteMessage(messageId);
             }
         });
+        const banBtn = msgEl.querySelector('.chat-ban-btn');
+        banBtn?.addEventListener('click', e => {
+            e.stopPropagation();
+            const callSign = msgEl.querySelector('.chat-username')?.textContent || msgEl.dataset['callsign'] || 'this user';
+            this.showBanDialog(messageId, callSign);
+        });
         editBtn?.addEventListener('click', e => {
             e.stopPropagation();
             this.showEditUI(msgEl, messageId, originalText);
@@ -498,66 +627,271 @@ export class ChatWidget extends HTMLElement {
             picker?.classList.remove('show');
         });
     }
-    handleNewMessage(event) {
-        if (event.message) {
+    handleNewMessage(data) {
+        const msg = data;
+        if (msg && msg.id) {
+            this.messages.push(msg);
             const wasNearBottom = this.isNearBottom();
-            this.renderMessage(event.message);
+            if (!wasNearBottom) {
+                this.unreadCount += 1;
+                this.updateLatestButton();
+            }
+            this.renderMessage(msg);
             if (wasNearBottom) {
                 this.scrollToBottom();
             }
+            if (msg.parentMessage) {
+                this.updateParentReplyCount(msg.parentMessage);
+            }
         }
     }
-    handleDeletedMessage(event) {
-        if (event.message) {
-            const msgEl = this.querySelector(`[data-message-id="${event.message.id}"]`);
+    updateParentReplyCount(parentMessageId) {
+        const parentEl = this.querySelector(`[data-message-id="${parentMessageId}"]`);
+        if (!parentEl)
+            return;
+        const countEl = parentEl.querySelector('.chat-reply-count');
+        if (countEl) {
+            const match = countEl.textContent?.match(/(\d+)/);
+            if (match && match[1]) {
+                const count = parseInt(match[1]) + 1;
+                countEl.innerHTML = `<i class="bi bi-reply-fill"></i> ${count} ${count === 1 ? 'reply' : 'replies'}`;
+            }
+        }
+    }
+    handleDeletedMessage(data) {
+        const event = data;
+        if (event && event.messageId) {
+            const msgEl = this.querySelector(`[data-message-id="${event.messageId}"]`);
             if (msgEl)
                 msgEl.remove();
+            this.messages = this.messages.filter(m => m.id !== event.messageId);
         }
     }
-    handleUpdatedMessage(event) {
-        if (!event.message)
+    handleUpdatedMessage(data) {
+        const msg = data;
+        if (!msg || !msg.id)
             return;
-        const msgEl = this.querySelector(`[data-message-id="${event.message.id}"]`);
+        const idx = this.messages.findIndex(m => m.id === msg.id);
+        if (idx >= 0)
+            this.messages[idx] = msg;
+        const msgEl = this.querySelector(`[data-message-id="${msg.id}"]`);
         if (!msgEl)
             return;
         const contentEl = msgEl.querySelector('.chat-message-content');
-        if (contentEl && event.message.text) {
-            contentEl.innerHTML = `<span class="chat-text">${this.linkifyText(this.escapeHtml(event.message.text))}</span>`;
+        if (contentEl && msg.text) {
+            contentEl.innerHTML = `<span class="chat-text">${this.linkifyText(this.escapeHtml(msg.text))}</span>`;
         }
-        const isEdited = event.message.message_text_updated_at && event.message.message_text_updated_at !== event.message.created_at;
-        let editedEl = msgEl.querySelector('.chat-edited');
-        if (isEdited && !editedEl) {
+        const editedIndicators = msgEl.querySelectorAll('.chat-edited');
+        if (msg.edited && editedIndicators.length === 0) {
             const timestampEl = msgEl.querySelector('.chat-timestamp');
             if (timestampEl) {
-                editedEl = document.createElement('span');
-                editedEl.className = 'chat-edited';
-                editedEl.textContent = '(edited)';
-                timestampEl.insertAdjacentElement('afterend', editedEl);
+                const edited = document.createElement('span');
+                edited.className = 'chat-edited';
+                edited.textContent = '(edited)';
+                timestampEl.insertAdjacentElement('afterend', edited);
             }
         }
     }
-    handleReactionUpdate(event) {
-        if (event.message) {
-            const msgEl = this.querySelector(`[data-message-id="${event.message.id}"]`);
-            if (msgEl) {
-                const reactionsContainer = msgEl.querySelector('.chat-reactions');
-                if (reactionsContainer) {
-                    reactionsContainer.innerHTML = this.renderReactions(event.message);
-                    reactionsContainer.querySelectorAll('.chat-reaction').forEach(reaction => {
-                        reaction.addEventListener('click', () => {
-                            const reactionType = reaction.dataset['reaction'];
-                            if (reactionType && event.message?.id) {
-                                void this.toggleReaction(event.message.id, reactionType);
-                            }
-                        });
-                    });
+    handleReaction(data) {
+        const event = data;
+        if (!event || !event.messageId)
+            return;
+        const msg = this.messages.find(m => m.id === event.messageId);
+        if (msg && event.reactions) {
+            msg.reactions = event.reactions;
+        }
+        const msgEl = this.querySelector(`[data-message-id="${event.messageId}"]`);
+        if (!msgEl)
+            return;
+        const reactionsContainer = msgEl.querySelector('.chat-reactions');
+        if (reactionsContainer && msg) {
+            reactionsContainer.innerHTML = this.renderReactions(msg);
+        }
+    }
+    handleInputTyping() {
+        const textInput = this.querySelector('.chat-text-input');
+        const isCurrentlyTyping = textInput ? textInput.value.trim().length > 0 : false;
+        if (isCurrentlyTyping !== this.wasTyping) {
+            this.wasTyping = isCurrentlyTyping;
+            this.connection?.sendTyping(isCurrentlyTyping);
+        }
+        if (this.typingDebounceTimer)
+            clearTimeout(this.typingDebounceTimer);
+        if (isCurrentlyTyping) {
+            this.typingDebounceTimer = setTimeout(() => {
+                if (this.wasTyping) {
+                    this.wasTyping = false;
+                    this.connection?.sendTyping(false);
                 }
+            }, 3000);
+        }
+    }
+    handleTypingEvent(data) {
+        const event = data;
+        if (!event || !event.callSign)
+            return;
+        if (event.callSign === this.selfCallSign)
+            return;
+        const indicator = this.querySelector('.chat-typing-indicator');
+        if (!indicator)
+            return;
+        if (event.isTyping) {
+            const existing = indicator.querySelector(`[data-typing-user="${event.callSign}"]`);
+            if (!existing) {
+                const el = document.createElement('span');
+                el.dataset['typingUser'] = event.callSign;
+                el.textContent = `${event.callSign} is typing...`;
+                indicator.appendChild(el);
+            }
+            const existingTimer = this.typingTimers.get(event.callSign);
+            if (existingTimer)
+                clearTimeout(existingTimer);
+            this.typingTimers.set(event.callSign, setTimeout(() => {
+                const el = indicator.querySelector(`[data-typing-user="${event.callSign}"]`);
+                if (el)
+                    el.remove();
+                this.typingTimers.delete(event.callSign);
+                this.updateTypingVisibility();
+            }, 5000));
+        }
+        else {
+            const el = indicator.querySelector(`[data-typing-user="${event.callSign}"]`);
+            if (el)
+                el.remove();
+            const timer = this.typingTimers.get(event.callSign);
+            if (timer)
+                clearTimeout(timer);
+            this.typingTimers.delete(event.callSign);
+        }
+        this.updateTypingVisibility();
+    }
+    updateTypingVisibility() {
+        const indicator = this.querySelector('.chat-typing-indicator');
+        if (!indicator)
+            return;
+        const hasTyping = indicator.children.length > 0;
+        indicator.classList.toggle('d-none', !hasTyping);
+    }
+    handleBanEvent(data) {
+        const event = data;
+        if (!event || !event.callSign)
+            return;
+        if (event.type === 'ban') {
+            if (event.callSign === this.sessionCallSign) {
+                this.isBanned = { reason: event.reason || 'Banned', bannedAt: new Date().toISOString() };
+                this.showChatNotice(`You have been banned from chat: ${event.reason || 'No reason'}`);
+                this.updateBanUI();
             }
         }
+        else if (event.type === 'unban') {
+            if (event.callSign === this.sessionCallSign) {
+                this.isBanned = null;
+                this.showChatNotice('You have been unbanned from chat');
+                this.updateBanUI();
+            }
+        }
+    }
+    updateBanUI() {
+        const textInput = this.querySelector('.chat-text-input');
+        const sendBtn = this.querySelector('.chat-send-btn');
+        const fileLabel = this.querySelector('.chat-icon-btn[title="Share image"]');
+        if (textInput) {
+            textInput.disabled = !!this.isBanned;
+            textInput.placeholder = this.isBanned ? 'You are banned from chat' : 'Message...';
+        }
+        if (sendBtn)
+            sendBtn.disabled = !!this.isBanned;
+        if (fileLabel)
+            fileLabel.style.opacity = this.isBanned ? '0.4' : '1';
+    }
+    startReply(messageId, callSign, text) {
+        this.replyingTo = { messageId, callSign, text: text.slice(0, 80) };
+        this.updateReplyIndicator();
+        const textInput = this.querySelector('.chat-text-input');
+        textInput?.focus();
+    }
+    cancelReply() {
+        this.replyingTo = null;
+        this.updateReplyIndicator();
+    }
+    async loadThread(parentMessageId, parentMsgEl) {
+        if (!this.connection)
+            return;
+        const existingThread = parentMsgEl.querySelector('.chat-thread');
+        if (existingThread) {
+            existingThread.remove();
+            return;
+        }
+        try {
+            const replies = await this.connection.getReplies(parentMessageId);
+            if (replies.length === 0)
+                return;
+            const threadDiv = document.createElement('div');
+            threadDiv.className = 'chat-thread';
+            threadDiv.style.cssText = 'margin-left: 16px; padding-left: 8px; border-left: 2px solid var(--hl-quaternary); margin-top: 4px;';
+            const parentMsg = this.messages.find(m => m.id === parentMessageId);
+            if (parentMsg) {
+                const parentHeader = document.createElement('div');
+                parentHeader.style.cssText = 'padding: 6px 8px; border-bottom: 1px solid rgba(240, 238, 222, 0.15); margin-bottom: 4px;';
+                const parentTs = new Date(parentMsg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const parentContent = parentMsg.text
+                    ? this.linkifyText(this.escapeHtml(parentMsg.text))
+                    : parentMsg.imageUrl
+                        ? '<i class="bi bi-image"></i> Image'
+                        : '';
+                parentHeader.innerHTML = `
+                    <div style="font-size: 10px; color: var(--hl-tertiary); margin-bottom: 2px;">Thread</div>
+                    <span class="chat-username" style="font-size: 12px;">${this.escapeHtml(parentMsg.callSign)}</span>
+                    <span class="chat-timestamp ms-2" style="font-size: 10px;">${parentTs}</span>
+                    <div class="chat-text" style="font-size: 13px; margin-top: 2px;">${parentContent}</div>
+                `;
+                threadDiv.appendChild(parentHeader);
+            }
+            replies.forEach(reply => {
+                const replyEl = document.createElement('div');
+                replyEl.className = 'chat-message';
+                replyEl.style.cssText = 'padding: 4px 8px; border-bottom: none; font-size: 13px;';
+                const ts = new Date(reply.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                replyEl.innerHTML = `
+                    <span class="chat-username" style="font-size: 12px;">${this.escapeHtml(reply.callSign)}</span>
+                    <span class="chat-timestamp ms-2" style="font-size: 10px;">${ts}</span>
+                    <div class="chat-text" style="font-size: 13px;">${this.linkifyText(this.escapeHtml(reply.text))}</div>
+                `;
+                threadDiv.appendChild(replyEl);
+            });
+            parentMsgEl.appendChild(threadDiv);
+        }
+        catch (err) {
+            logger.error('Failed to load thread:', err);
+        }
+    }
+    updateReplyIndicator() {
+        const indicator = this.querySelector('.chat-reply-indicator');
+        if (!indicator)
+            return;
+        if (this.replyingTo) {
+            indicator.classList.remove('d-none');
+            const nameEl = indicator.querySelector('.chat-reply-name');
+            const textEl = indicator.querySelector('.chat-reply-text');
+            if (nameEl)
+                nameEl.textContent = this.replyingTo.callSign;
+            if (textEl)
+                textEl.textContent = this.replyingTo.text;
+        }
+        else {
+            indicator.classList.add('d-none');
+        }
+    }
+    get sessionCallSign() {
+        return this.connection?.['session']?.callSign || '';
     }
     async sendMessage() {
-        if (!this.channel)
+        if (!this.connection)
             return;
+        if (this.isBanned) {
+            this.showChatNotice(`You are banned from chat: ${this.isBanned.reason}`);
+            return;
+        }
         const textInput = this.querySelector('.chat-text-input');
         const text = textInput?.value.trim();
         if (!text)
@@ -568,9 +902,21 @@ export class ChatWidget extends HTMLElement {
             return;
         }
         try {
-            await this.channel.sendMessage({ text });
+            const parentMessageId = this.replyingTo?.messageId;
+            const sent = await this.connection.sendMessage(text, parentMessageId);
             if (textInput)
                 textInput.value = '';
+            if (this.replyingTo) {
+                this.replyingTo = null;
+                this.updateReplyIndicator();
+            }
+            if (sent && sent.id && !this.messages.find(m => m.id === sent.id)) {
+                this.messages.push(sent);
+                const wasNearBottom = this.isNearBottom();
+                this.renderMessage(sent);
+                if (wasNearBottom)
+                    this.scrollToBottom();
+            }
         }
         catch (error) {
             this.handleSendError(error);
@@ -605,62 +951,59 @@ export class ChatWidget extends HTMLElement {
         }
     }
     async sendImage(file) {
-        if (!this.channel)
+        if (!this.connection)
             return;
+        if (this.isBanned) {
+            this.showChatNotice(`You are banned from chat: ${this.isBanned.reason}`);
+            return;
+        }
         try {
             logger.info(`Attempting to send image: ${file.name} (${file.size} bytes, type: ${file.type})`);
-            const response = await this.channel.sendImage(file);
-            logger.info('Image uploaded successfully:', response.file);
-            await this.channel.sendMessage({
-                attachments: [
-                    {
-                        type: 'image',
-                        asset_url: response.file,
-                        image_url: response.file,
-                        thumb_url: response.file
-                    }
-                ]
-            });
+            const parentMessageId = this.replyingTo?.messageId;
+            const sent = await this.connection.sendImage(file, parentMessageId);
+            if (this.replyingTo) {
+                this.replyingTo = null;
+                this.updateReplyIndicator();
+            }
+            if (sent && sent.id && !this.messages.find(m => m.id === sent.id)) {
+                this.messages.push(sent);
+                const wasNearBottom = this.isNearBottom();
+                this.renderMessage(sent);
+                if (wasNearBottom)
+                    this.scrollToBottom();
+            }
+            else if (!sent) {
+                this.handleSendError(new Error('Image upload returned no message'));
+            }
         }
         catch (error) {
             this.handleSendError(error);
         }
     }
     async toggleReaction(messageId, reactionType) {
-        if (!this.channel)
+        if (!this.connection)
             return;
         try {
-            const message = this.channel.state.messages.find(m => m.id === messageId);
-            const ownReactions = (message?.own_reactions || []);
-            const existingReaction = ownReactions.find(r => r.type === reactionType);
-            if (existingReaction) {
-                await this.channel.deleteReaction(messageId, reactionType);
-                logger.debug(`Removed ${reactionType} reaction from ${messageId}`);
-            }
-            else {
-                await this.channel.sendReaction(messageId, { type: reactionType });
-                logger.debug(`Added ${reactionType} reaction to ${messageId}`);
-            }
+            await this.connection.toggleReaction(messageId, reactionType);
+            logger.debug(`Toggled ${reactionType} reaction on ${messageId}`);
         }
         catch (error) {
             logger.error('Failed to toggle reaction:', error);
         }
     }
     async deleteMessage(messageId) {
-        if (!this.canModerate())
+        if (!this.canModerate() || !this.connection)
             return;
         try {
-            const response = await fetch(`/api/endorse/chat/${this.npid.toString()}/message/${messageId}`, {
-                method: 'DELETE'
-            });
-            if (!response.ok) {
-                const data = (await response.json());
-                throw new Error(data.errorMessage ?? 'Failed to delete message');
+            const success = await this.connection.deleteMessage(messageId);
+            if (!success) {
+                throw new Error('Failed to delete message');
             }
             logger.info(`Deleted message ${messageId}`);
         }
         catch (error) {
             logger.error('Failed to delete message:', error);
+            this.showChatNotice('Failed to delete message');
         }
     }
     showEditUI(msgEl, messageId, originalText) {
@@ -711,10 +1054,12 @@ export class ChatWidget extends HTMLElement {
         });
     }
     async editMessage(messageId, newText) {
-        if (!this.client)
+        if (!this.connection)
             return;
         try {
-            await this.client.updateMessage({ id: messageId, text: newText });
+            const success = await this.connection.editMessage(messageId, newText);
+            if (!success)
+                throw new Error('Edit failed');
             logger.info(`Edited message ${messageId}`);
         }
         catch (error) {
@@ -746,25 +1091,27 @@ export class ChatWidget extends HTMLElement {
                     }
                 });
                 actionsContainer.appendChild(deleteBtn);
+                const msgUserId = msgEl.dataset['userId'];
+                if (msgUserId && msgUserId !== this.currentUserId && !actionsContainer.querySelector('.chat-ban-btn')) {
+                    const banBtn = document.createElement('button');
+                    banBtn.className = 'chat-action-btn chat-mod-btn chat-ban-btn';
+                    banBtn.title = 'Ban author';
+                    banBtn.innerHTML = '<i class="bi bi-slash-circle"></i>';
+                    banBtn.addEventListener('click', e => {
+                        e.stopPropagation();
+                        const messageId = msgEl.dataset['messageId'];
+                        const callSign = msgEl.querySelector('.chat-username')?.textContent || msgEl.dataset['callsign'] || 'this user';
+                        if (messageId)
+                            this.showBanDialog(messageId, callSign);
+                    });
+                    actionsContainer.appendChild(banBtn);
+                }
             }
             else if (!canMod && existingDeleteBtn) {
                 existingDeleteBtn.remove();
+                actionsContainer.querySelector('.chat-ban-btn')?.remove();
             }
         });
-    }
-    async fetchToken() {
-        const response = await fetch(`/api/endorse/chat/${this.npid.toString()}`);
-        if (!response.ok) {
-            throw new Error(`Failed to get chat token: ${response.statusText}`);
-        }
-        const data = (await response.json());
-        if (data.message && data.message.enabled === false) {
-            return null;
-        }
-        if (!isChatTokenResponse(data.message)) {
-            throw new Error('Invalid chat token response from server');
-        }
-        return data.message;
     }
     isNearBottom() {
         const messagesContainer = this.querySelector('.chat-messages');
@@ -790,6 +1137,21 @@ export class ChatWidget extends HTMLElement {
         div.textContent = text;
         return div.innerHTML;
     }
+    formatSmartTimestamp(date) {
+        const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const msgDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const diffDays = Math.round((today.getTime() - msgDate.getTime()) / 86400000);
+        if (diffDays === 0)
+            return time;
+        if (diffDays === 1)
+            return `Yesterday ${time}`;
+        return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time;
+    }
+    dateKey(date) {
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
     formatUsername(rawName) {
         const match = rawName.match(/^(.+)\(([^)]+)\)$/);
         if (match && match[1] && match[2]) {
@@ -798,13 +1160,13 @@ export class ChatWidget extends HTMLElement {
         return this.escapeHtml(rawName);
     }
     handleSendError(error) {
-        const streamError = error;
-        if (streamError.code === 17) {
-            this.showChatNotice('You are currently unable to send messages in this chat.');
-            logger.info('User attempted to send message while banned/muted');
+        logger.error('Failed to send message:', error);
+        const errMsg = error instanceof Error ? error.message : String(error);
+        if (errMsg.toLowerCase().includes('banned')) {
+            this.showChatNotice(errMsg);
         }
         else {
-            logger.error('Failed to send message:', error);
+            this.showChatNotice('Failed to send message');
         }
     }
     showCommandTip() {
@@ -867,6 +1229,158 @@ export class ChatWidget extends HTMLElement {
         this.scrollToBottom();
         setTimeout(() => notice.remove(), 8000);
     }
+    setupScrollListener() {
+        const container = this.querySelector('.chat-messages');
+        if (!container)
+            return;
+        const btn = document.createElement('div');
+        btn.className = 'chat-latest-btn d-none';
+        btn.style.cssText = 'position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); background: var(--hl-secondary); color: #fff; border: none; border-radius: 20px; padding: 6px 16px; font-size: 12px; cursor: pointer; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 6px;';
+        btn.innerHTML = '↓ Latest <span class="chat-unread-badge" style="background: #e74c3c; color: #fff; border-radius: 10px; padding: 1px 6px; font-size: 10px; display: none;"></span>';
+        const wrapper = this.querySelector('.chat-widget');
+        if (wrapper)
+            wrapper.style.position = 'relative';
+        container.parentElement?.appendChild(btn);
+        btn.addEventListener('click', () => {
+            this.unreadCount = 0;
+            this.updateLatestButton();
+            this.scrollToBottom();
+        });
+        this.scrollListener = () => {
+            const threshold = 150;
+            const isUp = container.scrollHeight - container.scrollTop - container.clientHeight > threshold;
+            this.isScrolledUp = isUp;
+            this.updateLatestButton();
+        };
+        container.addEventListener('scroll', this.scrollListener);
+    }
+    updateLatestButton() {
+        const btn = this.querySelector('.chat-latest-btn');
+        if (!btn)
+            return;
+        btn.classList.toggle('d-none', !this.isScrolledUp);
+        const badge = btn.querySelector('.chat-unread-badge');
+        if (badge) {
+            if (this.unreadCount > 0) {
+                badge.textContent = String(this.unreadCount);
+                badge.style.display = 'inline';
+            }
+            else {
+                badge.style.display = 'none';
+            }
+        }
+    }
+    showLightbox(src) {
+        const overlay = document.createElement('div');
+        overlay.className = 'chat-lightbox';
+        overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; cursor: pointer;';
+        const img = document.createElement('img');
+        img.src = src;
+        img.style.cssText = 'max-width: 90%; max-height: 90%; border-radius: 4px; object-fit: contain;';
+        overlay.appendChild(img);
+        overlay.addEventListener('click', () => overlay.remove());
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape')
+                overlay.remove();
+        }, { once: true });
+        document.body.appendChild(overlay);
+    }
+    showBanDialog(messageId, callSign) {
+        const overlay = document.createElement('div');
+        overlay.className = 'chat-ban-dialog';
+        overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; display: flex; align-items: center; justify-content: center;';
+        overlay.innerHTML = `
+            <div style="background: var(--hl-dark, #1f2733); color: var(--hl-light); padding: 16px; border-radius: 6px; width: 320px; max-width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+                <div style="font-weight: 600; margin-bottom: 8px;">Ban ${this.escapeHtml(callSign)} from chat</div>
+                <label style="font-size: 12px;">Reason</label>
+                <input class="ban-reason" type="text" value="Disruptive behavior" maxlength="200"
+                    style="width: 100%; margin: 4px 0 10px; padding: 6px; border-radius: 4px; border: 1px solid #444; background:#11161d; color:#fff;">
+                <label style="font-size: 12px;">Duration</label>
+                <select class="ban-duration" style="width: 100%; margin: 4px 0 8px; padding: 6px; border-radius: 4px;">
+                    <option value="permanent">Permanent</option>
+                    <option value="1h">1 hour</option>
+                    <option value="24h">24 hours</option>
+                    <option value="7d">7 days</option>
+                    <option value="custom">Custom…</option>
+                </select>
+                <input class="ban-custom" type="datetime-local" style="width: 100%; margin-bottom: 10px; padding: 6px; display: none;">
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button class="ban-cancel" style="padding: 6px 12px;">Cancel</button>
+                    <button class="ban-confirm" style="padding: 6px 12px; background:#dc3545; color:#fff; border:none; border-radius:4px;">Ban</button>
+                </div>
+            </div>`;
+        const close = () => overlay.remove();
+        const durationSel = overlay.querySelector('.ban-duration');
+        const customInput = overlay.querySelector('.ban-custom');
+        durationSel.addEventListener('change', () => {
+            customInput.style.display = durationSel.value === 'custom' ? 'block' : 'none';
+        });
+        overlay.querySelector('.ban-cancel')?.addEventListener('click', close);
+        overlay.addEventListener('click', e => { if (e.target === overlay)
+            close(); });
+        overlay.querySelector('.ban-confirm')?.addEventListener('click', () => {
+            const reason = overlay.querySelector('.ban-reason').value.trim() || 'No reason given';
+            const expiresAt = expiryFromPreset(durationSel.value, customInput.value);
+            close();
+            void this.banAuthor(messageId, reason, expiresAt);
+        });
+        document.body.appendChild(overlay);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape')
+                close();
+        }, { once: true });
+    }
+    async banAuthor(messageId, reason, expiresAt) {
+        if (!this.connection)
+            return;
+        const ok = await this.connection.banFromMessage(messageId, reason, expiresAt);
+        this.showChatNotice(ok ? 'User banned from chat.' : 'Failed to ban user.');
+    }
+    handleSlashAutocomplete() {
+        const textInput = this.querySelector('.chat-text-input');
+        if (!textInput)
+            return;
+        const val = textInput.value;
+        const existing = this.querySelector('.chat-slash-dropdown');
+        existing?.remove();
+        if (!val.startsWith('/') || val.includes(' '))
+            return;
+        const COMMANDS = [
+            '/i — Check in',
+            '/o — Check out',
+            '/? — Help',
+            '/ban — Ban user',
+            '/unban — Unban user',
+            '/f — Set frequency',
+            '/nick — Set nickname',
+            '/hand — Hand off',
+            '/close — Close net',
+            '/count — Station count'
+        ];
+        const partial = val.slice(1).toLowerCase();
+        const matches = COMMANDS.filter(c => c.toLowerCase().includes(partial));
+        if (matches.length === 0 || matches.length === COMMANDS.length)
+            return;
+        const dd = document.createElement('div');
+        dd.className = 'chat-slash-dropdown';
+        dd.style.cssText = 'position: absolute; bottom: 100%; left: 0; right: 0; background: var(--hl-dark); border: 1px solid var(--hl-quaternary); border-radius: 6px; max-height: 200px; overflow-y: auto; z-index: 100;';
+        matches.forEach(cmd => {
+            const item = document.createElement('div');
+            item.style.cssText = 'padding: 6px 10px; font-size: 12px; color: var(--hl-light); cursor: pointer; border-bottom: 1px solid rgba(240, 238, 222, 0.1);';
+            item.textContent = cmd;
+            item.addEventListener('click', () => {
+                textInput.value = cmd.split(' — ')[0] || '';
+                dd.remove();
+                textInput.focus();
+            });
+            dd.appendChild(item);
+        });
+        const wrapper = this.querySelector('.chat-input-wrapper');
+        if (wrapper) {
+            wrapper.style.position = 'relative';
+            wrapper.appendChild(dd);
+        }
+    }
     disconnect() {
         if (this.documentClickHandler) {
             document.removeEventListener('click', this.documentClickHandler);
@@ -876,11 +1390,23 @@ export class ChatWidget extends HTMLElement {
             window.removeEventListener('beforeunload', this.beforeUnloadHandler);
             this.beforeUnloadHandler = null;
         }
+        if (this.scrollListener) {
+            const container = this.querySelector('.chat-messages');
+            container?.removeEventListener('scroll', this.scrollListener);
+            this.scrollListener = null;
+        }
+        if (this.visibilityHandler) {
+            document.removeEventListener('visibilitychange', this.visibilityHandler);
+            this.visibilityHandler = null;
+        }
+        this.querySelector('.chat-lightbox')?.remove();
+        this.querySelector('.chat-slash-dropdown')?.remove();
+        this.querySelector('.chat-latest-btn')?.remove();
         if (this.store) {
             this.store.unsubscribe(this);
         }
-        if (this.client) {
-            void this.client.disconnectUser();
+        if (this.connection) {
+            this.connection.disconnect();
             logger.info('Disconnected from chat');
         }
     }

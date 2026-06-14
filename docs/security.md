@@ -26,6 +26,15 @@ This document covers security considerations for Ham.Live REST endpoints, authen
 - Only the public API key is returned to the client; the secret never leaves the server.
 - See [Chat System](chat-system.md) for implementation details.
 
+## Rate limiting and abuse prevention
+
+Email-sending endpoints and the central email dispatch are protected by a two-layer rate-limiting system:
+
+1. **HTTP layer** — `express-rate-limit` on `POST /auth/magiclogin` (5 requests per IP per 5 minutes)
+2. **Application layer** — per-recipient cooldown in `EmailBase.sendMailToAddrs()` that prevents sending to the same address more than once per configurable window, regardless of which feature triggers the email
+
+See [Email Abuse Protection](email-abuse-protection.md) for the full documentation, configuration reference, and flow diagram.
+
 ## Credentials and secrets
 
 **Secrets are stored exclusively in environment variables (`.env` or the real environment), never in YAML.**

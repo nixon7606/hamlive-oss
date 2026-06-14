@@ -10,6 +10,8 @@ export const serverInfo = (() => {
     }
     const si = {
         ...dataset,
+        nodeEnv: dataset['nodeEnv'] === 'development' ? 'development' : 'production',
+        logLevel: dataset['logLevel'] === 'debug' ? 'debug' : 'info',
         requestRateFactor: parseInt(dataset['requestRateFactor'] || '5'),
         httpClientTimeout: parseInt(dataset['httpClientTimeout'] || '2000'),
         awayInMs: parseInt(dataset['awayInMs'] || '20000'),

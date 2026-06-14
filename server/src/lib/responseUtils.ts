@@ -134,9 +134,20 @@ export const handleRequest = async (
         successMessage && logger.info(successMessage);
         handleResponse.sendResponse(res, 'OK', result);
     } catch (err) {
-        const errorMessage =
+        const rawMessage =
             err instanceof Error ? err.message : typeof err === 'string' ? err : 'An unknown error occurred';
-        handleResponse.sendError(res, 'INTERNAL_SERVER_ERROR', errorMessage);
-        logger.error(err instanceof Error ? err.stack : errorMessage);
+        const isInternal =
+            err != null &&
+            typeof err === 'object' &&
+            ((['MongoServerError', 'MongoError', 'ValidationError', 'CastError', 'MongooseError'].includes(
+                (err as Record<string, unknown>)['name'] as string
+            ) ||
+                typeof (err as Record<string, unknown>)['code'] === 'number' ||
+                (typeof (err as Record<string, unknown>)['code'] === 'string' &&
+                    /^E\d|11000/.test(String((err as Record<string, unknown>)['code'])))));
+        const clientMsg =
+            process.env['NODE_ENV'] === 'production' && isInternal ? 'An internal error occurred.' : rawMessage;
+        logger.error(err instanceof Error ? err.stack : rawMessage);
+        handleResponse.sendError(res, 'INTERNAL_SERVER_ERROR', clientMsg);
     }
 };
