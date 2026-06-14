@@ -176,7 +176,12 @@ export class HamLiveElement extends HTMLElement {
         this.assignDefaultElement();
         this.onConnected();
         this.store = store;
-        this.render(true);
+        if (this.store?.ready) {
+            this.render(false);
+        }
+        else {
+            this.render(true);
+        }
     }
     disconnectedCallback() {
         logger.debug(`${this.constructor.name} disconnected from the DOM`);

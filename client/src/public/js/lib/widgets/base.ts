@@ -260,11 +260,21 @@ export abstract class HamLiveElement<T extends ReactiveStore<EndPointResponse>>
         //subscribe to store
         this.store = store as T;
 
-        // render: We call render to handle cases where a widget is destroyed and recreated,
-        // but no new data is necessarily available. This is less about the initial render
-        // on the initial page load and more about the render that occurs when a widget is
-        // reconnected to the DOM after being disconnected.
-        this.render(true);
+        // render: render(true) is the reconnect path — a widget destroyed and
+        // recreated when no new data is necessarily available; the live-net
+        // widgets treat it as a no-op. But if the store ALREADY holds data when
+        // we connect, we subscribed too late to catch its first (and, after the
+        // store switches from polling to SSE, often only) NEWDATA notification —
+        // so paint current state now with a data render. Without this, a widget
+        // that loses the cold-load subscribe-vs-first-fetch race stays empty
+        // until a full page refresh (e.g. the station list not showing on net
+        // entry). render(false) is the same path newData() uses, so it is safe
+        // to call here.
+        if (this.store?.ready) {
+            this.render(false);
+        } else {
+            this.render(true);
+        }
     }
 
     public disconnectedCallback(): void {
