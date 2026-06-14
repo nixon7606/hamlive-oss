@@ -63,7 +63,7 @@ const listUsers = async (req, res) => {
             const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
             filter = { $or: [{ email: rx }, { callSign: rx }, { displayName: rx }] };
         }
-        const sel = 'email callSign displayName location lastIp locked superUser newAccount policyConsent flaggedForDeletion createdAt lastLogin lastAuthVia';
+        const sel = 'email callSign displayName location lastIp locked lockedUntil superUser newAccount policyConsent flaggedForDeletion createdAt lastLogin lastAuthVia';
         const [users, total] = await Promise.all([
             UserProfile.find(filter).select(sel).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
             UserProfile.countDocuments(filter)
@@ -78,7 +78,7 @@ const listUsers = async (req, res) => {
 const updateUser = async (req, res) => {
     handleRequest(res, async () => {
         const { id } = req.params;
-        const allowed = ['displayName', 'callSign', 'location', 'locked', 'superUser'];
+        const allowed = ['displayName', 'callSign', 'location', 'locked', 'lockedUntil', 'superUser'];
         const updates = {};
         for (const key of allowed) {
             if (req.body[key] !== undefined) {
@@ -87,6 +87,13 @@ const updateUser = async (req, res) => {
         }
         if (updates.callSign) {
             updates.callSign = updates.callSign.toUpperCase();
+        }
+        if (updates.locked === false) {
+            updates.lockedUntil = null; // unbanning clears any expiry
+        } else if (updates.lockedUntil) {
+            updates.lockedUntil = new Date(updates.lockedUntil);
+        } else if (updates.locked === true) {
+            updates.lockedUntil = null; // permanent ban: clear any stale expiry
         }
         const UserProfile = getUserProfile();
         // Fetch target first
@@ -104,7 +111,7 @@ const updateUser = async (req, res) => {
             if (count <= 1) throw new Error('Cannot remove the last remaining admin.');
         }
         const user = await UserProfile.findByIdAndUpdate(id, updates, { new: true })
-            .select('email callSign displayName location lastIp locked superUser')
+            .select('email callSign displayName location lastIp locked lockedUntil superUser')
             .lean();
         if (!user) throw new Error('User not found');
         logger.info(`admin: updated user ${user.email || user.callSign}`);

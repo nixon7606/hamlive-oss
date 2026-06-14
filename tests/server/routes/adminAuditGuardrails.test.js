@@ -144,6 +144,49 @@ test('deleteUser: deleting the last remaining admin is rejected', async () => {
     expect(u).not.toBeNull();
 });
 
+// ── Case 6: updateUser ban sets lockedUntil; unban clears it ─────────────────
+
+test('updateUser: ban sets locked + lockedUntil; unban clears lockedUntil', async () => {
+    const actorId = new mongoose.Types.ObjectId();
+    const targetId = new mongoose.Types.ObjectId();
+    await insertUser({ _id: actorId, email: 'actor@x.com', superUser: true, lastAuthVia: 'email', displayName: 'Actor' });
+    await insertUser({ _id: targetId, email: 'goog@x.com', superUser: false, locked: false, lastAuthVia: 'google', displayName: 'Goog' });
+
+    const app = buildApp({ _id: actorId, email: 'actor@x.com' }, updateUser);
+
+    // Ban with a future expiry
+    const when = '2030-01-01T00:00:00.000Z';
+    const banRes = await request(app).patch(`/users/${targetId}`).send({ locked: true, lockedUntil: when });
+    expect(banRes.status).toBe(200);
+    let u = await mongoose.connection.db.collection('userprofiles').findOne({ _id: targetId });
+    expect(u.locked).toBe(true);
+    expect(new Date(u.lockedUntil).toISOString()).toBe(when);
+
+    // Unban clears the expiry
+    const unbanRes = await request(app).patch(`/users/${targetId}`).send({ locked: false });
+    expect(unbanRes.status).toBe(200);
+    u = await mongoose.connection.db.collection('userprofiles').findOne({ _id: targetId });
+    expect(u.locked).toBe(false);
+    expect(u.lockedUntil).toBeNull();
+});
+
+// ── Case 7: updateUser permanent re-ban clears stale lockedUntil ─────────────
+
+test('updateUser: permanent re-ban (locked:true, no lockedUntil) clears a stale expiry', async () => {
+    const actorId = new mongoose.Types.ObjectId();
+    const targetId = new mongoose.Types.ObjectId();
+    await insertUser({ _id: actorId, email: 'actor2@x.com', superUser: true, lastAuthVia: 'email', displayName: 'Actor2' });
+    // Target already has a timed ban on the books
+    await insertUser({ _id: targetId, email: 'stale@x.com', superUser: false, locked: true, lockedUntil: new Date('2030-01-01T00:00:00.000Z'), lastAuthVia: 'google', displayName: 'Stale' });
+
+    const app = buildApp({ _id: actorId, email: 'actor2@x.com' }, updateUser);
+    const res = await request(app).patch(`/users/${targetId}`).send({ locked: true });
+    expect(res.status).toBe(200);
+    const u = await mongoose.connection.db.collection('userprofiles').findOne({ _id: targetId });
+    expect(u.locked).toBe(true);
+    expect(u.lockedUntil).toBeNull();
+});
+
 // ── Case 5: listAudit returns entries newest-first ────────────────────────────
 
 test('listAudit returns entries newest-first with {entries,total,page,limit}', async () => {
