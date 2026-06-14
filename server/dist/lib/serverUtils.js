@@ -591,6 +591,17 @@ const qrzLookup = async (callSign, flexOpts, db = mongoose.connection) => {
     }
 };
 
+/**
+ * True when a user account is currently locked/banned, honoring an optional
+ * lockedUntil expiry (a past lockedUntil auto-lifts the lock). Single source of
+ * truth used by deserializeUser and the login strategies.
+ */
+const isCurrentlyLocked = user => {
+    if (!user || !user.locked) return false;
+    if (!user.lockedUntil) return true; // permanent
+    return new Date(user.lockedUntil).getTime() > Date.now();
+};
+
 const authCheck = options => {
     return (req, res, next) => {
         let called = false;
@@ -680,6 +691,7 @@ module.exports = {
     cookieSessionKeepAlive,
     cookieSessionStubs,
     authCheck,
+    isCurrentlyLocked,
     flexOpts,
     getFlexOptionsByUser,
     wellFormedCall,
