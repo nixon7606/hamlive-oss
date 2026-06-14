@@ -230,6 +230,26 @@ describe('editMessage()', () => {
     const msg = await localChat.sendMessage({ npid, user: mockMember(), text: 'Original' });
     await expect(localChat.editMessage({ npid, messageId: msg.id, user: mockNcs(), newText: 'Hacked' })).rejects.toThrow('not your message');
   });
+
+  // Regression: an edit must broadcast via broadcastUpdate ('chat-update' →
+  // client updates in place), NOT the generic broadcast ('chat-message' →
+  // client appends a NEW message, duplicating it).
+  test('broadcasts an edit as an update, not a new message', async () => {
+    const msg = await localChat.sendMessage({ npid, user: mockMember(), text: 'Original' });
+    const updateSpy = jest.spyOn(chatBroadcaster, 'broadcastUpdate').mockImplementation(() => {});
+    const newSpy = jest.spyOn(chatBroadcaster, 'broadcast').mockImplementation(() => {});
+    try {
+      await localChat.editMessage({ npid, messageId: msg.id, user: mockMember(), newText: 'Edited' });
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      expect(newSpy).not.toHaveBeenCalled();
+      const [, data] = updateSpy.mock.calls[0];
+      expect(data.id).toBe(msg.id);
+      expect(data.text).toBe('Edited');
+    } finally {
+      updateSpy.mockRestore();
+      newSpy.mockRestore();
+    }
+  });
 });
 
 describe('toggleReaction()', () => {
