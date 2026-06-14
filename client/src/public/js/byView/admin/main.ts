@@ -3,6 +3,8 @@
 
 'use strict';
 
+import { expiryFromPreset } from '#@client/lib/clientUtils.js';
+
 /**
  * Admin panel — user and net management (superUser only).
  */
@@ -55,6 +57,28 @@ function esc(s: string): string {
     return d.innerHTML;
 }
 
+function setBanUiState(banned: boolean, lockedUntil: string | null): void {
+    const hidden = document.getElementById('edit-locked') as HTMLInputElement | null;
+    const btn = document.getElementById('edit-ban-btn') as HTMLButtonElement | null;
+    const status = document.getElementById('edit-ban-status') as HTMLElement | null;
+    const wrap = document.getElementById('edit-ban-expiry-wrap') as HTMLElement | null;
+    if (!hidden || !btn || !status || !wrap) return;
+    hidden.value = banned ? 'true' : 'false';
+    btn.textContent = banned ? 'Unban' : 'Ban';
+    btn.classList.toggle('btn-outline-danger', !banned);
+    btn.classList.toggle('btn-outline-success', banned);
+    status.textContent = banned
+        ? (lockedUntil ? `Banned until ${new Date(lockedUntil).toLocaleString()}` : 'Banned (permanent)')
+        : '';
+    wrap.style.display = banned ? 'block' : 'none';
+    // Reset the duration picker to a clean default each time state is set, so a
+    // previous user's "custom" selection/visibility never leaks into this modal.
+    const duration = document.getElementById('edit-lock-duration') as HTMLSelectElement | null;
+    const custom = document.getElementById('edit-lock-custom') as HTMLInputElement | null;
+    if (duration) duration.value = 'permanent';
+    if (custom) { custom.value = ''; custom.style.display = 'none'; }
+}
+
 /* ── Stats ── */
 
 async function loadStats() {
@@ -104,7 +128,7 @@ async function loadUsers() {
         }
         tbody.innerHTML = users.map((u: any) => {
             const badges = [];
-            if (u.locked) badges.push('<span class="badge badge-locked">Locked</span>');
+            if (u.locked) badges.push(`<span class="badge badge-locked">${u.lockedUntil ? 'Locked until ' + new Date(u.lockedUntil).toLocaleDateString() : 'Locked'}</span>`);
             if (u.superUser) badges.push('<span class="badge badge-super">Admin</span>');
             if (u.newAccount) badges.push('<span class="badge badge-new">New</span>');
             if (u.flaggedForDeletion) badges.push('<span class="badge badge-flagged">Flagged</span>');
@@ -387,7 +411,7 @@ async function editUser(id: string) {
         (document.getElementById('edit-callsign') as HTMLInputElement).value = user.callSign || '';
         (document.getElementById('edit-displayname') as HTMLInputElement).value = user.displayName || '';
         (document.getElementById('edit-location') as HTMLInputElement).value = user.location || '';
-        (document.getElementById('edit-locked') as HTMLInputElement).checked = !!user.locked;
+        setBanUiState(!!user.locked, user.lockedUntil || null);
         (document.getElementById('edit-superuser') as HTMLInputElement).checked = !!user.superUser;
         const modal = new bootstrap.Modal(document.getElementById('editUserModal')!);
         modal.show();
@@ -644,6 +668,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    document.getElementById('edit-ban-btn')?.addEventListener('click', () => {
+        const hidden = document.getElementById('edit-locked') as HTMLInputElement | null;
+        if (!hidden) return;
+        const nowBanned = hidden.value !== 'true'; // toggle
+        setBanUiState(nowBanned, null);
+    });
+    document.getElementById('edit-lock-duration')?.addEventListener('change', e => {
+        const custom = document.getElementById('edit-lock-custom') as HTMLInputElement;
+        custom.style.display = (e.target as HTMLSelectElement).value === 'custom' ? 'block' : 'none';
+    });
+
     (document.getElementById('edit-save-btn') as HTMLButtonElement)?.addEventListener('click', async () => {
         const id = (document.getElementById('edit-user-id') as HTMLInputElement).value;
         if (!id) return;
@@ -655,7 +690,12 @@ document.addEventListener('DOMContentLoaded', () => {
             displayName: (document.getElementById('edit-displayname') as HTMLInputElement).value.trim(),
             callSign: (document.getElementById('edit-callsign') as HTMLInputElement).value.trim(),
             location: (document.getElementById('edit-location') as HTMLInputElement).value.trim(),
-            locked: (document.getElementById('edit-locked') as HTMLInputElement).checked,
+            locked: (document.getElementById('edit-locked') as HTMLInputElement).value === 'true',
+            lockedUntil: (document.getElementById('edit-locked') as HTMLInputElement).value === 'true'
+                ? expiryFromPreset(
+                    (document.getElementById('edit-lock-duration') as HTMLSelectElement).value,
+                    (document.getElementById('edit-lock-custom') as HTMLInputElement).value)
+                : null,
             superUser: superUserChecked
         };
         try {

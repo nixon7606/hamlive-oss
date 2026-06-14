@@ -1,4 +1,5 @@
 'use strict';
+import { expiryFromPreset } from '#@client/lib/clientUtils.js';
 const API = '/api/admin';
 let usersCache = [];
 let netsCache = [];
@@ -34,6 +35,30 @@ function esc(s) {
     const d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;
+}
+function setBanUiState(banned, lockedUntil) {
+    const hidden = document.getElementById('edit-locked');
+    const btn = document.getElementById('edit-ban-btn');
+    const status = document.getElementById('edit-ban-status');
+    const wrap = document.getElementById('edit-ban-expiry-wrap');
+    if (!hidden || !btn || !status || !wrap)
+        return;
+    hidden.value = banned ? 'true' : 'false';
+    btn.textContent = banned ? 'Unban' : 'Ban';
+    btn.classList.toggle('btn-outline-danger', !banned);
+    btn.classList.toggle('btn-outline-success', banned);
+    status.textContent = banned
+        ? (lockedUntil ? `Banned until ${new Date(lockedUntil).toLocaleString()}` : 'Banned (permanent)')
+        : '';
+    wrap.style.display = banned ? 'block' : 'none';
+    const duration = document.getElementById('edit-lock-duration');
+    const custom = document.getElementById('edit-lock-custom');
+    if (duration)
+        duration.value = 'permanent';
+    if (custom) {
+        custom.value = '';
+        custom.style.display = 'none';
+    }
 }
 async function loadStats() {
     try {
@@ -84,7 +109,7 @@ async function loadUsers() {
         tbody.innerHTML = users.map((u) => {
             const badges = [];
             if (u.locked)
-                badges.push('<span class="badge badge-locked">Locked</span>');
+                badges.push(`<span class="badge badge-locked">${u.lockedUntil ? 'Locked until ' + new Date(u.lockedUntil).toLocaleDateString() : 'Locked'}</span>`);
             if (u.superUser)
                 badges.push('<span class="badge badge-super">Admin</span>');
             if (u.newAccount)
@@ -365,7 +390,7 @@ async function editUser(id) {
         document.getElementById('edit-callsign').value = user.callSign || '';
         document.getElementById('edit-displayname').value = user.displayName || '';
         document.getElementById('edit-location').value = user.location || '';
-        document.getElementById('edit-locked').checked = !!user.locked;
+        setBanUiState(!!user.locked, user.lockedUntil || null);
         document.getElementById('edit-superuser').checked = !!user.superUser;
         const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
         modal.show();
@@ -627,6 +652,17 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.disabled = false;
         }
     });
+    document.getElementById('edit-ban-btn')?.addEventListener('click', () => {
+        const hidden = document.getElementById('edit-locked');
+        if (!hidden)
+            return;
+        const nowBanned = hidden.value !== 'true';
+        setBanUiState(nowBanned, null);
+    });
+    document.getElementById('edit-lock-duration')?.addEventListener('change', e => {
+        const custom = document.getElementById('edit-lock-custom');
+        custom.style.display = e.target.value === 'custom' ? 'block' : 'none';
+    });
     document.getElementById('edit-save-btn')?.addEventListener('click', async () => {
         const id = document.getElementById('edit-user-id').value;
         if (!id)
@@ -640,7 +676,10 @@ document.addEventListener('DOMContentLoaded', () => {
             displayName: document.getElementById('edit-displayname').value.trim(),
             callSign: document.getElementById('edit-callsign').value.trim(),
             location: document.getElementById('edit-location').value.trim(),
-            locked: document.getElementById('edit-locked').checked,
+            locked: document.getElementById('edit-locked').value === 'true',
+            lockedUntil: document.getElementById('edit-locked').value === 'true'
+                ? expiryFromPreset(document.getElementById('edit-lock-duration').value, document.getElementById('edit-lock-custom').value)
+                : null,
             superUser: superUserChecked
         };
         try {

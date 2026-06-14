@@ -202,9 +202,22 @@
             <label class="form-label">Location</label>
             <input type="text" class="form-control" id="edit-location" maxlength="24">
           </div>
-          <div class="form-check mb-2">
-            <input type="checkbox" class="form-check-input" id="edit-locked">
-            <label class="form-check-label" for="edit-locked">Locked (banned)</label>
+          <div class="mb-2">
+            <label class="form-label d-block">Account ban</label>
+            <button type="button" class="btn btn-sm btn-outline-danger" id="edit-ban-btn">Ban</button>
+            <span id="edit-ban-status" class="ms-2 small text-muted"></span>
+            <input type="hidden" id="edit-locked" value="false">
+            <div id="edit-ban-expiry-wrap" class="mt-2" style="display:none;">
+              <label class="form-label small">Duration</label>
+              <select id="edit-lock-duration" class="form-select form-select-sm">
+                <option value="permanent">Permanent</option>
+                <option value="1h">1 hour</option>
+                <option value="24h">24 hours</option>
+                <option value="7d">7 days</option>
+                <option value="custom">Custom…</option>
+              </select>
+              <input type="datetime-local" id="edit-lock-custom" class="form-control form-control-sm mt-1" style="display:none;">
+            </div>
           </div>
           <div class="form-check mb-2">
             <input type="checkbox" class="form-check-input" id="edit-superuser">
