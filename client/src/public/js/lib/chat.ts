@@ -149,6 +149,10 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                 logger.info(`User is banned from chat: ${this.isBanned.reason}`);
             }
 
+            if (session.pinnedMessage) {
+                this.renderPinnedBar(session.pinnedMessage);
+            }
+
             // Connect to the SSE stream
             conn.connect();
 
@@ -401,7 +405,22 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                     .chat-unread-badge.has-mention {
                         background: var(--hl-secondary) !important;
                     }
+                    .chat-pinned-bar {
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        padding: 6px 10px;
+                        background: var(--hl-quaternary);
+                        border-bottom: 1px solid var(--hl-tertiary);
+                        font-size: 12px;
+                        color: var(--hl-light);
+                        cursor: pointer;
+                    }
+                    .chat-pinned-bar .chat-pinned-label { color: var(--hl-secondary); font-weight: 600; white-space: nowrap; }
+                    .chat-pinned-bar .chat-pinned-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                    .chat-pinned-bar .chat-pinned-unpin { background: none; border: none; color: var(--hl-tertiary); cursor: pointer; }
                 </style>
+                <div class="chat-pinned-bar d-none"></div>
                 <div class="chat-messages flex-grow-1 overflow-auto px-1 py-1">
                     <div class="text-center text-muted p-4">
                         <p>Connecting to chat...</p>
@@ -543,6 +562,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         const reactionsHtml = this.renderReactions(msg);
         const moderateBtn = this.canModerate()
             ? `<button class="chat-action-btn chat-mod-btn chat-delete-btn" title="Delete message"><i class="bi bi-trash"></i></button>`
+              + `<button class="chat-action-btn chat-mod-btn chat-pin-btn" title="Pin message"><i class="bi bi-pin-angle"></i></button>`
               + (msg.userId && msg.userId !== this.currentUserId
                   ? `<button class="chat-action-btn chat-mod-btn chat-ban-btn" title="Ban author"><i class="bi bi-slash-circle"></i></button>`
                   : '')
@@ -626,6 +646,8 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         this.connection.on('reaction', this.handleReaction.bind(this));
         this.connection.on('typing', this.handleTypingEvent.bind(this));
         this.connection.on('ban', this.handleBanEvent.bind(this));
+        this.connection.on('pin', (data: unknown) => this.renderPinnedBar(data));
+        this.connection.on('unpin', () => this.clearPinnedBar());
     }
 
     private setupInputListeners(): void {
@@ -811,6 +833,12 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             e.stopPropagation();
             const callSign = msgEl.querySelector('.chat-username')?.textContent || (msgEl as HTMLElement).dataset['callsign'] || 'this user';
             this.showBanDialog(messageId, callSign);
+        });
+
+        const pinBtn = msgEl.querySelector('.chat-pin-btn');
+        pinBtn?.addEventListener('click', e => {
+            e.stopPropagation();
+            void this.connection?.pinMessage(messageId);
         });
 
         editBtn?.addEventListener('click', e => {
@@ -1361,6 +1389,19 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                 });
                 actionsContainer.appendChild(deleteBtn);
 
+                if (!actionsContainer.querySelector('.chat-pin-btn')) {
+                    const pinBtn = document.createElement('button');
+                    pinBtn.className = 'chat-action-btn chat-mod-btn chat-pin-btn';
+                    pinBtn.title = 'Pin message';
+                    pinBtn.innerHTML = '<i class="bi bi-pin-angle"></i>';
+                    pinBtn.addEventListener('click', e => {
+                        e.stopPropagation();
+                        const messageId = (msgEl as HTMLElement).dataset['messageId'];
+                        if (messageId) void this.connection?.pinMessage(messageId);
+                    });
+                    actionsContainer.appendChild(pinBtn);
+                }
+
                 const msgUserId = (msgEl as HTMLElement).dataset['userId'];
                 if (msgUserId && msgUserId !== this.currentUserId && !actionsContainer.querySelector('.chat-ban-btn')) {
                     const banBtn = document.createElement('button');
@@ -1377,6 +1418,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                 }
             } else if (!canMod && existingDeleteBtn) {
                 existingDeleteBtn.remove();
+                actionsContainer.querySelector('.chat-pin-btn')?.remove();
                 actionsContainer.querySelector('.chat-ban-btn')?.remove();
             }
         });
@@ -1813,6 +1855,39 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         const me = this.selfCallSign;
         if (!me) return false;
         return parseMentions(text, new Set([me])).mentioned.has(me);
+    }
+
+    private renderPinnedBar(msg: any): void {
+        const bar = this.querySelector<HTMLElement>('.chat-pinned-bar');
+        if (!bar || !msg) return;
+        bar.dataset['messageId'] = msg.id || '';
+        const unpin = this.canModerate()
+            ? `<button class="chat-pinned-unpin" title="Unpin">&times;</button>`
+            : '';
+        bar.innerHTML =
+            `<i class="bi bi-pin-angle-fill"></i>` +
+            `<span class="chat-pinned-label">${this.escapeHtml(msg.callSign || '')}</span>` +
+            `<span class="chat-pinned-text">${this.renderMessageBody(msg.text || '')}</span>` +
+            unpin;
+        bar.classList.remove('d-none');
+        bar.querySelector('.chat-pinned-unpin')?.addEventListener('click', e => {
+            e.stopPropagation();
+            const id = bar.dataset['messageId'];
+            if (id) void this.connection?.unpinMessage(id);
+        });
+        bar.onclick = () => {
+            const id = bar.dataset['messageId'];
+            const el = id ? this.querySelector(`[data-message-id="${id}"]`) : null;
+            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        };
+    }
+
+    private clearPinnedBar(): void {
+        const bar = this.querySelector<HTMLElement>('.chat-pinned-bar');
+        if (!bar) return;
+        bar.classList.add('d-none');
+        bar.innerHTML = '';
+        delete bar.dataset['messageId'];
     }
 
     /**
