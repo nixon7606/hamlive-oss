@@ -111,6 +111,8 @@ function refreshNetList() {
             netListColumnElem.setAttribute('class', currentClass.replace(' d-none', ''));
         }
         netProfiles.data.netlist.forEach((netProfile) => {
+            if (!netProfile || !netProfile._id)
+                return;
             const modalCollectionElem = document.getElementById('modal-collection');
             const modalTemplateElem = document.getElementById('modal-template');
             const modalClone = modalTemplateElem.cloneNode(true);

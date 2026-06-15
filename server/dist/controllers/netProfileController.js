@@ -36,23 +36,19 @@ function buildAndValidateSchedule(input) {
 }
 
 const netProfileList = async (req, res) => {
-    let result;
-
     try {
-        netlist = await Promise.all(
-            req.user.myNets.map(async npObj => {
-                return NetProfile.findById(npObj);
-            })
+        const fetched = await Promise.all(
+            req.user.myNets.map(npObj => NetProfile.findById(npObj))
         );
+        // Drop null entries: a myNets id dangles if its net profile was deleted —
+        // findById returns null for it, which otherwise crashes the client's
+        // render loop (reading null._id) and breaks the whole My Nets page.
+        const netlist = fetched.filter(Boolean);
+        res.json({ endpointVersion: '1.0', netlist });
     } catch (err) {
-        res.status(500).json({
-            endpointVersion: '1.0',
-            errorMessage: err.message
-        });
+        res.status(500).json({ endpointVersion: '1.0', errorMessage: err.message });
         logger.error(err.stack);
     }
-
-    res.json({ ...{ endpointVersion: '1.0' }, netlist });
 };
 
 const netProfileDetails = async (req, res) => {
