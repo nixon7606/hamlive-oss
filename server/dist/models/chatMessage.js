@@ -83,6 +83,11 @@ const chatMessageSchema = new Schema(
         replyCount: {
             type: Number,
             default: 0
+        },
+        pinned: {
+            type: Boolean,
+            default: false,
+            index: true
         }
     },
     {

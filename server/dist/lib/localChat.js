@@ -478,6 +478,58 @@ async function banFromMessage({ npid, messageId, reason, expiresAt = null, moder
 }
 
 /**
+ * Pin a message to the top of a net's chat (NCS only). Enforces a single pin
+ * per net by clearing any other pinned message. Broadcasts chat-pin.
+ */
+async function pinMessage({ npid, messageId, moderator }) {
+    const { ChatMessage } = getModels();
+    const canModerate = await checkUserCanModerate(npid, moderator.userProfileId);
+    if (!canModerate) throw new Error('Insufficient permissions: only NCS can pin');
+
+    const msg = await ChatMessage.findById(messageId);
+    if (!msg) throw new Error('Message not found');
+    if (msg.netProfile.toString() !== npid.toString()) throw new Error('Message not in this net');
+
+    // Single-pin: clear any other pinned message in this net.
+    await ChatMessage.updateMany(
+        { netProfile: npid, _id: { $ne: msg._id }, pinned: true },
+        { $set: { pinned: false } }
+    );
+    msg.pinned = true;
+    await msg.save();
+
+    const payload = await buildMessagePayload(msg);
+    try {
+        chatBroadcaster.broadcastPin(npid, payload);
+    } catch (e) {
+        logger.warn(`Chat: broadcastPin failed for net ${npid}: ${e.message}`);
+    }
+    return payload;
+}
+
+/**
+ * Unpin a message (NCS only). Broadcasts chat-unpin.
+ */
+async function unpinMessage({ npid, messageId, moderator }) {
+    const { ChatMessage } = getModels();
+    const canModerate = await checkUserCanModerate(npid, moderator.userProfileId);
+    if (!canModerate) throw new Error('Insufficient permissions: only NCS can unpin');
+
+    const msg = await ChatMessage.findById(messageId);
+    if (!msg) throw new Error('Message not found');
+    if (msg.netProfile.toString() !== npid.toString()) throw new Error('Message not in this net');
+    msg.pinned = false;
+    await msg.save();
+
+    try {
+        chatBroadcaster.broadcastUnpin(npid, { messageId: msg._id.toString() });
+    } catch (e) {
+        logger.warn(`Chat: broadcastUnpin failed for net ${npid}: ${e.message}`);
+    }
+    return { messageId: msg._id.toString() };
+}
+
+/**
  * Unban a user from chat.
  */
 async function unbanUser({ npid, userProfileId, callSign, unbannedBy }) {
@@ -665,5 +717,7 @@ module.exports = {
     getBannedUsers,
     broadcastTyping,
     getThreadMessages,
+    pinMessage,
+    unpinMessage,
     chatBroadcaster
 };
