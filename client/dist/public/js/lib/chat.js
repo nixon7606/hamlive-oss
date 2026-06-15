@@ -2,6 +2,7 @@ import { createLogger } from '#@client/lib/logger.js';
 import { serverInfo } from '#@client/lib/serverInfo.js';
 import { getNpid, generateUUID, UserAgentPersistentPreferences, expiryFromPreset } from '#@client/lib/clientUtils.js';
 import { LocalChatConnection } from '#@client/lib/localChat.js';
+import { parseMentions } from '#@client/lib/mentions.js';
 const logger = createLogger('lib/chat.ts');
 const prefs = new UserAgentPersistentPreferences();
 const REACTIONS = [
@@ -30,6 +31,7 @@ export class ChatWidget extends HTMLElement {
     lastRenderedDate = null;
     lastRenderedCallSign = null;
     unreadCount = 0;
+    hasUnreadMention = false;
     isScrolledUp = false;
     scrollListener = null;
     visibilityHandler = null;
@@ -84,6 +86,7 @@ export class ChatWidget extends HTMLElement {
             this.visibilityHandler = () => {
                 if (!document.hidden) {
                     this.unreadCount = 0;
+                    this.hasUnreadMention = false;
                     this.updateLatestButton();
                 }
             };
@@ -271,6 +274,20 @@ export class ChatWidget extends HTMLElement {
                         z-index: 100;
                     }
                     .chat-emoji-picker.show { display: block; }
+                    .chat-mention {
+                        color: var(--hl-secondary);
+                        background: rgba(163, 118, 195, 0.18);
+                        border-radius: 4px;
+                        padding: 0 3px;
+                        font-weight: 600;
+                    }
+                    .chat-message.mentions-me {
+                        border-left: 3px solid var(--hl-secondary);
+                        background: rgba(163, 118, 195, 0.08);
+                    }
+                    .chat-unread-badge.has-mention {
+                        background: var(--hl-secondary) !important;
+                    }
                 </style>
                 <div class="chat-messages flex-grow-1 overflow-auto px-1 py-1">
                     <div class="text-center text-muted p-4">
@@ -383,7 +400,7 @@ export class ChatWidget extends HTMLElement {
         msgEl.dataset['callsign'] = msg.callSign || '';
         let messageContent = '';
         if (msg.text) {
-            messageContent += `<span class="chat-text">${this.linkifyText(this.escapeHtml(msg.text))}</span>`;
+            messageContent += `<span class="chat-text">${this.renderMessageBody(msg.text)}</span>`;
         }
         if (msg.imageUrl) {
             messageContent += `
@@ -425,6 +442,9 @@ export class ChatWidget extends HTMLElement {
             msgEl.style.borderTop = '1px solid rgba(240, 238, 222, 0.08)';
         }
         this.lastRenderedCallSign = msg.callSign || null;
+        if (msg.userId !== this.currentUserId && this.isSelfMentioned(msg.text || '')) {
+            msgEl.classList.add('mentions-me');
+        }
         this.setupMessageActions(msgEl, msg.id, msg.text || '');
         const placeholder = messagesContainer.querySelector('.text-muted');
         if (placeholder)
@@ -522,6 +542,7 @@ export class ChatWidget extends HTMLElement {
         });
         textInput?.addEventListener('input', () => {
             this.handleSlashAutocomplete();
+            this.handleMentionAutocomplete();
         });
         textInput?.addEventListener('keydown', (e) => {
             if (e.key === 'Tab') {
@@ -634,6 +655,9 @@ export class ChatWidget extends HTMLElement {
             const wasNearBottom = this.isNearBottom();
             if (!wasNearBottom) {
                 this.unreadCount += 1;
+                if (msg.userId !== this.currentUserId && this.isSelfMentioned(msg.text || '')) {
+                    this.hasUnreadMention = true;
+                }
                 this.updateLatestButton();
             }
             this.renderMessage(msg);
@@ -679,7 +703,7 @@ export class ChatWidget extends HTMLElement {
             return;
         const contentEl = msgEl.querySelector('.chat-message-content');
         if (contentEl && msg.text) {
-            contentEl.innerHTML = `<span class="chat-text">${this.linkifyText(this.escapeHtml(msg.text))}</span>`;
+            contentEl.innerHTML = `<span class="chat-text">${this.renderMessageBody(msg.text)}</span>`;
         }
         const editedIndicators = msgEl.querySelectorAll('.chat-edited');
         if (msg.edited && editedIndicators.length === 0) {
@@ -1243,6 +1267,7 @@ export class ChatWidget extends HTMLElement {
         container.parentElement?.appendChild(btn);
         btn.addEventListener('click', () => {
             this.unreadCount = 0;
+            this.hasUnreadMention = false;
             this.updateLatestButton();
             this.scrollToBottom();
         });
@@ -1262,10 +1287,12 @@ export class ChatWidget extends HTMLElement {
         const badge = btn.querySelector('.chat-unread-badge');
         if (badge) {
             if (this.unreadCount > 0) {
-                badge.textContent = String(this.unreadCount);
+                badge.textContent = this.hasUnreadMention ? `@ ${this.unreadCount}` : String(this.unreadCount);
+                badge.classList.toggle('has-mention', this.hasUnreadMention);
                 badge.style.display = 'inline';
             }
             else {
+                badge.classList.remove('has-mention');
                 badge.style.display = 'none';
             }
         }
@@ -1381,6 +1408,47 @@ export class ChatWidget extends HTMLElement {
             wrapper.appendChild(dd);
         }
     }
+    handleMentionAutocomplete() {
+        const textInput = this.querySelector('.chat-text-input');
+        if (!textInput)
+            return;
+        this.querySelector('.chat-mention-dropdown')?.remove();
+        const val = textInput.value;
+        const caret = textInput.selectionStart ?? val.length;
+        const before = val.slice(0, caret);
+        const m = /(?:^|\s)@([A-Za-z0-9/]*)$/.exec(before);
+        if (!m)
+            return;
+        const partial = (m[1] || '').toUpperCase();
+        const matches = [...this.rosterCallSigns()]
+            .filter(cs => cs.startsWith(partial) && cs !== this.selfCallSign)
+            .sort()
+            .slice(0, 8);
+        if (matches.length === 0)
+            return;
+        const dd = document.createElement('div');
+        dd.className = 'chat-mention-dropdown';
+        dd.style.cssText = 'position: absolute; bottom: 100%; left: 0; right: 0; background: var(--hl-dark); border: 1px solid var(--hl-quaternary); border-radius: 6px; max-height: 200px; overflow-y: auto; z-index: 100;';
+        matches.forEach(cs => {
+            const item = document.createElement('div');
+            item.style.cssText = 'padding: 6px 10px; font-size: 12px; color: var(--hl-light); cursor: pointer; border-bottom: 1px solid rgba(240, 238, 222, 0.1);';
+            item.textContent = cs;
+            item.addEventListener('click', () => {
+                const start = caret - (m[1] || '').length;
+                textInput.value = val.slice(0, start) + cs + ' ' + val.slice(caret);
+                this.querySelector('.chat-mention-dropdown')?.remove();
+                textInput.focus();
+                const pos = start + cs.length + 1;
+                textInput.setSelectionRange(pos, pos);
+            });
+            dd.appendChild(item);
+        });
+        const wrapper = this.querySelector('.chat-input-wrapper');
+        if (wrapper) {
+            wrapper.style.position = 'relative';
+            wrapper.appendChild(dd);
+        }
+    }
     disconnect() {
         if (this.documentClickHandler) {
             document.removeEventListener('click', this.documentClickHandler);
@@ -1401,6 +1469,7 @@ export class ChatWidget extends HTMLElement {
         }
         this.querySelector('.chat-lightbox')?.remove();
         this.querySelector('.chat-slash-dropdown')?.remove();
+        this.querySelector('.chat-mention-dropdown')?.remove();
         this.querySelector('.chat-latest-btn')?.remove();
         if (this.store) {
             this.store.unsubscribe(this);
@@ -1409,6 +1478,25 @@ export class ChatWidget extends HTMLElement {
             this.connection.disconnect();
             logger.info('Disconnected from chat');
         }
+    }
+    rosterCallSigns() {
+        return new Set((this.store?.stations.list ?? [])
+            .map(s => (s.callSign || '').toUpperCase())
+            .filter(Boolean));
+    }
+    isSelfMentioned(text) {
+        const me = this.selfCallSign;
+        if (!me)
+            return false;
+        return parseMentions(text, new Set([me])).mentioned.has(me);
+    }
+    renderMessageBody(text) {
+        const { segments } = parseMentions(text, this.rosterCallSigns());
+        return segments
+            .map(seg => seg.type === 'mention'
+            ? `<span class="chat-mention">${this.escapeHtml(seg.value)}</span>`
+            : this.linkifyText(this.escapeHtml(seg.value)))
+            .join('');
     }
     linkifyText(text) {
         const urlPattern = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;

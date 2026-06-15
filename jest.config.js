@@ -6,6 +6,14 @@ module.exports = {
       testEnvironment: 'node',
       testMatch: ['<rootDir>/tests/server/**/*.test.js'],
       testTimeout: 30000
+    },
+    {
+      displayName: 'client',
+      testEnvironment: 'node',
+      testMatch: ['<rootDir>/tests/client/**/*.test.ts'],
+      transform: {
+        '^.+\\.ts$': ['ts-jest', { tsconfig: { module: 'commonjs', moduleResolution: 'node' } }]
+      }
     }
   ],
   collectCoverageFrom: [

@@ -81,6 +81,8 @@ export declare class ChatWidget extends HTMLElement implements StoreSubscriber {
     private banAuthor;
     private handleSlashAutocomplete;
     private disconnect;
+    private rosterCallSigns;
+    private renderMessageBody;
     private linkifyText;
     static init(store: LiveNetReactiveStore, level: number): void;
 }

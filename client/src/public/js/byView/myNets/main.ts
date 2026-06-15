@@ -157,6 +157,9 @@ function refreshNetList() {
             }
 
             netProfiles.data.netlist.forEach((netProfile: any) => {
+                // Defensive: skip any null/empty entry (e.g. a dangling myNets
+                // ref to a deleted net) so one bad row can't crash the page.
+                if (!netProfile || !netProfile._id) return;
                 //For each net profile, construct a list item and create
                 // a net start modal
 
