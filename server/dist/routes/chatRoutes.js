@@ -24,7 +24,9 @@ const {
     broadcastTyping,
     getThreadMessages,
     banFromMessage,
-    chatBroadcaster
+    chatBroadcaster,
+    pinMessage,
+    unpinMessage,
 } = require('../lib/localChat');
 const { logger } = require('../lib/logger');
 
@@ -217,6 +219,44 @@ router.post('/:id/message/:messageId/ban', generalLimiter, authCheck(REQ_CALLSIG
         });
         return { message: { banned: result.callSign } };
     }, `banFromMessage(): ${req.user?.callSign} banned author of ${req.params.messageId}`);
+});
+
+// ============================================================================
+// POST /api/chat/:id/message/:messageId/pin — Pin a message (NCS only)
+// ============================================================================
+router.post('/:id/message/:messageId/pin', generalLimiter, authCheck(REQ_CALLSIGN), (req, res) => {
+    handleRequest(res, async () => {
+        const npid = req.params.id;
+        const { messageId } = req.params;
+        if (!isNpid(npid)) throw new Error(`Invalid NPID: ${npid}`);
+        if (!messageId) throw new Error('Missing messageId');
+        if (!req.user || !req.user._id) throw new Error('Missing user object');
+        const result = await pinMessage({
+            npid,
+            messageId,
+            moderator: { callSign: req.user.callSign || 'unknown', userProfile: req.user._id, userProfileId: req.user._id.toString() }
+        });
+        return { message: { pinned: result.id } };
+    }, `pinMessage(): ${req.user?.callSign} pinned ${req.params.messageId}`);
+});
+
+// ============================================================================
+// POST /api/chat/:id/message/:messageId/unpin — Unpin a message (NCS only)
+// ============================================================================
+router.post('/:id/message/:messageId/unpin', generalLimiter, authCheck(REQ_CALLSIGN), (req, res) => {
+    handleRequest(res, async () => {
+        const npid = req.params.id;
+        const { messageId } = req.params;
+        if (!isNpid(npid)) throw new Error(`Invalid NPID: ${npid}`);
+        if (!messageId) throw new Error('Missing messageId');
+        if (!req.user || !req.user._id) throw new Error('Missing user object');
+        const result = await unpinMessage({
+            npid,
+            messageId,
+            moderator: { callSign: req.user.callSign || 'unknown', userProfile: req.user._id, userProfileId: req.user._id.toString() }
+        });
+        return { message: { unpinned: result.messageId } };
+    }, `unpinMessage(): ${req.user?.callSign} unpinned ${req.params.messageId}`);
 });
 
 // ============================================================================
