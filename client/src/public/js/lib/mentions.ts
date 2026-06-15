@@ -24,7 +24,7 @@ export function parseMentions(text: string, knownCallSigns: Set<string>): Parsed
     let last = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
-        const cs = m[1].toUpperCase();
+        const cs = m[1]!.toUpperCase();
         if (!knownCallSigns.has(cs)) continue;
         if (m.index > last) segments.push({ type: 'text', value: text.slice(last, m.index) });
         segments.push({ type: 'mention', value: m[0] });

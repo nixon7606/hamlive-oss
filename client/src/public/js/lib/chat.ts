@@ -12,6 +12,7 @@ import { createLogger } from '#@client/lib/logger.js';
 import { serverInfo } from '#@client/lib/serverInfo.js';
 import { getNpid, generateUUID, UserAgentPersistentPreferences, expiryFromPreset } from '#@client/lib/clientUtils.js';
 import { LocalChatConnection, LocalChatMessage } from '#@client/lib/localChat.js';
+import { parseMentions } from '#@client/lib/mentions.js';
 
 const logger = createLogger('lib/chat.ts');
 const prefs = new UserAgentPersistentPreferences();
@@ -384,6 +385,13 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                         z-index: 100;
                     }
                     .chat-emoji-picker.show { display: block; }
+                    .chat-mention {
+                        color: var(--hl-secondary);
+                        background: rgba(163, 118, 195, 0.18);
+                        border-radius: 4px;
+                        padding: 0 3px;
+                        font-weight: 600;
+                    }
                 </style>
                 <div class="chat-messages flex-grow-1 overflow-auto px-1 py-1">
                     <div class="text-center text-muted p-4">
@@ -509,7 +517,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
 
         let messageContent = '';
         if (msg.text) {
-            messageContent += `<span class="chat-text">${this.linkifyText(this.escapeHtml(msg.text))}</span>`;
+            messageContent += `<span class="chat-text">${this.renderMessageBody(msg.text)}</span>`;
         }
 
         if (msg.imageUrl) {
@@ -864,7 +872,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         if (!msgEl) return;
         const contentEl = msgEl.querySelector('.chat-message-content');
         if (contentEl && msg.text) {
-            contentEl.innerHTML = `<span class="chat-text">${this.linkifyText(this.escapeHtml(msg.text))}</span>`;
+            contentEl.innerHTML = `<span class="chat-text">${this.renderMessageBody(msg.text)}</span>`;
         }
         const editedIndicators = msgEl.querySelectorAll('.chat-edited');
         if (msg.edited && editedIndicators.length === 0) {
@@ -1724,6 +1732,31 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             this.connection.disconnect();
             logger.info('Disconnected from chat');
         }
+    }
+
+    /** Uppercased callsigns of stations currently present in the net. */
+    private rosterCallSigns(): Set<string> {
+        return new Set(
+            (this.store?.stations.list ?? [])
+                .map(s => (s.callSign || '').toUpperCase())
+                .filter(Boolean)
+        );
+    }
+
+    /**
+     * Render message text to HTML: mention tokens that match a present callsign
+     * become chips; everything else is escaped + linkified as before. Text
+     * segments are HTML-escaped, so this is XSS-safe.
+     */
+    private renderMessageBody(text: string): string {
+        const { segments } = parseMentions(text, this.rosterCallSigns());
+        return segments
+            .map(seg =>
+                seg.type === 'mention'
+                    ? `<span class="chat-mention">${this.escapeHtml(seg.value)}</span>`
+                    : this.linkifyText(this.escapeHtml(seg.value))
+            )
+            .join('');
     }
 
     /**
