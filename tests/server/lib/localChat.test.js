@@ -343,9 +343,44 @@ describe('deleteMessage()', () => {
     expect(result.success).toBe(true);
   });
 
-  test('rejects deletion by non-NCS', async () => {
+  test('rejects deletion by a non-NCS who is not the author', async () => {
     const msg = await localChat.sendMessage({ npid, user: mockMember(), text: 'Delete me' });
-    await expect(localChat.deleteMessage({ npid, messageId: msg.id, moderatorCallsign: 'KD5SPR', userProfileId: userId })).rejects.toThrow('permissions');
+    const strangerId = new mongoose.Types.ObjectId().toString();
+    await expect(localChat.deleteMessage({
+      npid, messageId: msg.id, moderatorCallsign: 'W1AW', userProfileId: strangerId
+    })).rejects.toThrow('permissions');
+  });
+
+  test('author can delete their own recent message', async () => {
+    const msg = await localChat.sendMessage({ npid, user: mockMember(), text: 'My typo' });
+    const result = await localChat.deleteMessage({
+      npid, messageId: msg.id, moderatorCallsign: 'KD5SPR', userProfileId: userId
+    });
+    expect(result.success).toBe(true);
+    const msgs = await localChat.getMessages({ npid });
+    expect(msgs.find(m => m.id === msg.id)).toBeUndefined();
+  });
+
+  test('author cannot delete their own message older than the 15-minute window', async () => {
+    const msg = await localChat.sendMessage({ npid, user: mockMember(), text: 'Old message' });
+    const old = new Date(Date.now() - 20 * 60 * 1000);
+    // Use the native MongoDB collection to bypass Mongoose's immutable createdAt (timestamps: true)
+    await mockChatMessage.collection.updateOne({ _id: new mongoose.Types.ObjectId(msg.id) }, { $set: { createdAt: old } });
+    await expect(localChat.deleteMessage({
+      npid, messageId: msg.id, moderatorCallsign: 'KD5SPR', userProfileId: userId
+    })).rejects.toThrow('15 minutes');
+    const msgs = await localChat.getMessages({ npid });
+    expect(msgs.find(m => m.id === msg.id)).toBeDefined();
+  });
+
+  test('NCS can delete a message older than the 15-minute window', async () => {
+    const msg = await localChat.sendMessage({ npid, user: mockMember(), text: 'Old message' });
+    const old = new Date(Date.now() - 60 * 60 * 1000);
+    await mockChatMessage.collection.updateOne({ _id: new mongoose.Types.ObjectId(msg.id) }, { $set: { createdAt: old } });
+    const result = await localChat.deleteMessage({
+      npid, messageId: msg.id, moderatorCallsign: 'NCS001', userProfileId: ncsId
+    });
+    expect(result.success).toBe(true);
   });
 });
 

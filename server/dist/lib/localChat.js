@@ -28,6 +28,9 @@ const ROLE_LEVELS = {
 };
 const MODERATION_MAX_LEVEL = 0; // Only NCS can moderate
 
+// Authors may delete their OWN messages for this long after sending; NCS has no limit.
+const SELF_DELETE_WINDOW_MS = 15 * 60 * 1000;
+
 // Upload directory for chat images
 // Configurable via CHAT_UPLOAD_DIR env var. Default: <project-root>/uploads/chat/
 // In production, set CHAT_UPLOAD_DIR to a persistent path outside the build tree
@@ -371,15 +374,29 @@ async function checkUserCanModerate(npid, userProfileId) {
 }
 
 /**
- * Soft-delete a message (NCS only).
+ * Soft-delete a message. Allowed for NCS (any message, any age) or for the
+ * message's author within SELF_DELETE_WINDOW_MS of sending it.
  */
 async function deleteMessage({ npid, messageId, moderatorCallsign, userProfileId }) {
     const { ChatMessage } = getModels();
-    const canModerate = await checkUserCanModerate(npid, userProfileId);
-    if (!canModerate) throw new Error('Insufficient permissions: only NCS can delete messages');
     const msg = await ChatMessage.findById(messageId);
     if (!msg) throw new Error('Message not found');
     if (msg.netProfile.toString() !== npid.toString()) throw new Error('Message not in this net');
+
+    const canModerate = await checkUserCanModerate(npid, userProfileId);
+    const isOwner = !!(msg.userProfile && userProfileId
+        && msg.userProfile.toString() === userProfileId.toString());
+
+    if (!canModerate) {
+        if (!isOwner) {
+            throw new Error('Insufficient permissions: only NCS or the author can delete this message');
+        }
+        const ageMs = Date.now() - new Date(msg.createdAt).getTime();
+        if (ageMs > SELF_DELETE_WINDOW_MS) {
+            throw new Error('You can only delete your own messages within 15 minutes of sending');
+        }
+    }
+
     const wasPinned = msg.pinned === true;
     msg.deleted = true;
     msg.pinned = false;
