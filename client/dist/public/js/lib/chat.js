@@ -31,6 +31,7 @@ export class ChatWidget extends HTMLElement {
     lastRenderedDate = null;
     lastRenderedCallSign = null;
     unreadCount = 0;
+    hasUnreadMention = false;
     isScrolledUp = false;
     scrollListener = null;
     visibilityHandler = null;
@@ -85,6 +86,7 @@ export class ChatWidget extends HTMLElement {
             this.visibilityHandler = () => {
                 if (!document.hidden) {
                     this.unreadCount = 0;
+                    this.hasUnreadMention = false;
                     this.updateLatestButton();
                 }
             };
@@ -279,6 +281,13 @@ export class ChatWidget extends HTMLElement {
                         padding: 0 3px;
                         font-weight: 600;
                     }
+                    .chat-message.mentions-me {
+                        border-left: 3px solid var(--hl-secondary);
+                        background: rgba(163, 118, 195, 0.08);
+                    }
+                    .chat-unread-badge.has-mention {
+                        background: var(--hl-secondary) !important;
+                    }
                 </style>
                 <div class="chat-messages flex-grow-1 overflow-auto px-1 py-1">
                     <div class="text-center text-muted p-4">
@@ -433,6 +442,9 @@ export class ChatWidget extends HTMLElement {
             msgEl.style.borderTop = '1px solid rgba(240, 238, 222, 0.08)';
         }
         this.lastRenderedCallSign = msg.callSign || null;
+        if (msg.userId !== this.currentUserId && this.isSelfMentioned(msg.text || '')) {
+            msgEl.classList.add('mentions-me');
+        }
         this.setupMessageActions(msgEl, msg.id, msg.text || '');
         const placeholder = messagesContainer.querySelector('.text-muted');
         if (placeholder)
@@ -642,6 +654,9 @@ export class ChatWidget extends HTMLElement {
             const wasNearBottom = this.isNearBottom();
             if (!wasNearBottom) {
                 this.unreadCount += 1;
+                if (msg.userId !== this.currentUserId && this.isSelfMentioned(msg.text || '')) {
+                    this.hasUnreadMention = true;
+                }
                 this.updateLatestButton();
             }
             this.renderMessage(msg);
@@ -1251,6 +1266,7 @@ export class ChatWidget extends HTMLElement {
         container.parentElement?.appendChild(btn);
         btn.addEventListener('click', () => {
             this.unreadCount = 0;
+            this.hasUnreadMention = false;
             this.updateLatestButton();
             this.scrollToBottom();
         });
@@ -1270,10 +1286,12 @@ export class ChatWidget extends HTMLElement {
         const badge = btn.querySelector('.chat-unread-badge');
         if (badge) {
             if (this.unreadCount > 0) {
-                badge.textContent = String(this.unreadCount);
+                badge.textContent = this.hasUnreadMention ? `@ ${this.unreadCount}` : String(this.unreadCount);
+                badge.classList.toggle('has-mention', this.hasUnreadMention);
                 badge.style.display = 'inline';
             }
             else {
+                badge.classList.remove('has-mention');
                 badge.style.display = 'none';
             }
         }
@@ -1422,6 +1440,12 @@ export class ChatWidget extends HTMLElement {
         return new Set((this.store?.stations.list ?? [])
             .map(s => (s.callSign || '').toUpperCase())
             .filter(Boolean));
+    }
+    isSelfMentioned(text) {
+        const me = this.selfCallSign;
+        if (!me)
+            return false;
+        return parseMentions(text, new Set([me])).mentioned.has(me);
     }
     renderMessageBody(text) {
         const { segments } = parseMentions(text, this.rosterCallSigns());

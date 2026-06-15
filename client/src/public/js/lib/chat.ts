@@ -74,6 +74,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
     private lastRenderedDate: string | null = null;
     private lastRenderedCallSign: string | null = null;
     private unreadCount = 0;
+    private hasUnreadMention = false;
     private isScrolledUp = false;
     private scrollListener: (() => void) | null = null;
     private visibilityHandler: (() => void) | null = null;
@@ -170,6 +171,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             this.visibilityHandler = () => {
                 if (!document.hidden) {
                     this.unreadCount = 0;
+                    this.hasUnreadMention = false;
                     this.updateLatestButton();
                 }
             };
@@ -392,6 +394,13 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                         padding: 0 3px;
                         font-weight: 600;
                     }
+                    .chat-message.mentions-me {
+                        border-left: 3px solid var(--hl-secondary);
+                        background: rgba(163, 118, 195, 0.08);
+                    }
+                    .chat-unread-badge.has-mention {
+                        background: var(--hl-secondary) !important;
+                    }
                 </style>
                 <div class="chat-messages flex-grow-1 overflow-auto px-1 py-1">
                     <div class="text-center text-muted p-4">
@@ -564,6 +573,10 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             msgEl.style.borderTop = '1px solid rgba(240, 238, 222, 0.08)';
         }
         this.lastRenderedCallSign = msg.callSign || null;
+
+        if (msg.userId !== this.currentUserId && this.isSelfMentioned(msg.text || '')) {
+            msgEl.classList.add('mentions-me');
+        }
 
         this.setupMessageActions(msgEl, msg.id, msg.text || '');
 
@@ -820,6 +833,9 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             const wasNearBottom = this.isNearBottom();
             if (!wasNearBottom) {
                 this.unreadCount += 1;
+                if (msg.userId !== this.currentUserId && this.isSelfMentioned(msg.text || '')) {
+                    this.hasUnreadMention = true;
+                }
                 this.updateLatestButton();
             }
             this.renderMessage(msg);
@@ -1546,6 +1562,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
 
         btn.addEventListener('click', () => {
             this.unreadCount = 0;
+            this.hasUnreadMention = false;
             this.updateLatestButton();
             this.scrollToBottom();
         });
@@ -1566,9 +1583,11 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         const badge = btn.querySelector('.chat-unread-badge') as HTMLElement;
         if (badge) {
             if (this.unreadCount > 0) {
-                badge.textContent = String(this.unreadCount);
+                badge.textContent = this.hasUnreadMention ? `@ ${this.unreadCount}` : String(this.unreadCount);
+                badge.classList.toggle('has-mention', this.hasUnreadMention);
                 badge.style.display = 'inline';
             } else {
+                badge.classList.remove('has-mention');
                 badge.style.display = 'none';
             }
         }
@@ -1741,6 +1760,13 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                 .map(s => (s.callSign || '').toUpperCase())
                 .filter(Boolean)
         );
+    }
+
+    /** True when this message text mentions the current user (by their callsign). */
+    private isSelfMentioned(text: string): boolean {
+        const me = this.selfCallSign;
+        if (!me) return false;
+        return parseMentions(text, new Set([me])).mentioned.has(me);
     }
 
     /**
