@@ -344,12 +344,14 @@ async function getChatSession({ npid, user }) {
     if (!user || !user._id) throw new Error('getChatSession(): missing user');
     const netProfile = await getModels().NetProfile.findById(npid);
     if (!netProfile) throw new Error(`Net profile not found: ${npid}`);
+    const pinned = await getModels().ChatMessage.findOne({ netProfile: npid, pinned: true, deleted: false });
     return {
         enabled: true,
         roomId: getChatRoomId(npid),
         userId: user._id.toString(),
         callSign: user.callSign || 'UNKNOWN',
-        displayName: user.displayName || user.callSign || ''
+        displayName: user.displayName || user.callSign || '',
+        pinnedMessage: pinned ? await buildMessagePayload(pinned) : null
     };
 }
 
@@ -378,13 +380,22 @@ async function deleteMessage({ npid, messageId, moderatorCallsign, userProfileId
     const msg = await ChatMessage.findById(messageId);
     if (!msg) throw new Error('Message not found');
     if (msg.netProfile.toString() !== npid.toString()) throw new Error('Message not in this net');
+    const wasPinned = msg.pinned === true;
     msg.deleted = true;
+    msg.pinned = false;
     await msg.save();
     logger.info(`Chat: Message ${messageId} deleted by ${moderatorCallsign} in net ${npid}`);
     try {
         chatBroadcaster.broadcastDelete(npid, messageId);
     } catch (e) {
         logger.warn(`Chat: broadcastDelete failed: ${e.message}`);
+    }
+    if (wasPinned) {
+        try {
+            chatBroadcaster.broadcastUnpin(npid, { messageId });
+        } catch (e) {
+            logger.warn(`Chat: broadcastUnpin (on delete) failed: ${e.message}`);
+        }
     }
     return { success: true, messageId };
 }

@@ -553,3 +553,27 @@ describe('pinMessage / unpinMessage', () => {
     } finally { spy.mockRestore(); }
   });
 });
+
+describe('pinned message: session + delete', () => {
+  const ncsMod = () => ({ callSign: 'NCS001', userProfile: ncsId, userProfileId: ncsId });
+
+  test('getChatSession returns the current pinned message (or null)', async () => {
+    const none = await localChat.getChatSession({ npid, user: mockNcs() });
+    expect(none.pinnedMessage).toBeNull();
+    const m = await localChat.sendMessage({ npid, user: mockMember(), text: 'announce' });
+    await localChat.pinMessage({ npid, messageId: m.id, moderator: ncsMod() });
+    const session = await localChat.getChatSession({ npid, user: mockNcs() });
+    expect(session.pinnedMessage).not.toBeNull();
+    expect(session.pinnedMessage.id).toBe(m.id);
+  });
+
+  test('deleting a pinned message broadcasts chat-unpin', async () => {
+    const m = await localChat.sendMessage({ npid, user: mockNcs(), text: 'pinned then deleted' });
+    await localChat.pinMessage({ npid, messageId: m.id, moderator: ncsMod() });
+    const spy = jest.spyOn(chatBroadcaster, 'broadcastUnpin').mockImplementation(() => {});
+    try {
+      await localChat.deleteMessage({ npid, messageId: m.id, moderatorCallsign: 'NCS001', userProfileId: ncsId });
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally { spy.mockRestore(); }
+  });
+});
