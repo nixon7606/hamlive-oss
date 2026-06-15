@@ -26,6 +26,7 @@ const testChatMessageSchema = new Schema({
   text: { type: String, maxlength: 500, default: '' },
   deleted: { type: Boolean, default: false, index: true },
   edited: { type: Boolean, default: false },
+  pinned: { type: Boolean, default: false },
   editedAt: { type: Date, default: null },
   imageUrl: { type: String, default: null },
   reactions: { type: Map, of: [{ type: Schema.Types.ObjectId, ref: 'TestUserProfile' }], default: new Map() },
@@ -504,5 +505,75 @@ describe('uploadImage()', () => {
 
   test('rejects missing file', async () => {
     await expect(localChat.uploadImage(null)).rejects.toThrow('no file provided');
+  });
+});
+
+describe('pinMessage / unpinMessage', () => {
+  const ncsMod = () => ({ callSign: 'NCS001', userProfile: ncsId, userProfileId: ncsId });
+
+  test('NCS pins a message; pinning another replaces it (single pin)', async () => {
+    const a = await localChat.sendMessage({ npid, user: mockMember(), text: 'first' });
+    const b = await localChat.sendMessage({ npid, user: mockMember(), text: 'second' });
+    await localChat.pinMessage({ npid, messageId: a.id, moderator: ncsMod() });
+    await localChat.pinMessage({ npid, messageId: b.id, moderator: ncsMod() });
+    const pinned = await mockChatMessage.find({ pinned: true });
+    expect(pinned.map(d => d._id.toString())).toEqual([b.id]);
+  });
+
+  test('non-NCS cannot pin', async () => {
+    const m = await localChat.sendMessage({ npid, user: mockMember(), text: 'x' });
+    await expect(localChat.pinMessage({
+      npid, messageId: m.id,
+      moderator: { callSign: 'KD5SPR', userProfile: userId, userProfileId: userId }
+    })).rejects.toThrow(/only NCS|permission/i);
+  });
+
+  test('pinMessage broadcasts chat-pin with the message payload', async () => {
+    const m = await localChat.sendMessage({ npid, user: mockMember(), text: 'pin me' });
+    const spy = jest.spyOn(chatBroadcaster, 'broadcastPin').mockImplementation(() => {});
+    try {
+      await localChat.pinMessage({ npid, messageId: m.id, moderator: ncsMod() });
+      expect(spy).toHaveBeenCalledTimes(1);
+      const [, payload] = spy.mock.calls[0];
+      expect(payload.id).toBe(m.id);
+    } finally { spy.mockRestore(); }
+  });
+
+  test('unpinMessage clears the pin and broadcasts chat-unpin', async () => {
+    const m = await localChat.sendMessage({ npid, user: mockMember(), text: 'pin me' });
+    await localChat.pinMessage({ npid, messageId: m.id, moderator: ncsMod() });
+    const spy = jest.spyOn(chatBroadcaster, 'broadcastUnpin').mockImplementation(() => {});
+    try {
+      await localChat.unpinMessage({ npid, messageId: m.id, moderator: ncsMod() });
+      const pinned = await mockChatMessage.find({ pinned: true });
+      expect(pinned).toHaveLength(0);
+      expect(spy).toHaveBeenCalledTimes(1);
+      const [, data] = spy.mock.calls[0];
+      expect(data.messageId).toBe(m.id);
+    } finally { spy.mockRestore(); }
+  });
+});
+
+describe('pinned message: session + delete', () => {
+  const ncsMod = () => ({ callSign: 'NCS001', userProfile: ncsId, userProfileId: ncsId });
+
+  test('getChatSession returns the current pinned message (or null)', async () => {
+    const none = await localChat.getChatSession({ npid, user: mockNcs() });
+    expect(none.pinnedMessage).toBeNull();
+    const m = await localChat.sendMessage({ npid, user: mockMember(), text: 'announce' });
+    await localChat.pinMessage({ npid, messageId: m.id, moderator: ncsMod() });
+    const session = await localChat.getChatSession({ npid, user: mockNcs() });
+    expect(session.pinnedMessage).not.toBeNull();
+    expect(session.pinnedMessage.id).toBe(m.id);
+  });
+
+  test('deleting a pinned message broadcasts chat-unpin', async () => {
+    const m = await localChat.sendMessage({ npid, user: mockNcs(), text: 'pinned then deleted' });
+    await localChat.pinMessage({ npid, messageId: m.id, moderator: ncsMod() });
+    const spy = jest.spyOn(chatBroadcaster, 'broadcastUnpin').mockImplementation(() => {});
+    try {
+      await localChat.deleteMessage({ npid, messageId: m.id, moderatorCallsign: 'NCS001', userProfileId: ncsId });
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally { spy.mockRestore(); }
   });
 });

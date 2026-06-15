@@ -19,6 +19,7 @@ export declare class ChatWidget extends HTMLElement implements StoreSubscriber {
     private lastRenderedDate;
     private lastRenderedCallSign;
     private unreadCount;
+    private hasUnreadMention;
     private isScrolledUp;
     private scrollListener;
     private visibilityHandler;
@@ -80,8 +81,12 @@ export declare class ChatWidget extends HTMLElement implements StoreSubscriber {
     private showBanDialog;
     private banAuthor;
     private handleSlashAutocomplete;
+    private handleMentionAutocomplete;
     private disconnect;
     private rosterCallSigns;
+    private isSelfMentioned;
+    private renderPinnedBar;
+    private clearPinnedBar;
     private renderMessageBody;
     private linkifyText;
     static init(store: LiveNetReactiveStore, level: number): void;

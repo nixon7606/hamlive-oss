@@ -344,12 +344,14 @@ async function getChatSession({ npid, user }) {
     if (!user || !user._id) throw new Error('getChatSession(): missing user');
     const netProfile = await getModels().NetProfile.findById(npid);
     if (!netProfile) throw new Error(`Net profile not found: ${npid}`);
+    const pinned = await getModels().ChatMessage.findOne({ netProfile: npid, pinned: true, deleted: false });
     return {
         enabled: true,
         roomId: getChatRoomId(npid),
         userId: user._id.toString(),
         callSign: user.callSign || 'UNKNOWN',
-        displayName: user.displayName || user.callSign || ''
+        displayName: user.displayName || user.callSign || '',
+        pinnedMessage: pinned ? await buildMessagePayload(pinned) : null
     };
 }
 
@@ -378,13 +380,22 @@ async function deleteMessage({ npid, messageId, moderatorCallsign, userProfileId
     const msg = await ChatMessage.findById(messageId);
     if (!msg) throw new Error('Message not found');
     if (msg.netProfile.toString() !== npid.toString()) throw new Error('Message not in this net');
+    const wasPinned = msg.pinned === true;
     msg.deleted = true;
+    msg.pinned = false;
     await msg.save();
     logger.info(`Chat: Message ${messageId} deleted by ${moderatorCallsign} in net ${npid}`);
     try {
         chatBroadcaster.broadcastDelete(npid, messageId);
     } catch (e) {
         logger.warn(`Chat: broadcastDelete failed: ${e.message}`);
+    }
+    if (wasPinned) {
+        try {
+            chatBroadcaster.broadcastUnpin(npid, { messageId });
+        } catch (e) {
+            logger.warn(`Chat: broadcastUnpin (on delete) failed: ${e.message}`);
+        }
     }
     return { success: true, messageId };
 }
@@ -475,6 +486,58 @@ async function banFromMessage({ npid, messageId, reason, expiresAt = null, moder
         expiresAt: expiresAt ? new Date(expiresAt) : null,
         bannedBy: { callSign: moderator.callSign, userProfile: moderator.userProfile }
     });
+}
+
+/**
+ * Pin a message to the top of a net's chat (NCS only). Enforces a single pin
+ * per net by clearing any other pinned message. Broadcasts chat-pin.
+ */
+async function pinMessage({ npid, messageId, moderator }) {
+    const { ChatMessage } = getModels();
+    const canModerate = await checkUserCanModerate(npid, moderator.userProfileId);
+    if (!canModerate) throw new Error('Insufficient permissions: only NCS can pin');
+
+    const msg = await ChatMessage.findById(messageId);
+    if (!msg) throw new Error('Message not found');
+    if (msg.netProfile.toString() !== npid.toString()) throw new Error('Message not in this net');
+
+    // Single-pin: clear any other pinned message in this net.
+    await ChatMessage.updateMany(
+        { netProfile: npid, _id: { $ne: msg._id }, pinned: true },
+        { $set: { pinned: false } }
+    );
+    msg.pinned = true;
+    await msg.save();
+
+    const payload = await buildMessagePayload(msg);
+    try {
+        chatBroadcaster.broadcastPin(npid, payload);
+    } catch (e) {
+        logger.warn(`Chat: broadcastPin failed for net ${npid}: ${e.message}`);
+    }
+    return payload;
+}
+
+/**
+ * Unpin a message (NCS only). Broadcasts chat-unpin.
+ */
+async function unpinMessage({ npid, messageId, moderator }) {
+    const { ChatMessage } = getModels();
+    const canModerate = await checkUserCanModerate(npid, moderator.userProfileId);
+    if (!canModerate) throw new Error('Insufficient permissions: only NCS can unpin');
+
+    const msg = await ChatMessage.findById(messageId);
+    if (!msg) throw new Error('Message not found');
+    if (msg.netProfile.toString() !== npid.toString()) throw new Error('Message not in this net');
+    msg.pinned = false;
+    await msg.save();
+
+    try {
+        chatBroadcaster.broadcastUnpin(npid, { messageId: msg._id.toString() });
+    } catch (e) {
+        logger.warn(`Chat: broadcastUnpin failed for net ${npid}: ${e.message}`);
+    }
+    return { messageId: msg._id.toString() };
 }
 
 /**
@@ -665,5 +728,7 @@ module.exports = {
     getBannedUsers,
     broadcastTyping,
     getThreadMessages,
+    pinMessage,
+    unpinMessage,
     chatBroadcaster
 };

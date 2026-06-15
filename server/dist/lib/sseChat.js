@@ -183,6 +183,21 @@ class ChatSSEBroadcaster {
     }
 
     /**
+     * Broadcast that a message was pinned (full payload) / unpinned ({messageId}).
+     */
+    broadcastPin(npid, data) {
+        const instance = this.streams.get(npid.toString());
+        if (!instance) return;
+        instance.send(data, 'chat-pin');
+    }
+
+    broadcastUnpin(npid, data) {
+        const instance = this.streams.get(npid.toString());
+        if (!instance) return;
+        instance.send(data, 'chat-unpin');
+    }
+
+    /**
      * Close the SSE stream for a net when the net closes.
      */
     close(npid) {

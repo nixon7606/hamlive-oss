@@ -25,6 +25,7 @@ export interface LocalChatSession {
         reason: string;
         bannedAt: string;
     } | false;
+    pinnedMessage?: unknown;
 }
 export interface TypingEvent {
     type: 'typing';
@@ -54,6 +55,8 @@ export declare class LocalChatConnection {
     editMessage(messageId: string, newText: string): Promise<boolean>;
     toggleReaction(messageId: string, reactionType: string): Promise<boolean>;
     banFromMessage(messageId: string, reason: string, expiresAt: string | null): Promise<boolean>;
+    pinMessage(messageId: string): Promise<boolean>;
+    unpinMessage(messageId: string): Promise<boolean>;
     getMessages(since?: string, limit?: number): Promise<LocalChatMessage[]>;
     getOlderMessages(before: string, limit?: number): Promise<LocalChatMessage[]>;
     getReplies(parentMessageId: string, limit?: number): Promise<LocalChatMessage[]>;

@@ -87,6 +87,22 @@ export class LocalChatConnection {
                 logger.error('Failed to parse ban event:', e);
             }
         });
+        this.eventSource.addEventListener('chat-pin', (event) => {
+            try {
+                this.emit('pin', JSON.parse(event.data));
+            }
+            catch (e) {
+                logger.error('Failed to parse chat-pin:', e);
+            }
+        });
+        this.eventSource.addEventListener('chat-unpin', (event) => {
+            try {
+                this.emit('unpin', JSON.parse(event.data));
+            }
+            catch (e) {
+                logger.error('Failed to parse chat-unpin:', e);
+            }
+        });
         this.eventSource.addEventListener('chat-close', () => {
             logger.info('Chat SSE stream closed (net closing)');
             this.emit('chat.close', null);
@@ -193,6 +209,26 @@ export class LocalChatConnection {
         }
         catch (err) {
             logger.error('Failed to ban from message:', err);
+            return false;
+        }
+    }
+    async pinMessage(messageId) {
+        try {
+            const res = await fetch(`/api/chat/${this.npid}/message/${messageId}/pin`, { method: 'POST' });
+            return res.ok;
+        }
+        catch (err) {
+            logger.error('Failed to pin message:', err);
+            return false;
+        }
+    }
+    async unpinMessage(messageId) {
+        try {
+            const res = await fetch(`/api/chat/${this.npid}/message/${messageId}/unpin`, { method: 'POST' });
+            return res.ok;
+        }
+        catch (err) {
+            logger.error('Failed to unpin message:', err);
             return false;
         }
     }
