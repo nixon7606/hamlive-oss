@@ -176,7 +176,7 @@ router.get('/:id/messages/:messageId/replies', generalLimiter, authCheck(REQ_CAL
 });
 
 // ============================================================================
-// DELETE /api/chat/:id/message/:messageId — Delete (NCS only)
+// DELETE /api/chat/:id/message/:messageId — delete a message (NCS any message; author own message within 15 min)
 // ============================================================================
 router.delete('/:id/message/:messageId', generalLimiter, authCheck(REQ_CALLSIGN), (req, res) => {
     handleRequest(res, async () => {

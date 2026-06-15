@@ -611,4 +611,20 @@ describe('pinned message: session + delete', () => {
       expect(spy).toHaveBeenCalledTimes(1);
     } finally { spy.mockRestore(); }
   });
+
+  test('author self-deleting their own pinned message triggers unpin broadcast', async () => {
+    // Send as the member (userId is the author), pin as NCS, then delete as the author
+    const m = await localChat.sendMessage({ npid, user: mockMember(), text: 'my pinned message' });
+    await localChat.pinMessage({ npid, messageId: m.id, moderator: ncsMod() });
+    const spy = jest.spyOn(chatBroadcaster, 'broadcastUnpin').mockImplementation(() => {});
+    try {
+      const result = await localChat.deleteMessage({
+        npid, messageId: m.id, moderatorCallsign: 'KD5SPR', userProfileId: userId
+      });
+      expect(result.success).toBe(true);
+      expect(spy).toHaveBeenCalledTimes(1);
+      const [, data] = spy.mock.calls[0];
+      expect(data.messageId).toBe(m.id);
+    } finally { spy.mockRestore(); }
+  });
 });
