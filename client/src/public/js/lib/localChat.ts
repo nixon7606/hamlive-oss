@@ -35,6 +35,7 @@ export interface LocalChatSession {
     callSign: string;
     displayName: string;
     banned?: { reason: string; bannedAt: string } | false;
+    pinnedMessage?: unknown;
 }
 
 export interface TypingEvent {
@@ -152,6 +153,22 @@ export class LocalChatConnection {
                 this.emit('ban', data);
             } catch (e) {
                 logger.error('Failed to parse ban event:', e);
+            }
+        });
+
+        this.eventSource.addEventListener('chat-pin', (event: MessageEvent) => {
+            try {
+                this.emit('pin', JSON.parse(event.data));
+            } catch (e) {
+                logger.error('Failed to parse chat-pin:', e);
+            }
+        });
+
+        this.eventSource.addEventListener('chat-unpin', (event: MessageEvent) => {
+            try {
+                this.emit('unpin', JSON.parse(event.data));
+            } catch (e) {
+                logger.error('Failed to parse chat-unpin:', e);
             }
         });
 
@@ -281,6 +298,26 @@ export class LocalChatConnection {
             return res.ok;
         } catch (err) {
             logger.error('Failed to ban from message:', err);
+            return false;
+        }
+    }
+
+    async pinMessage(messageId: string): Promise<boolean> {
+        try {
+            const res = await fetch(`/api/chat/${this.npid}/message/${messageId}/pin`, { method: 'POST' });
+            return res.ok;
+        } catch (err) {
+            logger.error('Failed to pin message:', err);
+            return false;
+        }
+    }
+
+    async unpinMessage(messageId: string): Promise<boolean> {
+        try {
+            const res = await fetch(`/api/chat/${this.npid}/message/${messageId}/unpin`, { method: 'POST' });
+            return res.ok;
+        } catch (err) {
+            logger.error('Failed to unpin message:', err);
             return false;
         }
     }
