@@ -13,6 +13,7 @@ import { serverInfo } from '#@client/lib/serverInfo.js';
 import { getNpid, generateUUID, UserAgentPersistentPreferences, expiryFromPreset } from '#@client/lib/clientUtils.js';
 import { LocalChatConnection, LocalChatMessage } from '#@client/lib/localChat.js';
 import { parseMentions } from '#@client/lib/mentions.js';
+import { withinSelfDeleteWindow } from '#@client/lib/selfDelete.js';
 
 const logger = createLogger('lib/chat.ts');
 const prefs = new UserAgentPersistentPreferences();
@@ -537,6 +538,12 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             ? `<button class="chat-action-btn chat-edit-btn" title="Edit message"><i class="bi bi-pencil"></i></button>`
             : '';
 
+        const canSelfDelete = isOwnMessage && !this.canModerate()
+            && withinSelfDeleteWindow(msg.createdAt);
+        const selfDeleteBtn = canSelfDelete
+            ? `<button class="chat-action-btn chat-delete-btn" title="Delete message"><i class="bi bi-trash"></i></button>`
+            : '';
+
         const msgEl = document.createElement('div');
         msgEl.className = 'chat-message';
         msgEl.dataset['messageId'] = msg.id;
@@ -571,6 +578,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         msgEl.innerHTML = `
             <div class="chat-message-actions">
                 ${editBtn}
+                ${selfDeleteBtn}
                 <button class="chat-action-btn chat-react-btn" title="React"><i class="bi bi-emoji-smile"></i></button>
                 <button class="chat-action-btn chat-reply-btn" title="Reply"><i class="bi bi-reply"></i></button>
                 ${moderateBtn}
@@ -1273,7 +1281,10 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
     }
 
     private async deleteMessage(messageId: string): Promise<void> {
-        if (!this.canModerate() || !this.connection) return;
+        if (!this.connection) return;
+        const el = this.querySelector(`.chat-message[data-message-id="${messageId}"]`) as HTMLElement | null;
+        const isOwn = !!el && !!this.currentUserId && el.dataset['userId'] === this.currentUserId;
+        if (!this.canModerate() && !isOwn) return;
 
         try {
             const success = await this.connection.deleteMessage(messageId);
@@ -1283,7 +1294,10 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             logger.info(`Deleted message ${messageId}`);
         } catch (error) {
             logger.error('Failed to delete message:', error);
-            this.showChatNotice('Failed to delete message');
+            const notice = this.canModerate()
+                ? 'Failed to delete message'
+                : 'Could not delete the message — you can only delete your own messages within 15 minutes.';
+            this.showChatNotice(notice);
         }
     }
 
@@ -1417,7 +1431,11 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                     actionsContainer.appendChild(banBtn);
                 }
             } else if (!canMod && existingDeleteBtn) {
-                existingDeleteBtn.remove();
+                const msgUserId = (msgEl as HTMLElement).dataset['userId'];
+                const isOwn = !!msgUserId && msgUserId === this.currentUserId;
+                if (!isOwn) {
+                    existingDeleteBtn.remove();
+                }
                 actionsContainer.querySelector('.chat-pin-btn')?.remove();
                 actionsContainer.querySelector('.chat-ban-btn')?.remove();
             }
