@@ -189,7 +189,12 @@ app.use('/api/sendgrid/events', express.raw({ type: '*/*' }), sendgridWebhookRou
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-// Serve chat image uploads from configurable directory (default: <project-root>/uploads/)
+// Serve chat image uploads from the SAME directory localChat writes them to
+// (CHAT_UPLOAD_DIR). Without this, when CHAT_UPLOAD_DIR is set (prod), uploads
+// were written there but Express only served <project-root>/uploads, so every
+// chat image 404'd (broken images). Mount the specific path first.
+app.use('/uploads/chat', express.static(conf.chat_upload_dir || path.resolve(__dirname, '../../uploads/chat'), { maxAge: 3600000 }));
+// Serve any other uploads from the default location.
 app.use('/uploads', express.static(path.join(__dirname, '../../uploads'), { maxAge: 3600000 }));
 app.use(express.static(path.join(__dirname, '../../client/dist/public'), { maxAge: 7200000 }));
 
