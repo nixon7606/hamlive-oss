@@ -705,6 +705,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         // Slash command autocomplete
         textInput?.addEventListener('input', () => {
             this.handleSlashAutocomplete();
+            this.handleMentionAutocomplete();
         });
         // Tab key navigates autocomplete dropdown; Enter selects
         textInput?.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -1717,6 +1718,50 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         }
     }
 
+    private handleMentionAutocomplete(): void {
+        const textInput = this.querySelector<HTMLInputElement>('.chat-text-input');
+        if (!textInput) return;
+        this.querySelector('.chat-mention-dropdown')?.remove();
+
+        const val = textInput.value;
+        const caret = textInput.selectionStart ?? val.length;
+        // An @token being typed: at start or after whitespace, up to the caret.
+        const before = val.slice(0, caret);
+        const m = /(?:^|\s)@([A-Za-z0-9/]*)$/.exec(before);
+        if (!m) return;
+
+        const partial = (m[1] || '').toUpperCase();
+        const matches = [...this.rosterCallSigns()]
+            .filter(cs => cs.startsWith(partial) && cs !== this.selfCallSign)
+            .sort()
+            .slice(0, 8);
+        if (matches.length === 0) return;
+
+        const dd = document.createElement('div');
+        dd.className = 'chat-mention-dropdown';
+        dd.style.cssText = 'position: absolute; bottom: 100%; left: 0; right: 0; background: var(--hl-dark); border: 1px solid var(--hl-quaternary); border-radius: 6px; max-height: 200px; overflow-y: auto; z-index: 100;';
+        matches.forEach(cs => {
+            const item = document.createElement('div');
+            item.style.cssText = 'padding: 6px 10px; font-size: 12px; color: var(--hl-light); cursor: pointer; border-bottom: 1px solid rgba(240, 238, 222, 0.1);';
+            item.textContent = cs;
+            item.addEventListener('click', () => {
+                const start = caret - (m[1] || '').length; // position just after the '@'
+                textInput.value = val.slice(0, start) + cs + ' ' + val.slice(caret);
+                this.querySelector('.chat-mention-dropdown')?.remove();
+                textInput.focus();
+                const pos = start + cs.length + 1;
+                textInput.setSelectionRange(pos, pos);
+            });
+            dd.appendChild(item);
+        });
+
+        const wrapper = this.querySelector('.chat-input-wrapper');
+        if (wrapper) {
+            (wrapper as HTMLElement).style.position = 'relative';
+            wrapper.appendChild(dd);
+        }
+    }
+
     private disconnect(): void {
         // Clean up global event listeners to prevent memory leaks
         if (this.documentClickHandler) {
@@ -1741,6 +1786,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         this.querySelector('.chat-lightbox')?.remove();
         // Remove slash dropdown if any
         this.querySelector('.chat-slash-dropdown')?.remove();
+        this.querySelector('.chat-mention-dropdown')?.remove();
         // Remove latest button
         this.querySelector('.chat-latest-btn')?.remove();
 
