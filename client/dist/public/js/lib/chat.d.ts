@@ -17,7 +17,7 @@ export declare class ChatWidget extends HTMLElement implements StoreSubscriber {
     private wasTyping;
     private isBanned;
     private lastRenderedDate;
-    private lastRenderedCallSign;
+    private lastRenderedUserId;
     private unreadCount;
     private hasUnreadMention;
     private isScrolledUp;

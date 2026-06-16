@@ -4,6 +4,7 @@ import { getNpid, generateUUID, UserAgentPersistentPreferences, expiryFromPreset
 import { LocalChatConnection } from '#@client/lib/localChat.js';
 import { parseMentions } from '#@client/lib/mentions.js';
 import { withinSelfDeleteWindow } from '#@client/lib/selfDelete.js';
+import { buildSenderLabel } from '#@client/lib/displayName.js';
 const logger = createLogger('lib/chat.ts');
 const prefs = new UserAgentPersistentPreferences();
 const REACTIONS = [
@@ -30,7 +31,7 @@ export class ChatWidget extends HTMLElement {
     wasTyping = false;
     isBanned = null;
     lastRenderedDate = null;
-    lastRenderedCallSign = null;
+    lastRenderedUserId = null;
     unreadCount = 0;
     hasUnreadMention = false;
     isScrolledUp = false;
@@ -373,7 +374,7 @@ export class ChatWidget extends HTMLElement {
         }
         messagesContainer.innerHTML = '';
         this.lastRenderedDate = null;
-        this.lastRenderedCallSign = null;
+        this.lastRenderedUserId = null;
         this.messages.forEach(msg => this.renderMessage(msg));
         this.scrollToBottom();
     }
@@ -384,7 +385,7 @@ export class ChatWidget extends HTMLElement {
         const msgDate = new Date(msg.createdAt);
         const msgDateKey = this.dateKey(msgDate);
         const smartTs = this.formatSmartTimestamp(msgDate);
-        const isSameCallSign = msg.callSign && msg.callSign === this.lastRenderedCallSign;
+        const isSameUser = !!msg.userId && msg.userId === this.lastRenderedUserId;
         if (msgDateKey !== this.lastRenderedDate) {
             this.lastRenderedDate = msgDateKey;
             const sep = document.createElement('div');
@@ -404,7 +405,7 @@ export class ChatWidget extends HTMLElement {
             sep.textContent = label;
             messagesContainer.appendChild(sep);
         }
-        const rawName = msg.displayName || msg.callSign || 'Unknown';
+        const rawName = buildSenderLabel(msg.displayName, msg.callSign);
         const usernameHtml = this.formatUsername(rawName);
         const isEdited = msg.edited;
         const editedIndicator = isEdited ? '<span class="chat-edited">(edited)</span>' : '';
@@ -455,7 +456,7 @@ export class ChatWidget extends HTMLElement {
             <div class="chat-reaction-picker">
                 ${REACTIONS.map(r => `<button data-reaction="${r.type}">${r.emoji}</button>`).join('')}
             </div>
-            ${isSameCallSign ? '' : `<span class="chat-username">${usernameHtml}</span>`}
+            ${isSameUser ? '' : `<span class="chat-username">${usernameHtml}</span>`}
             <span class="chat-timestamp ms-2">${smartTs}</span>
             ${editedIndicator}
             ${msg.parentMessage ? this.renderReplySnippet(msg) : ''}
@@ -463,11 +464,11 @@ export class ChatWidget extends HTMLElement {
             ${msg.replyCount && msg.replyCount > 0 ? `<div class="chat-reply-count" style="margin-top: 4px; font-size: 11px; color: var(--hl-secondary); cursor: pointer;"><i class="bi bi-reply-fill"></i> ${msg.replyCount} ${msg.replyCount === 1 ? 'reply' : 'replies'}</div>` : ''}
             <div class="chat-reactions">${reactionsHtml}</div>
         `;
-        if (isSameCallSign) {
+        if (isSameUser) {
             msgEl.style.paddingTop = '2px';
             msgEl.style.borderTop = '1px solid rgba(240, 238, 222, 0.08)';
         }
-        this.lastRenderedCallSign = msg.callSign || null;
+        this.lastRenderedUserId = msg.userId || null;
         if (msg.userId !== this.currentUserId && this.isSelfMentioned(msg.text || '')) {
             msgEl.classList.add('mentions-me');
         }
