@@ -26,6 +26,7 @@ export declare abstract class ReactiveStore<T extends EndPointResponse> {
     private handleNewData;
     init(): Promise<void>;
     delayServerDataIngest(): void;
+    private resyncFromServer;
     private notifySubscribers;
     private mainCacheChanged;
     private checkRTT;

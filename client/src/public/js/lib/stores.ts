@@ -296,6 +296,14 @@ export abstract class ReactiveStore<T extends EndPointResponse> {
             this.eventSource.onopen = () => {
                 logger.info('SSE Connection to server opened.');
                 this.notifySubscribers('ONLINE').catch(err => logger.error(String(err)));
+                // Re-sync full state on every (re)connect. SSE delivers only
+                // change events and the backup poll is stopped while SSE is live,
+                // so any update that happened while we were briefly disconnected
+                // (network blip, tab wake, server restart) would otherwise stay
+                // stale on screen until a manual refresh. handleNewData no-ops when
+                // the hash is unchanged and respects the in-flight window, so this
+                // is safe to run on each open.
+                this.resyncFromServer();
             };
 
             this.eventSource.onerror = error => {
@@ -369,6 +377,15 @@ export abstract class ReactiveStore<T extends EndPointResponse> {
             this.inFlightWindowManager.updateInFlightWindow(this.lastHash);
         }
     }
+    // Pull the current server state and feed it through the normal ingest path.
+    // Used on SSE (re)connect so widgets re-sync any changes missed during a
+    // disconnect instead of waiting for the next change event or a page refresh.
+    private resyncFromServer(): void {
+        this.endPoint.show()
+            .then(response => { this.handleNewData(response); })
+            .catch(err => logger.error(`SSE reconnect resync failed: ${String(err)}`));
+    }
+
     private async notifySubscribers(mesg: 'NEWDATA' | 'ONLINE' | 'OFFLINE'): Promise<void> {
         if (this.subscriberMap.size) {
             logger.info(`${mesg} message from ${this.constructor.name} to ${this.subscriberMap.size} subscribers`);
