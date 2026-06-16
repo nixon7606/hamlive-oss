@@ -60,7 +60,7 @@ const stationInteractionSchema = new Schema(
         createdBy: {
             type: String,
             enum: {
-                values: ['user', 'admin'],
+                values: ['user', 'admin', 'scheduler'],
                 message: 'StationInteraction model: {VALUE} is not supported created-by type'
             },
             required: [true, 'Created-by required']
