@@ -114,8 +114,9 @@
                   </select>
                 </div>
                 <div class="mb-2">
-                  <label class="text-secondary small">Time (HH:MM)</label>
+                  <label class="text-secondary small">Start time (HH:MM)</label>
                   <input type="time" class="form-control form-control-sm" id="input_schedule_time">
+                  <small class="text-muted d-block">Your net's official start time (when the countdown reaches zero).</small>
                 </div>
                 <div class="mb-2">
                   <label class="text-secondary small">Timezone</label>
@@ -131,7 +132,11 @@
                 </div>
                 <div class="mb-2">
                   <label class="text-secondary small">Notify minutes before</label>
-                  <input type="number" class="form-control form-control-sm" id="input_schedule_notify" min="5" max="1440" value="30">
+                  <input type="number" class="form-control form-control-sm" id="input_schedule_notify" min="5" max="120" value="30">
+                  <small class="text-muted d-block">The net opens automatically and emails followers this many minutes
+                  <strong>before</strong> the start time, then counts down to the start.
+                  Example: start <strong>8:00&nbsp;PM</strong> with <strong>30</strong> &rarr; the net opens and
+                  emails go out at <strong>7:30&nbsp;PM</strong>, counting down to 8:00&nbsp;PM. (5&ndash;120 min.)</small>
                 </div>
                 <div class="form-check mb-2">
                   <input type="checkbox" class="form-check-input" id="input_schedule_notify_enabled" checked>

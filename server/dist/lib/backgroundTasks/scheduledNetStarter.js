@@ -38,7 +38,11 @@ async function checkScheduledNets() {
             const sched = profile.schedule || {};
             if (!sched.enabled || sched.dayOfWeek === undefined || sched.hour === undefined || sched.minute === undefined) continue;
 
-            if (!isTimeMatch(now, sched)) continue;
+            // The net opens (and emails go out) notifyBeforeMinutes BEFORE its
+            // scheduled start, then counts down to the start. Use the same
+            // clamped value here and for the countdown in startScheduledNet.
+            const notifyMin = Math.min(Math.max(sched.notifyBeforeMinutes || 30, 5), 120);
+            if (!isTimeMatch(now, sched, notifyMin)) continue;
 
             logger.info(`ScheduledNetStarter: time match for "${profile.title}"`);
             try {
@@ -58,11 +62,19 @@ async function checkScheduledNets() {
 }
 
 /**
- * Check if current time matches schedule in the profile's timezone.
+ * Check whether NOW is the moment to open a scheduled net.
+ *
+ * The schedule's dayOfWeek/hour/minute is the net's OFFICIAL START. The net is
+ * opened `notifyMin` minutes early (so followers get the email + a countdown to
+ * the start), so the open moment is when (now + notifyMin) lands on the
+ * scheduled start time — adding the offset also handles hour/day/week rollover
+ * (e.g. a 00:15 start with 30-min notify opens at 23:45 the previous day).
+ * notifyMin defaults to 0, which preserves the original "fire at start" behavior.
  */
-function isTimeMatch(now, sched) {
+function isTimeMatch(now, sched, notifyMin = 0) {
     const tz = sched.timezone || 'America/Denver';
     try {
+        const effective = new Date(now.getTime() + (notifyMin || 0) * 60000);
         const formatter = new Intl.DateTimeFormat('en-CA', {
             timeZone: tz,
             year: 'numeric', month: '2-digit', day: '2-digit',
@@ -70,9 +82,10 @@ function isTimeMatch(now, sched) {
             hour: '2-digit', hour12: false,
             minute: '2-digit', hourCycle: 'h23'
         });
-        const parts = formatter.formatToParts(now);
+        const parts = formatter.formatToParts(effective);
         const weekday = parts.find(p => p.type === 'weekday')?.value || '';
-        const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+        // ICU can render midnight as "24" under hourCycle h23; normalize 24 -> 0.
+        const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10) % 24;
         const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
 
         const weekdayMap = {
