@@ -691,6 +691,15 @@ async function unFollow({ upid, npid, unlink, db = mongoose.connection }) {
     return output;
 }
 
+/**
+ * A close report is only worth emailing if someone other than net control
+ * actually checked in. Returns false when the net had no real participants
+ * (an empty net the controller opened and closed) so we can skip the email.
+ */
+function closeReportHasParticipants(attendees) {
+    return Array.isArray(attendees) && attendees.some(a => a && a.role !== 'netcontrol');
+}
+
 async function closeNet({ netProfileDoc, liveNetDoc, quiet = false, db = mongoose.connection }) {
     let { StationInteraction, UserProfile } = getModels(db);
 
@@ -702,38 +711,42 @@ async function closeNet({ netProfileDoc, liveNetDoc, quiet = false, db = mongoos
 
     if (!quiet) {
         try {
-            const ncr = await NetCloseReport.init({
-                netProfileDoc,
-                liveNetDoc,
-                attendees: (
-                    await Promise.all(
-                        Array.from(liveNetDoc.lookupTable.values()).map(v =>
-                            StationInteraction.findById(v.stationInteraction)
-                        )
+            const attendees = (
+                await Promise.all(
+                    Array.from(liveNetDoc.lookupTable.values()).map(v =>
+                        StationInteraction.findById(v.stationInteraction)
                     )
                 )
-                    .map(({ photo, callSign, role, highlight, displayName, location, checkedInAt, sigReports }) => ({
-                        photo,
-                        callSign,
-                        role,
-                        highlight,
-                        displayName,
-                        location,
-                        checkedInAt,
-                        rst: sigReports.calculated
-                    }))
-                    .filter(({ checkedInAt }) => checkedInAt)
-            });
+            )
+                .map(({ photo, callSign, role, highlight, displayName, location, checkedInAt, sigReports }) => ({
+                    photo,
+                    callSign,
+                    role,
+                    highlight,
+                    displayName,
+                    location,
+                    checkedInAt,
+                    rst: sigReports.calculated
+                }))
+                .filter(({ checkedInAt }) => checkedInAt);
 
-            // Send email report if it was created successfully
-            // (may be null if chat log fetch failed and report couldn't be created)
-            if (ncr) {
-                //CC SuperUsers On Reports
-                const suIds = (await UserProfile.find({ superUser: true })).map(su => su._id);
-
-                await ncr.sendMailToUPIDs({ upids: [...netProfileDoc.owners, ...suIds], db });
+            // Don't email a close report for a net no one actually joined — if the
+            // only checked-in station is net control, there's nothing to report.
+            if (!closeReportHasParticipants(attendees)) {
+                logger.info(`closeNet: "${netProfileDoc.title}" had no participants beyond net control — skipping close report email`);
             } else {
-                logger.warn('NetCloseReport creation failed. Skipping email notification.');
+                const ncr = await NetCloseReport.init({ netProfileDoc, liveNetDoc, attendees });
+
+                // Send email report if it was created successfully
+                // (may be null if chat log fetch failed and report couldn't be created)
+                if (ncr) {
+                    //CC SuperUsers On Reports
+                    const suIds = (await UserProfile.find({ superUser: true })).map(su => su._id);
+
+                    await ncr.sendMailToUPIDs({ upids: [...netProfileDoc.owners, ...suIds], db });
+                } else {
+                    logger.warn('NetCloseReport creation failed. Skipping email notification.');
+                }
             }
         } catch (err) {
             logger.error('error in close routine: report generation');
@@ -805,6 +818,7 @@ module.exports = {
     checkState,
     delNet,
     closeNet,
+    closeReportHasParticipants,
     unFollow,
     hand,
     highlight,
