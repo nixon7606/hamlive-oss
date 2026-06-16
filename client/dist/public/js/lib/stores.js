@@ -152,6 +152,7 @@ export class ReactiveStore {
             this.eventSource.onopen = () => {
                 logger.info('SSE Connection to server opened.');
                 this.notifySubscribers('ONLINE').catch(err => logger.error(String(err)));
+                this.resyncFromServer();
             };
             this.eventSource.onerror = error => {
                 logger.error('EventSource failed:', error);
@@ -199,6 +200,11 @@ export class ReactiveStore {
         if (this.lastHash) {
             this.inFlightWindowManager.updateInFlightWindow(this.lastHash);
         }
+    }
+    resyncFromServer() {
+        this.endPoint.show()
+            .then(response => { this.handleNewData(response); })
+            .catch(err => logger.error(`SSE reconnect resync failed: ${String(err)}`));
     }
     async notifySubscribers(mesg) {
         if (this.subscriberMap.size) {
