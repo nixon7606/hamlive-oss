@@ -528,7 +528,10 @@ describe('uploadImage()', () => {
   });
 
   test('accepts valid image', async () => {
-    const file = { originalname: 'test.jpg', mimetype: 'image/jpeg', buffer: Buffer.from('fake-jpeg-data') };
+    // Buffer must begin with real JPEG magic bytes (FF D8 FF) — uploadImage now
+    // validates file content, not just the extension/MIME.
+    const buffer = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from('fake-jpeg-data')]);
+    const file = { originalname: 'test.jpg', mimetype: 'image/jpeg', buffer };
     const url = await localChat.uploadImage(file);
     expect(url).toMatch(/^\/uploads\/chat\/.+\.jpg$/);
   });
