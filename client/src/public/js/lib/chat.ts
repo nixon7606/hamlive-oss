@@ -13,6 +13,8 @@ import { serverInfo } from '#@client/lib/serverInfo.js';
 import { getNpid, generateUUID, UserAgentPersistentPreferences, expiryFromPreset } from '#@client/lib/clientUtils.js';
 import { LocalChatConnection, LocalChatMessage } from '#@client/lib/localChat.js';
 import { parseMentions } from '#@client/lib/mentions.js';
+import { withinSelfDeleteWindow } from '#@client/lib/selfDelete.js';
+import { buildSenderLabel } from '#@client/lib/displayName.js';
 
 const logger = createLogger('lib/chat.ts');
 const prefs = new UserAgentPersistentPreferences();
@@ -72,7 +74,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
 
     // UI state
     private lastRenderedDate: string | null = null;
-    private lastRenderedCallSign: string | null = null;
+    private lastRenderedUserId: string | null = null;
     private unreadCount = 0;
     private hasUnreadMention = false;
     private isScrolledUp = false;
@@ -494,7 +496,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
 
         messagesContainer.innerHTML = '';
         this.lastRenderedDate = null;
-        this.lastRenderedCallSign = null;
+        this.lastRenderedUserId = null;
         this.messages.forEach(msg => this.renderMessage(msg));
         this.scrollToBottom();
     }
@@ -506,7 +508,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         const msgDate = new Date(msg.createdAt);
         const msgDateKey = this.dateKey(msgDate);
         const smartTs = this.formatSmartTimestamp(msgDate);
-        const isSameCallSign = msg.callSign && msg.callSign === this.lastRenderedCallSign;
+        const isSameUser = !!msg.userId && msg.userId === this.lastRenderedUserId;
 
         // Insert date separator if date changed
         if (msgDateKey !== this.lastRenderedDate) {
@@ -526,7 +528,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             messagesContainer.appendChild(sep);
         }
 
-        const rawName = msg.displayName || msg.callSign || 'Unknown';
+        const rawName = buildSenderLabel(msg.displayName, msg.callSign);
         const usernameHtml = this.formatUsername(rawName);
 
         const isEdited = msg.edited;
@@ -535,6 +537,12 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         const isOwnMessage = msg.userId === this.currentUserId;
         const editBtn = isOwnMessage
             ? `<button class="chat-action-btn chat-edit-btn" title="Edit message"><i class="bi bi-pencil"></i></button>`
+            : '';
+
+        const canSelfDelete = isOwnMessage && !this.canModerate()
+            && withinSelfDeleteWindow(msg.createdAt);
+        const selfDeleteBtn = canSelfDelete
+            ? `<button class="chat-action-btn chat-delete-btn" title="Delete message"><i class="bi bi-trash"></i></button>`
             : '';
 
         const msgEl = document.createElement('div');
@@ -571,6 +579,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         msgEl.innerHTML = `
             <div class="chat-message-actions">
                 ${editBtn}
+                ${selfDeleteBtn}
                 <button class="chat-action-btn chat-react-btn" title="React"><i class="bi bi-emoji-smile"></i></button>
                 <button class="chat-action-btn chat-reply-btn" title="Reply"><i class="bi bi-reply"></i></button>
                 ${moderateBtn}
@@ -578,7 +587,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             <div class="chat-reaction-picker">
                 ${REACTIONS.map(r => `<button data-reaction="${r.type}">${r.emoji}</button>`).join('')}
             </div>
-            ${isSameCallSign ? '' : `<span class="chat-username">${usernameHtml}</span>`}
+            ${isSameUser ? '' : `<span class="chat-username">${usernameHtml}</span>`}
             <span class="chat-timestamp ms-2">${smartTs}</span>
             ${editedIndicator}
             ${msg.parentMessage ? this.renderReplySnippet(msg) : ''}
@@ -588,11 +597,11 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         `;
 
         // If grouped, reduce padding and add separator line
-        if (isSameCallSign) {
+        if (isSameUser) {
             msgEl.style.paddingTop = '2px';
             msgEl.style.borderTop = '1px solid rgba(240, 238, 222, 0.08)';
         }
-        this.lastRenderedCallSign = msg.callSign || null;
+        this.lastRenderedUserId = msg.userId || null;
 
         if (msg.userId !== this.currentUserId && this.isSelfMentioned(msg.text || '')) {
             msgEl.classList.add('mentions-me');
@@ -1273,7 +1282,10 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
     }
 
     private async deleteMessage(messageId: string): Promise<void> {
-        if (!this.canModerate() || !this.connection) return;
+        if (!this.connection) return;
+        const el = this.querySelector(`.chat-message[data-message-id="${messageId}"]`) as HTMLElement | null;
+        const isOwn = !!el && !!this.currentUserId && el.dataset['userId'] === this.currentUserId;
+        if (!this.canModerate() && !isOwn) return;
 
         try {
             const success = await this.connection.deleteMessage(messageId);
@@ -1283,7 +1295,10 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             logger.info(`Deleted message ${messageId}`);
         } catch (error) {
             logger.error('Failed to delete message:', error);
-            this.showChatNotice('Failed to delete message');
+            const notice = this.canModerate()
+                ? 'Failed to delete message'
+                : 'Could not delete the message — you can only delete your own messages within 15 minutes.';
+            this.showChatNotice(notice);
         }
     }
 
@@ -1417,7 +1432,11 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                     actionsContainer.appendChild(banBtn);
                 }
             } else if (!canMod && existingDeleteBtn) {
-                existingDeleteBtn.remove();
+                const msgUserId = (msgEl as HTMLElement).dataset['userId'];
+                const isOwn = !!msgUserId && msgUserId === this.currentUserId;
+                if (!isOwn) {
+                    existingDeleteBtn.remove();
+                }
                 actionsContainer.querySelector('.chat-pin-btn')?.remove();
                 actionsContainer.querySelector('.chat-ban-btn')?.remove();
             }
