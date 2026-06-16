@@ -103,7 +103,8 @@ const netProfileSchema = new Schema(
                 minute: { type: Number, min: 0, max: 59 },
                 timezone: { type: String, default: 'America/Denver' },
                 notifyBeforeMinutes: { type: Number, default: 30, min: 5, max: 1440 },
-                notifyBeforeEnabled: { type: Boolean, default: true }
+                notifyBeforeEnabled: { type: Boolean, default: true },
+                lastAutoStartedAt: { type: Date, default: null }
             },
             default: {}
         }

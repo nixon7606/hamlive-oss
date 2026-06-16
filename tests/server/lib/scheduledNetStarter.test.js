@@ -3,7 +3,7 @@
  * Unit tests for isTimeMatch — verifies a scheduled net opens notifyMin BEFORE
  * its official start (and that the offset handles day/week rollover).
  */
-const { isTimeMatch } = require('../../../server/dist/lib/backgroundTasks/scheduledNetStarter');
+const { isTimeMatch, wasRecentlyAutoStarted } = require('../../../server/dist/lib/backgroundTasks/scheduledNetStarter');
 
 // Use UTC schedules so formatToParts is deterministic regardless of DST.
 const startAt = (y, mo, d, h, mi) => new Date(Date.UTC(y, mo, d, h, mi, 0));
@@ -42,6 +42,22 @@ test('notify offset rolls back across midnight and the day-of-week boundary', ()
   const open = new Date(start.getTime() - 30 * 60000); // previous day 23:45
   expect(open.getUTCDay()).not.toBe(start.getUTCDay()); // sanity: different day
   expect(isTimeMatch(open, sched, 30)).toBe(true);
+});
+
+test('wasRecentlyAutoStarted guards against re-opening a just-started occurrence', () => {
+  const now = new Date(Date.UTC(2026, 5, 17, 20, 0, 0));
+  const guard = 10 * 60 * 1000;
+  // never started → not recent
+  expect(wasRecentlyAutoStarted(null, now, guard)).toBe(false);
+  expect(wasRecentlyAutoStarted(undefined, now, guard)).toBe(false);
+  // started 1 min ago → still within guard (would re-open → block it)
+  expect(wasRecentlyAutoStarted(new Date(now.getTime() - 60 * 1000), now, guard)).toBe(true);
+  // started 11 min ago → past the guard (and past the match window) → allowed
+  expect(wasRecentlyAutoStarted(new Date(now.getTime() - 11 * 60 * 1000), now, guard)).toBe(false);
+  // last week's occurrence → not recent
+  expect(wasRecentlyAutoStarted(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), now, guard)).toBe(false);
+  // garbage timestamp → treated as not recent (don't block on bad data)
+  expect(wasRecentlyAutoStarted('not-a-date', now, guard)).toBe(false);
 });
 
 test('respects the schedule timezone for the start time', () => {

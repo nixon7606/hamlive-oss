@@ -10,6 +10,23 @@
 const { logger } = require('../logger');
 const { NetAnnounceStart } = require('../userNotification');
 
+// Once a net auto-starts, don't start it again for the same occurrence — even if
+// it's closed while the start window still matches. The match window is only a
+// couple of minutes, so this guard just needs to outlast it (and is far shorter
+// than the weekly gap to the next occurrence).
+const RESTART_GUARD_MS = 10 * 60 * 1000;
+
+/**
+ * True if this schedule was auto-started so recently that re-firing now would be
+ * the same occurrence (prevents a closed net from being immediately re-opened).
+ */
+function wasRecentlyAutoStarted(lastAutoStartedAt, now, guardMs = RESTART_GUARD_MS) {
+    if (!lastAutoStartedAt) return false;
+    const t = new Date(lastAutoStartedAt).getTime();
+    if (Number.isNaN(t)) return false;
+    return now.getTime() - t < guardMs;
+}
+
 /**
  * Check all NetProfiles for matching schedules and start any that are due.
  */
@@ -44,9 +61,16 @@ async function checkScheduledNets() {
             const notifyMin = Math.min(Math.max(sched.notifyBeforeMinutes || 30, 5), 120);
             if (!isTimeMatch(now, sched, notifyMin)) continue;
 
+            // Don't re-open a net that already auto-started this occurrence (e.g.
+            // the NCS closed it while the start window still matches).
+            if (wasRecentlyAutoStarted(sched.lastAutoStartedAt, now)) {
+                logger.debug(`ScheduledNetStarter: "${profile.title}" already auto-started this occurrence, skipping`);
+                continue;
+            }
+
             logger.info(`ScheduledNetStarter: time match for "${profile.title}"`);
             try {
-                await startScheduledNet(profile, { NetProfile, LiveNet, StationInteraction, UserProfile, db });
+                await startScheduledNet(profile, { NetProfile, LiveNet, StationInteraction, UserProfile, db, createChatChannel });
                 started++;
             } catch (err) {
                 logger.error(`ScheduledNetStarter: failed for "${profile.title}": ${err.message}`);
@@ -107,7 +131,7 @@ function isTimeMatch(now, sched, notifyMin = 0) {
 /**
  * Start a scheduled net: create LiveNet, set up chat, notify followers.
  */
-async function startScheduledNet(profile, { NetProfile, LiveNet, StationInteraction, UserProfile, db }) {
+async function startScheduledNet(profile, { NetProfile, LiveNet, StationInteraction, UserProfile, db, createChatChannel }) {
     // Re-check to avoid race conditions
     const fresh = await NetProfile.findById(profile._id);
     if (!fresh || fresh.liveNet) {
@@ -162,6 +186,12 @@ async function startScheduledNet(profile, { NetProfile, LiveNet, StationInteract
     await interaction.save();
 
     fresh.liveNet = lnResult._id;
+    // Mark the occurrence as started so closing it won't trigger an immediate
+    // re-open while the start window still matches (see wasRecentlyAutoStarted).
+    if (fresh.schedule) {
+        fresh.schedule.lastAutoStartedAt = new Date();
+        fresh.markModified('schedule');
+    }
     await fresh.save();
 
     logger.info(`ScheduledNetStarter: started "${fresh.title}"`);
@@ -192,4 +222,4 @@ async function startScheduledNet(profile, { NetProfile, LiveNet, StationInteract
     }
 }
 
-module.exports = { checkScheduledNets, startScheduledNet, isTimeMatch };
+module.exports = { checkScheduledNets, startScheduledNet, isTimeMatch, wasRecentlyAutoStarted };
