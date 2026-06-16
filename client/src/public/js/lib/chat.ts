@@ -587,7 +587,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             <div class="chat-reaction-picker">
                 ${REACTIONS.map(r => `<button data-reaction="${r.type}">${r.emoji}</button>`).join('')}
             </div>
-            ${isSameUser ? '' : `<span class="chat-username">${usernameHtml}</span>`}
+            <span class="chat-username">${usernameHtml}</span>
             <span class="chat-timestamp ms-2">${smartTs}</span>
             ${editedIndicator}
             ${msg.parentMessage ? this.renderReplySnippet(msg) : ''}
