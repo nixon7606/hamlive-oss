@@ -13,6 +13,22 @@ const gravatar = require('gravatar');
 const { EmailBase, emailEnabled } = require('../lib/userNotification');
 const { isCurrentlyLocked } = require('../lib/serverUtils');
 
+// Resolve the real client IP. Behind a Cloudflare Tunnel the origin connection
+// comes from the local cloudflared daemon, so req.ip / socket address is the
+// loopback (::1) — the true visitor IP is in the CF-Connecting-IP header, which
+// Cloudflare always sets and cloudflared forwards. Prefer it, then fall back to
+// Express's req.ip (correct behind a normal reverse proxy with trust proxy set)
+// and finally the raw socket address.
+// NOTE: CF-Connecting-IP is only trustworthy because the origin is reachable
+// solely via the tunnel; if the origin port were also publicly bound, the
+// header could be spoofed.
+function clientIp(req) {
+    return (req.headers && req.headers['cf-connecting-ip'])
+        || req.ip
+        || (req.connection && req.connection.remoteAddress)
+        || '';
+}
+
 // Rate limit magic-link requests per IP to prevent email-bombing.
 // The cooldown in EmailBase.sendMailToAddrs() catches per-recipient abuse
 // across all features; this HTTP-layer limiter reduces server load from
@@ -151,7 +167,7 @@ router.post('/magiclogin', magicLoginLimiter, (req, res, next) => {
 router.get('/magiclogin/callback', passport.authenticate('magiclogin'), (req, res) => {
     if (req.user) {
         // Save IP address asynchronously (non-blocking)
-        const ip = req.ip || req.connection?.remoteAddress || '';
+        const ip = clientIp(req);
         UserProfile.findOneAndUpdate({ _id: req.user._id }, { lastIp: ip }).catch(err => {
             logger.debug(`Failed to save IP for ${req.user.callSign || req.user.email}: ${err.message}`);
         });
@@ -240,6 +256,11 @@ router.get('/google/redirect', passport.authenticate('google'), (req, res) => {
     // for profile info
 
     if (req.user) {
+        // Save IP address asynchronously (non-blocking), same as the magic-link path
+        const ip = clientIp(req);
+        UserProfile.findOneAndUpdate({ _id: req.user._id }, { lastIp: ip }).catch(err => {
+            logger.debug(`Failed to save IP for ${req.user.callSign || req.user.email}: ${err.message}`);
+        });
         if (req.user.callSign) {
             res.redirect('/views/dashboard');
         } else {
@@ -310,3 +331,4 @@ function sendMagicSignInLink(email) {
 
 module.exports = router;
 module.exports.sendMagicSignInLink = sendMagicSignInLink;
+module.exports.clientIp = clientIp;
