@@ -1,7 +1,8 @@
 /* hamlive-oss — MIT License. See LICENSE. */
 const { Schema } = require('mongoose');
 const { modelMaker } = require('../lib/modelMaker');
-const uniqueValidator = require('mongoose-unique-validator');
+// mongoose-unique-validator v6 is ESM-only; under CJS require() the plugin is on .default.
+const uniqueValidator = require('mongoose-unique-validator').default || require('mongoose-unique-validator');
 
 const lookupTableSchema = new Schema({
     stationInteraction: {

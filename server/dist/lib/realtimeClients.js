@@ -154,7 +154,7 @@ class RealtimeClients {
     middleware() {
         return (req, res, next) => {
             const { id: npid } = req.params;
-            if (npid) {
+            if (typeof npid === 'string') {
                 if (!this.middlewareMap.has(npid)) {
                     const flexOpts = res.locals['flexOpts'];
                     const sse = new express_sse_ts_1.default();

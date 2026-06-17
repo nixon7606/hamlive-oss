@@ -1,6 +1,6 @@
 /**
  * Tests for admin audit log + lockout guardrails.
- * Uses mongodb-memory-server (wired in via tests/server/setup.js).
+ * Uses its own mongodb-memory-server instance (created in beforeAll below).
  */
 const express = require('express');
 const request = require('supertest');
@@ -22,7 +22,7 @@ jest.mock('../../../server/dist/lib/sendgridSuppression', () => ({
 }));
 
 // Register models against the default mongoose connection
-// (setup.js sets MONGO_URI env; we connect in beforeAll)
+// (we spin up our own in-memory server and connect in beforeAll)
 const UserProfile = mongoose.models.UserProfile || mongoose.model('UserProfile', userProfileSchema);
 const AdminAudit = mongoose.models.AdminAudit || mongoose.model('AdminAudit', adminAuditSchema);
 

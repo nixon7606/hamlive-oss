@@ -5,14 +5,22 @@ module.exports = {
       displayName: 'server',
       testEnvironment: 'node',
       testMatch: ['<rootDir>/tests/server/**/*.test.js'],
-      testTimeout: 30000
+      testTimeout: 30000,
+      globalSetup: '<rootDir>/tests/server/globalSetup.js',
+      globalTeardown: '<rootDir>/tests/server/globalTeardown.js',
+      // These deps shipped ESM-only majors that jest's CJS runtime can't parse;
+      // map them to CJS shims for tests (see tests/shims/).
+      moduleNameMapper: {
+        '^mongoose-unique-validator$': '<rootDir>/tests/shims/mongooseUniqueValidator.cjs',
+        '^ap-style-title-case$': '<rootDir>/tests/shims/apStyleTitleCase.cjs'
+      }
     },
     {
       displayName: 'client',
       testEnvironment: 'node',
       testMatch: ['<rootDir>/tests/client/**/*.test.ts'],
       transform: {
-        '^.+\\.ts$': ['ts-jest', { tsconfig: { module: 'commonjs', moduleResolution: 'node' } }]
+        '^.+\\.ts$': ['ts-jest', { tsconfig: { module: 'commonjs', moduleResolution: 'node', types: ['jest', 'node'] } }]
       }
     }
   ],

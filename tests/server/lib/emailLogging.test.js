@@ -21,8 +21,12 @@ beforeEach(async () => { await EmailLog.deleteMany({}); });
 test('creates an emailLog per recipient with sgMessageId and type', async () => {
   const mail = new EmailBase({ subject: 'Hi', message: '<p>hi</p>', type: 'magic-login' });
   await mail.sendMailToAddrs(['a@b.com']);
-  await new Promise(r => setTimeout(r, 50)); // logging is fire-and-forget
-  const logs = await EmailLog.find({ recipient: 'a@b.com' });
+  // Logging is fire-and-forget; poll until it lands rather than racing a fixed delay.
+  let logs = [];
+  for (let i = 0; i < 100 && logs.length === 0; i++) {
+    logs = await EmailLog.find({ recipient: 'a@b.com' });
+    if (logs.length === 0) await new Promise(r => setTimeout(r, 20));
+  }
   expect(logs).toHaveLength(1);
   expect(logs[0].type).toBe('magic-login');
   expect(logs[0].sgMessageId).toBe('MSG123');

@@ -4,7 +4,8 @@ const { logger } = require('../lib/logger');
 const { netOwnerCheck, addNetOwner, delNet } = require('../lib/sharedNetOps');
 const NetProfile = require('../models/netProfile').getNetProfile(null);
 const UserProfile = require('../models/userProfile').getUserProfile(null);
-const titleCase = require('ap-style-title-case');
+// ap-style-title-case v2 is ESM-only and exports a named apStyleTitleCase (no default).
+const { apStyleTitleCase: titleCase } = require('ap-style-title-case');
 const { sanitizeNotes } = require('../lib/serverUtils');
 
 /**

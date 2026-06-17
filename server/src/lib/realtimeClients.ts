@@ -249,7 +249,7 @@ export class RealtimeClients {
         return (req: Request, res: Response, next: NextFunction) => {
             const { id: npid } = req.params;
 
-            if (npid) {
+            if (typeof npid === 'string') {
                 if (!this.middlewareMap.has(npid)) {
                     const flexOpts = res.locals['flexOpts'] as FlexOptions;
                     const sse = new SSE();

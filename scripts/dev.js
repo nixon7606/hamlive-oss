@@ -1,6 +1,6 @@
 /* hamlive-oss — MIT License. See LICENSE.
  *
- * Friendly development launcher. Run with:  npm run dev
+ * Friendly development launcher. Run with:  bun run dev
  *
  * For non-technical operators this is the only command needed. It:
  *   1. creates .env from .env.example if you haven't already,
@@ -76,7 +76,7 @@ async function ensureMongo() {
         ({ MongoMemoryReplSet } = require('mongodb-memory-server'));
     } catch {
         console.error('\nCould not start a local MongoDB: dev dependency "mongodb-memory-server" is missing.');
-        console.error('Run `npm install`, or start MongoDB yourself (see INSTALL.md), then try again.\n');
+        console.error('Run `bun install`, or start MongoDB yourself (see INSTALL.md), then try again.\n');
         process.exit(1);
     }
     mongoHandle = await MongoMemoryReplSet.create({ replSet: { count: 1 }, instanceOpts: [{ port }] });
@@ -85,10 +85,13 @@ async function ensureMongo() {
 
 function startApp() {
     const isWin = process.platform === 'win32';
-    const npmCmd = isWin ? 'npm.cmd' : 'npm';
+    // bun is a native executable (bun.exe on Windows), not a .cmd shim, so it
+    // can be spawned directly without a shell. The explicit ".exe" lets the
+    // PATH search resolve it on Windows (spawn doesn't apply PATHEXT).
+    const bunCmd = isWin ? 'bun.exe' : 'bun';
     // On POSIX, run the watcher pipeline in its own process group so we can tear
     // the whole tree down on exit (tsc watchers + nodemon + the app).
-    const child = spawn(npmCmd, ['run', 'dev:watch'], {
+    const child = spawn(bunCmd, ['run', 'dev:watch'], {
         cwd: root,
         stdio: 'inherit',
         env: process.env,
