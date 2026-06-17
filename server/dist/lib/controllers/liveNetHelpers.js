@@ -11,6 +11,7 @@ const NodeCache = require('node-cache');
 const { sanitizeNotes } = require('../../lib/serverUtils');
 const netDetailsCache = new NodeCache({ stdTTL: 3, checkperiod: 60 });
 const { prepareEndPointResponse } = require('../../lib/responseUtils');
+const { shouldKeepInRoster } = require('../../lib/rosterMembership');
 const { NetNotFoundError } = require('../../types/commonTypesupport');
 
 // liveNetDetails Helper Functions:
@@ -40,14 +41,18 @@ const genLiveNetDetails = async ({ npid, flexOpts = {}, permitCachedResponse = f
 
     const response = buildResponseSkeleton(netProfileDoc, liveNetDoc, sigReportTypeByMode);
     const stationInteractions = await fetchStationInteractions(liveNetDoc);
+    const now = Date.now();
 
     stationInteractions.forEach(ia => {
-        if (ia) {
+        // Drop only non-checked-in viewers idle past the "really gone" window. Roster
+        // membership is decoupled from the short ~25s presence dot, so present-but-idle
+        // lobby viewers (and yourself, on SSE pushes that omit requestingCallSign) stay
+        // visible instead of flickering out when a heartbeat lands late.
+        if (ia && shouldKeepInRoster(ia.checkedState, now - ia.lastSeen)) {
             response.stations.push(buildStationResponse(ia, awayInMs, requestingCallSign));
         }
     });
 
-    response.stations = response.stations.filter(s => !(s.checkedState === null && s.presence === 'offline')); //Leave out offline lurkers
     response.stations.sort(sortStations);
 
     netDetailsCache.set(npid, response);
