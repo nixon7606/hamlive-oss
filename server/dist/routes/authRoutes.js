@@ -2,7 +2,7 @@
 
 const router = require('express').Router();
 const passport = require('passport');
-const rateLimit = require('express-rate-limit');
+const { magicLoginLimiter, clientIp } = require('../lib/magicLoginLimiter');
 const validator = require('validator');
 const { conf } = require('../lib/configLib');
 const { logger } = require('../lib/logger');
@@ -13,35 +13,9 @@ const gravatar = require('gravatar');
 const { EmailBase, emailEnabled } = require('../lib/userNotification');
 const { isCurrentlyLocked } = require('../lib/serverUtils');
 
-// Resolve the real client IP. Behind a Cloudflare Tunnel the origin connection
-// comes from the local cloudflared daemon, so req.ip / socket address is the
-// loopback (::1) — the true visitor IP is in the CF-Connecting-IP header, which
-// Cloudflare always sets and cloudflared forwards. Prefer it, then fall back to
-// Express's req.ip (correct behind a normal reverse proxy with trust proxy set)
-// and finally the raw socket address.
-// NOTE: CF-Connecting-IP is only trustworthy because the origin is reachable
-// solely via the tunnel; if the origin port were also publicly bound, the
-// header could be spoofed.
-function clientIp(req) {
-    return (req.headers && req.headers['cf-connecting-ip'])
-        || req.ip
-        || (req.connection && req.connection.remoteAddress)
-        || '';
-}
-
-// Rate limit magic-link requests per IP to prevent email-bombing.
-// The cooldown in EmailBase.sendMailToAddrs() catches per-recipient abuse
-// across all features; this HTTP-layer limiter reduces server load from
-// rapid-fire requests and adds defense-in-depth.
-const magicLoginLimiter = rateLimit({
-    windowMs: 5 * 60 * 1000,   // 5-minute window
-    max: 5,                      // 5 requests per window per IP
-    standardHeaders: true,       // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false,
-    message: {
-        error: 'Too many sign-in attempts. Please try again in a few minutes.'
-    }
-});
+// clientIp() and the magic-link rate limiter live in ../lib/magicLoginLimiter so
+// the limiter's keying (per real CF-Connecting-IP, not the shared ::1 socket) is
+// unit-testable. clientIp is reused below for saving the visitor's IP on login.
 
 //MagicLogin Auth:
 const magicLogin = new MagicLoginStrategy({
