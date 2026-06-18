@@ -55,6 +55,19 @@ const genLiveNetDetails = async ({ npid, flexOpts = {}, permitCachedResponse = f
 
     response.stations.sort(sortStations);
 
+    // Boundary instrument for the "all names vanish" bug: a populated net must never
+    // produce an empty roster. If it does, this broadcast just blanked everyone's list
+    // on screen — log it loudly with the stage breakdown so we can tell whether the
+    // fetch returned nothing (Map/ID problem) or the filter dropped everyone.
+    const lookupSize = liveNetDoc.lookupTable?.size ?? 0;
+    if (lookupSize > 0 && response.stations.length === 0) {
+        logger.warn(
+            `[roster-blank] empty roster for populated net npid=${npid}: ` +
+                `lookupTable=${lookupSize}, fetched=${stationInteractions.length}, kept=0, ` +
+                `requestingCallSign=${requestingCallSign ?? 'none'}`
+        );
+    }
+
     netDetailsCache.set(npid, response);
 
     return prepareEndPointResponse(response, undefined, getSsePath(npid), baseTtlMs);
