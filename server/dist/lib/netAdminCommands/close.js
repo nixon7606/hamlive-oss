@@ -37,7 +37,7 @@ class CloseCmd extends NetAdminCmd {
             }
         }
 
-        closeNet({
+        await closeNet({
             netProfileDoc: this.data.instance.np,
             liveNetDoc: this.data.instance.ln,
             db: this.db

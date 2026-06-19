@@ -50,7 +50,7 @@ class CloseIdleNetsTask extends PluginBase {
                         .map(tableEntry => tableEntry.stationInteraction)
                         .map(IaId => this.data.model.StationInteraction.findById(IaId))
                 )
-            ).filter(ia => ia.role === 'netcontrol');
+            ).filter(ia => ia && ia.role === 'netcontrol');
 
             //see if one ncs is still active
             const activeNcs = ncsIaS.find(ia => ia.lastSeen && Date.now() - ia.lastSeen < abandonedAfterMs);
