@@ -70,6 +70,9 @@ export class EndPointClient {
                     `Redirecting to due to non-JSON (${contentType}) response: ${res.status}:${res.statusText}`
                 );
                 this.handleRedirect(this.options.redirectOnNonJson);
+                // Navigation has started — short-circuit instead of falling through to
+                // the res.ok validation below and throwing on the (undefined) body.
+                return new Promise<EndPointResponse>(() => {});
             } else {
                 throw new EndPointReponseError(`Expected JSON but received ${contentType}`, res.status);
             }
@@ -90,6 +93,9 @@ export class EndPointClient {
                 if (this.options.redirectOnNotFound) {
                     logger.info(`Redirecting to due to 404: ${res.status}:${res.statusText}`);
                     this.handleRedirect(this.options.redirectOnNotFound);
+                    // Navigation has started — short-circuit instead of falling through
+                    // to the throw below.
+                    return new Promise<EndPointResponse>(() => {});
                 } else {
                     logger.error(`Resource not found: ${res.status}:${res.statusText}`);
                     throw new EndPointReponseError('Resource not found', res.status);

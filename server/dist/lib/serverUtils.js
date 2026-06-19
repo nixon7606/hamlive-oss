@@ -624,7 +624,13 @@ const authCheck = options => {
 
         if (called) return next();
 
-        // If neither flag matched, allow (no-op)
+        // A requirement flag was supplied but not satisfied/recognized — deny rather
+        // than silently allowing (a future unhandled flag would otherwise permit
+        // everyone). options === 0/undefined still falls through to next().
+        if (options) {
+            logger.warn('authCheck(): unsatisfied or unrecognized requirement flag — denying');
+            return res.status(403).json({ endpointVersion: '1.0', errorMessage: 'forbidden' });
+        }
         next();
     };
 };

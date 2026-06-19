@@ -731,11 +731,17 @@ export class NetControlPanel extends NetControlMember {
         form.applyFocus();
     }
 
+    // Single stable reference so removeEventListener actually removes it. A fresh
+    // arrow on each call was a no-op, leaking a click handler per reconnect cycle.
+    private handleCloseClick = (): void => {
+        this.close();
+    };
+
     protected onConnected(): void {
-        this.defaultElement?.querySelector('.close-button')?.addEventListener('click', () => this.close());
+        this.defaultElement?.querySelector('.close-button')?.addEventListener('click', this.handleCloseClick);
     }
     protected onDisconnected(): void {
-        this.defaultElement?.querySelector('.close-button')?.removeEventListener('click', () => this.close());
+        this.defaultElement?.querySelector('.close-button')?.removeEventListener('click', this.handleCloseClick);
     }
 
     public static async init(store: LiveNetReactiveStore): Promise<void> {

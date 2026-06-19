@@ -197,7 +197,7 @@ class EmailBase {
             const recipients = users.filter((value, index) => boolArray[index]).map(user => user.email);
 
             if (recipients?.length) {
-                this.sendMailToAddrs(recipients);
+                await this.sendMailToAddrs(recipients);
             } else {
                 logger.info(
                     `All intended recipients of "${

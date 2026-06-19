@@ -92,7 +92,11 @@ const fetchNetProfileAndLiveNet = async npid => {
             // cleanup the client connection and send a 404 response to the client.
             throw err;
         } else {
+            // Don't swallow unexpected errors (e.g. a transient DB error): returning
+            // undefined makes both callers destructure undefined and throw a confusing
+            // TypeError that masks the real cause. Surface the original error.
             logger.error(err.message);
+            throw err;
         }
     }
 };

@@ -639,11 +639,14 @@ export class NetControlPanel extends NetControlMember {
         }
         form.applyFocus();
     }
+    handleCloseClick = () => {
+        this.close();
+    };
     onConnected() {
-        this.defaultElement?.querySelector('.close-button')?.addEventListener('click', () => this.close());
+        this.defaultElement?.querySelector('.close-button')?.addEventListener('click', this.handleCloseClick);
     }
     onDisconnected() {
-        this.defaultElement?.querySelector('.close-button')?.removeEventListener('click', () => this.close());
+        this.defaultElement?.querySelector('.close-button')?.removeEventListener('click', this.handleCloseClick);
     }
     static async init(store) {
         await this.initElement('netcontrol-panel', NetControlPanel, store);

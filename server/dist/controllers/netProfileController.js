@@ -54,6 +54,9 @@ const netProfileList = async (req, res) => {
 const netProfileDetails = async (req, res) => {
     try {
         const npresult = await NetProfile.findById(req.params.id);
+        if (!npresult) {
+            return res.status(404).json({ endpointVersion: '1.0', errorMessage: 'Net profile not found' });
+        }
         return res.json({
             endpointVersion: '1.0',
             _id: npresult._id,

@@ -20,7 +20,11 @@ class FlagAccountsTask extends PluginBase {
             policyConsent: false
         });
 
-        const accountsToDelete = [].concat(oldAccounts, lackingConsent);
+        // De-dupe by _id: an account that is both stale AND lacking consent would
+        // otherwise be flagged twice (duplicate work / duplicate PendingAccountDelete).
+        const accountsToDelete = Array.from(
+            new Map([...oldAccounts, ...lackingConsent].map(doc => [doc._id.toString(), doc])).values()
+        );
 
         if (accountsToDelete.length) {
             await Promise.all(

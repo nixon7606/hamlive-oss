@@ -13,6 +13,7 @@ import { HttpClient } from '#@client/lib/old__clientUtils.js';
     const deleteOutputElem = document.getElementById('delete_output')!;
     const accountDelModal = new bootstrap.Modal(document.getElementById('account_delete_modal')!);
     let userData: any;
+    let status: any;
 
     try {
         ({ status, data: userData } = await userProfileApi.index());
@@ -53,6 +54,10 @@ import { HttpClient } from '#@client/lib/old__clientUtils.js';
 
     //End Account Deletion Logic
     //Begin Option Processing Logic:
+
+    // If the profile fetch above failed, userData is undefined — bail before
+    // dereferencing it (otherwise this throws and the form handler never wires up).
+    if (!userData) return;
 
     document.querySelectorAll('.flexOption').forEach((switchElem: any) => {
         switchElem.checked = userData.computedFlexOptions.option[switchElem.id.replace('flexOpt-', '')];

@@ -59,7 +59,7 @@ const userProfileSchema = new Schema(
             validate: {
                 validator: function (v) {
                     if (v === '' || v == null) { return true; }
-                    return v.length >= 5 && /^[0-9A-zÀ-ÿ-', ()]+$/.test(v);
+                    return v.length >= 5 && /^[0-9A-Za-zÀ-ÿ-', ()]+$/.test(v);
                 },
                 message: 'location must be 5 to 24 characters'
             }

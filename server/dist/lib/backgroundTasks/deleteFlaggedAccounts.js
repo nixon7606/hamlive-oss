@@ -44,17 +44,17 @@ class DeleteFlaggedAccountsTask extends PluginBase {
                         }
 
                         if (await userProfileDoc.deleteOne({ _id: userProfileDoc._id }))
-                            task.deleteOne({ _id: task._id });
+                            await task.deleteOne({ _id: task._id });
                     } else {
                         logger.info(
                             `account ${userProfileDoc.id} no longer flagged for deletion, removing delete task`
                         );
 
-                        task.deleteOne({ _id: task._id });
+                        await task.deleteOne({ _id: task._id });
                     }
                 } else {
                     logger.error(`user delete task ${task.id} associated with nonexistent user, removing task`);
-                    task.deleteOne({ _id: task._id });
+                    await task.deleteOne({ _id: task._id });
                 }
             }
         } else {

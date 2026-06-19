@@ -80,7 +80,7 @@ export class AvatarCell extends StationTableMember {
             <span class="onlinestatus-icon online">🟢</span> <!-- Online Icon -->
             <span class="onlinestatus-icon offline">⚪️</span> <!-- Offline Icon -->
             <span class="hand-icon hand-is-down">✋</span>
-            <img referrerPolicy="no-referrer" src=${this.photoUrl}>
+            <img referrerPolicy="no-referrer" src="${this.photoUrl}">
         </div>
         `;
     }
