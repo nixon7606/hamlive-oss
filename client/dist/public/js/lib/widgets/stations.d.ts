@@ -57,7 +57,7 @@ export declare class StationRow extends StationTableMember {
     protected getTemplate(): string;
     private createCell;
     protected didMyDataSegmentChange(): boolean;
-    protected render(onConnected: boolean): void;
+    protected render(_onConnected: boolean): void;
     protected onConnected(): void;
     protected onDisconnected(): void;
     static init(store: LiveNetReactiveStore): Promise<void>;

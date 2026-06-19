@@ -217,17 +217,12 @@ export class NameCell extends StationTableMember {
             logger.warn(`Default element is not defined in ${this.constructor.name}, render()`);
             return;
         }
-        if (onConnected || this.haveThisStationPropertiesChanged(['location'])) {
-            this.refreshTooltip();
-        }
-        if (onConnected || this.haveThisStationPropertiesChanged(['displayName'])) {
-            this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
-        }
-        if (onConnected || this.haveThisStationPropertiesChanged(['role', 'checkedState', 'presence'])) {
-            if (!this.station) {
-                throw new Error('Station is null in NameCell widget, render()');
-            }
+        this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
+        if (this.station) {
             this.applyStyling(this.defaultElement, this.getStyling(this.station));
+        }
+        if (onConnected || this.haveThisStationPropertiesChanged(['location']) || !this.tooltip) {
+            this.refreshTooltip();
         }
     }
     onConnected() { }
@@ -441,17 +436,12 @@ export class StationRow extends StationTableMember {
     didMyDataSegmentChange() {
         return this.haveThisStationPropertiesChanged(['highlight', 'role', 'checkedState', 'presence']);
     }
-    render(onConnected) {
+    render(_onConnected) {
         if (!this.defaultElement) {
             throw new Error('Default element is not defined in widget, render()');
         }
-        if (onConnected || this.haveThisStationPropertiesChanged(['highlight'])) {
-            this.defaultElement.classList.toggle(`highlighted-${this.uuid}`, Boolean(this.station?.highlight));
-        }
-        if (onConnected || this.haveThisStationPropertiesChanged(['role', 'checkedState', 'presence'])) {
-            if (!this.station) {
-                throw new Error('Station is null in StationRow widget, render()');
-            }
+        this.defaultElement.classList.toggle(`highlighted-${this.uuid}`, Boolean(this.station?.highlight));
+        if (this.station) {
             this.defaultElement.style.opacity = String(this.getStyling(this.station).opacity);
         }
     }
