@@ -6,7 +6,6 @@ const uniqueValidator = require('mongoose-unique-validator');
 require('mongoose-type-email');
 
 const { flexOptionsLocalSchema } = require('./flexOptions');
-const { initialReg } = require('./initialRegTracker');
 
 const userProfileSchema = new Schema(
     {

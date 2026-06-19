@@ -1,9 +1,5 @@
 /* hamlive-oss — MIT License. See LICENSE. */
 
-// To-do: Look at the new types created in types.ts. Lets make sure the controller and the sharedNetOps function conform to the new types
-// Lets also modify the admin commands to work with any changes in sharedNetOps (specifically the hand, highlight, and checkState functions)
-// Use the new Response Handler class to handle all responses in this controller
-
 const { ResponseHandler } = require('../lib/responseUtils');
 const NetProfile = require('../models/netProfile').getNetProfile(null);
 const { getLiveNet } = require('../models/liveNet');
@@ -19,12 +15,9 @@ const CommandSet = (() => {
     const createAliasMap = myLevelCmds => {
         const aliasMap = new Map();
         myLevelCmds.forEach(cmd => {
-            for (const a of commandMap.get(cmd)?.alias) {
-                if (!commandMap.get(cmd).alias.includes(cmd)) {
-                    commandMap.get(cmd).alias.forEach(a => {
-                        aliasMap.set(a, cmd);
-                    });
-                }
+            const cc = commandMap.get(cmd);
+            if (cc?.alias && !cc.alias.includes(cmd)) {
+                cc.alias.forEach(a => aliasMap.set(a, cmd));
             }
         });
         return aliasMap;
@@ -68,7 +61,7 @@ const CommandSet = (() => {
 
         getMine(myLevel) {
             const myLevelCmds = Array.from(commandMap.keys()).filter(cmd => {
-                const { level, hidden, minArgs } = commandMap.get(cmd);
+                const { level, hidden } = commandMap.get(cmd);
 
                 return level >= myLevel && !hidden;
             });

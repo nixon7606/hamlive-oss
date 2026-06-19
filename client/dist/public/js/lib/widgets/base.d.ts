@@ -34,7 +34,6 @@ export declare abstract class HamLiveElement<T extends ReactiveStore<EndPointRes
     protected abstract onDisconnected(): void;
     newData(): NewDataReturnType;
     set online(online: boolean);
-    get online(): boolean;
     protected removeAllDefaultElementChildren(): void;
     protected appendToDefaultElement(child: HTMLElement | DocumentFragment): void;
     protected replaceAllDefaultElementChildrenWith(child: HTMLElement | DocumentFragment): void;

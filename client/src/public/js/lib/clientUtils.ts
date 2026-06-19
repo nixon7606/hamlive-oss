@@ -40,12 +40,6 @@ export class EndPointClient {
         return this.params.length ? this.params.reduce((p, c, idx) => `${p}${idx ? '&' : ''}${c[0]}=${c[1]}`, '?') : '';
     }
 
-    protected reset(): void {
-        this.itemId = null;
-        this.params = [];
-        this.payload = null;
-    }
-
     private handleRedirect(url: string | boolean) {
         if (typeof url === 'string') {
             logger.info(`Redirecting to ${url}`);

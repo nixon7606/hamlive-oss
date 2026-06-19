@@ -175,10 +175,6 @@ export abstract class HamLiveElement<T extends ReactiveStore<EndPointResponse>>
         }
     }
 
-    public get online(): boolean {
-        return !this.classList.contains('offline');
-    }
-
     protected removeAllDefaultElementChildren(): void {
         if (!this.defaultElement) {
             logger.warn('Default element is not defined in widget, removeAllDefaultElementChildren()');

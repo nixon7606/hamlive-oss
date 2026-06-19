@@ -222,4 +222,4 @@ class ChatSSEBroadcaster {
 // Singleton
 const chatBroadcaster = new ChatSSEBroadcaster();
 
-module.exports = { chatBroadcaster, ChatSSEBroadcaster, ChatSSEInstance };
+module.exports = { chatBroadcaster, ChatSSEBroadcaster };

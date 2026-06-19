@@ -22,7 +22,7 @@ import { serverInfo } from '#@client/lib/serverInfo.js';
 
             favorites.interval(i);
 
-            np.data.live === true && location.reload(true);
+            np.data.live === true && location.reload();
         }
     });
 

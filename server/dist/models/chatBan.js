@@ -14,8 +14,7 @@ const chatBanSchema = new Schema(
         netProfile: {
             type: Schema.Types.ObjectId,
             ref: 'NetProfile',
-            required: true,
-            index: true
+            required: true
         },
         // The banned user's profile
         userProfile: {
