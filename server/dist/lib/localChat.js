@@ -704,8 +704,11 @@ async function* fetchChatHistory({ npid, since = null }) {
 
     while (true) {
         const query = { netProfile: npid, deleted: false };
+        // Carry the `since` lower-bound on every batch (not just the first), and
+        // combine it with the _id cursor — otherwise pagination drops the bound
+        // and pages past `since` into older messages.
+        if (since) query.createdAt = { $gte: new Date(since) };
         if (lastId) query._id = { $lt: lastId };
-        else if (since) query.createdAt = { $gte: new Date(since) };
 
         const messages = await ChatMessage.find(query).sort({ _id: -1 }).limit(batchSize).lean();
         if (messages.length === 0) break;
@@ -714,12 +717,22 @@ async function* fetchChatHistory({ npid, since = null }) {
             username: msg.callSign,
             body: msg.text,
             createdAt: msg.createdAt.toISOString(),
-            reactions: msg.reactions ? JSON.stringify(Object.fromEntries(msg.reactions)) : '',
+            reactions: msg.reactions
+                ? JSON.stringify(
+                      Object.fromEntries(
+                          // .lean() returns a plain object here, not a Mongoose Map — guard like buildMessagePayload()
+                          msg.reactions instanceof Map ? msg.reactions.entries() : Object.entries(msg.reactions)
+                      )
+                  )
+                : '',
             edited: msg.edited
         }));
 
         yield batch;
-        lastId = messages[messages.length - 1]._id;
+        // `messages` was reversed in place above (now oldest-first), so the oldest
+        // id is index 0 — that's the cursor for the next (older) batch. Using the
+        // last element (the newest id) re-fetched almost the whole batch each loop.
+        lastId = messages[0]._id;
         if (messages.length < batchSize) break;
     }
 }

@@ -293,6 +293,49 @@ describe('toggleReaction()', () => {
   });
 });
 
+describe('fetchChatHistory()', () => {
+  // Regression: the generator reads messages with .lean(), so msg.reactions is a
+  // plain object (not a Mongoose Map). The schema default is new Map(), so every
+  // message has a truthy reactions; the old code called Object.fromEntries(msg.reactions),
+  // which throws "object is not iterable" on a plain object — on the FIRST message
+  // every time. The generator threw, fetchChatLog swallowed it, and every
+  // NetCloseReport shipped a blank chat log.
+  test('yields all messages and serializes lean reactions without throwing', async () => {
+    const member = mockMember();
+    const liked = await localChat.sendMessage({ npid, user: member, text: 'like me' });
+    await localChat.sendMessage({ npid, user: member, text: 'no reactions' });
+    await localChat.toggleReaction({ npid, messageId: liked.id, user: member, reactionType: 'like' });
+
+    const all = [];
+    for await (const batch of localChat.fetchChatHistory({ npid })) all.push(...batch);
+
+    expect(all.map(m => m.body).sort()).toEqual(['like me', 'no reactions']);
+    const likedOut = all.find(m => m.body === 'like me');
+    expect(JSON.parse(likedOut.reactions).like).toContain(member._id.toString());
+    const plainOut = all.find(m => m.body === 'no reactions');
+    expect(plainOut.reactions).toBe('{}');
+  });
+
+  // Regression: the cursor was messages[messages.length-1]._id, but after the
+  // in-place reverse() that's the NEWEST id of the batch — so the next query
+  // (_id < newest) re-fetched ~99 of the same docs, advancing one message per
+  // batch (O(n^2) + duplicated log lines) for any net with >100 messages.
+  test('paginates across the 100-message batch boundary without dropping or duplicating', async () => {
+    const member = mockMember();
+    const ln = await mockLiveNet.findOne({});
+    const docs = Array.from({ length: 120 }, (_, i) => ({
+      netProfile: npid, liveNet: ln._id, userProfile: member._id, callSign: 'KD5SPR', text: `m${i}`
+    }));
+    await mockChatMessage.insertMany(docs);
+
+    const all = [];
+    for await (const batch of localChat.fetchChatHistory({ npid })) all.push(...batch);
+    const bodies = all.map(m => m.body);
+    expect(bodies.length).toBe(120);
+    expect(new Set(bodies).size).toBe(120);
+  }, 30000);
+});
+
 describe('getMessages()', () => {
   test('returns messages for net', async () => {
     await localChat.sendMessage({ npid, user: mockMember(), text: 'Msg 1' });
