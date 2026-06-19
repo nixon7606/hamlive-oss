@@ -9,7 +9,7 @@ const { logger } = require('../lib/logger');
 router.get('/undeleteme', authCheck(REQ_LOGIN), userProfileController.userProfileUnDelete);
 router.get('/resolvelocation', authCheck(REQ_LOGIN), async (req, res) => {
     try {
-        return res.json({ ...{ endpointVersion: '1.0' }, ...(await resolveLocation(({ lat, lon } = req.query))) });
+        return res.json({ ...{ endpointVersion: '1.0' }, ...(await resolveLocation(req.query)) });
     } catch (err) {
         res.status(500).json({
             errorMessage: err.message

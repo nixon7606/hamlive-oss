@@ -241,7 +241,10 @@ const liveNetCreatePost = async (req, res) => {
                 iaresult = await interaction.save();
 
                 const liveNet = new LiveNet({
-                    countdownTimer: req.body.countdownTimer && req.body.countdownTimer.trim(),
+                    countdownTimer:
+                        typeof req.body.countdownTimer === 'string'
+                            ? req.body.countdownTimer.trim()
+                            : req.body.countdownTimer,
                     netProfile: npresult._id,
                     netControl: req.user._id,
                     url: `/views/livenet/${npresult._id}`,

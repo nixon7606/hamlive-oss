@@ -14,7 +14,7 @@ const qrzCacheSchema = new Schema(
             maxlength: 20,
             validate: {
                 validator: function (v) {
-                    return /^[A-zÀ-ú-' ]+$/.test(v);
+                    return /^[A-Za-zÀ-ú-' ]+$/.test(v);
                 },
                 message: 'invalid characters in nickname'
             }
