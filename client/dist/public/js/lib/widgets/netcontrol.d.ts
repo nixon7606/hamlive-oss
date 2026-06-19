@@ -52,6 +52,7 @@ export declare class NetControlPanel extends NetControlMember {
     protected didMyDataSegmentChange(): boolean;
     protected render(onConnected: boolean): void;
     applyFocus(): void;
+    private handleCloseClick;
     protected onConnected(): void;
     protected onDisconnected(): void;
     static init(store: LiveNetReactiveStore): Promise<void>;

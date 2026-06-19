@@ -5,6 +5,7 @@ import { HttpClient } from '#@client/lib/old__clientUtils.js';
     const deleteOutputElem = document.getElementById('delete_output');
     const accountDelModal = new bootstrap.Modal(document.getElementById('account_delete_modal'));
     let userData;
+    let status;
     try {
         ({ status, data: userData } = await userProfileApi.index());
         if (status == 200) {
@@ -38,6 +39,8 @@ import { HttpClient } from '#@client/lib/old__clientUtils.js';
             console.error(error);
         }
     }
+    if (!userData)
+        return;
     document.querySelectorAll('.flexOption').forEach((switchElem) => {
         switchElem.checked = userData.computedFlexOptions.option[switchElem.id.replace('flexOpt-', '')];
     });

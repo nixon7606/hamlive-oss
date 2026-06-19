@@ -47,6 +47,7 @@ export class EndPointClient {
             if (this.options.redirectOnNonJson) {
                 logger.error(`Redirecting to due to non-JSON (${contentType}) response: ${res.status}:${res.statusText}`);
                 this.handleRedirect(this.options.redirectOnNonJson);
+                return new Promise(() => { });
             }
             else {
                 throw new EndPointReponseError(`Expected JSON but received ${contentType}`, res.status);
@@ -66,6 +67,7 @@ export class EndPointClient {
                 if (this.options.redirectOnNotFound) {
                     logger.info(`Redirecting to due to 404: ${res.status}:${res.statusText}`);
                     this.handleRedirect(this.options.redirectOnNotFound);
+                    return new Promise(() => { });
                 }
                 else {
                     logger.error(`Resource not found: ${res.status}:${res.statusText}`);
