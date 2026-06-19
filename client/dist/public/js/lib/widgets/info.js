@@ -209,33 +209,4 @@ export class NetDetails extends LiveNetElement {
         await this.initElement('netinfo', NetDetails, store);
     }
 }
-export class RoleStats extends LiveNetElement {
-    getTemplate() {
-        return `
-        <style>
-            /* Add your component styles here */
-        </style>
-        <em id="${this.defaultElementId}">
-            Count ${this.store?.stations.getGroup('checked-in-ever')?.size ?? 0}
-                
-        </em>
-    `;
-    }
-    didMyDataSegmentChange() {
-        return this.store?.stations.getGroup('checked-in-ever')?.newData ?? false;
-    }
-    render() {
-        logger.debug('RoleStats widget: render()');
-        if (!this.defaultElement) {
-            logger.warn(`Default element is not defined in ${this.constructor.name}, render()`);
-            return;
-        }
-        this.defaultElement.textContent = `Count ${this.store?.stations.getGroup('checked-in-ever')?.size ?? 0}`;
-    }
-    onConnected() { }
-    onDisconnected() { }
-    static async init(store) {
-        await this.initElement('rolestats', RoleStats, store);
-    }
-}
 //# sourceMappingURL=info.js.map

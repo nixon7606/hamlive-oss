@@ -1609,5 +1609,4 @@ export class ChatWidget extends HTMLElement {
         }
     }
 }
-export { ChatWidget as ChatClient };
 //# sourceMappingURL=chat.js.map

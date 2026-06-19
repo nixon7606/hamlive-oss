@@ -22,8 +22,6 @@ let qrzInQuotaWait = 0;
 let qrzReqPrevQuota;
 const REQ_LOGIN = 0x0001;
 const REQ_CALLSIGN = 0x0010;
-const REQ_NETOWNER = 0x0100;
-const REQ_SUPERUSER = 0x1000;
 
 const publicEndpoints = app => {
     if ((!'listen') in app) throw new Error('publicEndpoints expected Express app instance as param');
@@ -703,7 +701,5 @@ module.exports = {
     hoursToMilliseconds,
     fetchChatLog,
     REQ_LOGIN,
-    REQ_CALLSIGN,
-    REQ_NETOWNER,
-    REQ_SUPERUSER
+    REQ_CALLSIGN
 };

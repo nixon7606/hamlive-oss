@@ -459,15 +459,6 @@ export const getNpid = (): NPID => {
     return NPID;
 };
 
-export const hashString = async (input: string): Promise<string> => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(input);
-    const hash = await window.crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(hash))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-};
-
 export const generateUUID = (): string => {
     let timestamp = BigInt(Date.now() * 1000); // Timestamp in microseconds
     let performanceTime = BigInt(Math.round(performance?.now() ? performance.now() * 1000 : 0)); // Time in microseconds since page-load or 0 if unsupported
@@ -590,11 +581,6 @@ export const getIconSvg = (iconName: IconName): string => {
         return '';
     }
     return iconSvgs[iconName];
-};
-
-export const makeNonBreaking = (htmlString: string): string => {
-    logger.warn('makeNonBreaking() is deprecated. Use CSS white-space: nowrap instead.');
-    return htmlString.replace(/ /g, '\u00A0');
 };
 
 interface UserPreferences {
@@ -800,56 +786,6 @@ export const schedule = (callback: () => void, method: SchedulingMethod): void =
         default:
             throw new Error('Invalid scheduling method');
     }
-};
-
-
-export interface FileParts {
-    baseName: string;
-    extension: string;
-}
-
-export const getFileParts = (filename: string): FileParts => {
-    const lastDotIndex = filename.lastIndexOf('.');
-
-    // If no dot is found or it's the first character (hidden files like .gitignore)
-    if (lastDotIndex === -1 || lastDotIndex === 0) {
-        return {
-            baseName: filename,
-            extension: ''
-        };
-    }
-
-    const baseName = filename.slice(0, lastDotIndex);
-    const extension = filename.slice(lastDotIndex + 1).toLowerCase();
-
-    return {
-        baseName,
-        extension
-    };
-};
-
-export const slugifyFilename = (filename: string): string => {
-    const lastDotIndex = filename.lastIndexOf('.');
-    if (lastDotIndex === -1 || lastDotIndex === 0) {
-        // No extension found or hidden file without extension
-        return filename
-            .toLowerCase()
-            .trim()
-            .replace(/\s+/g, '_') // Replace spaces with underscores
-            .replace(/[^\w\-]/g, ''); // Remove special characters except hyphen
-    }
-
-    const name = filename.slice(0, lastDotIndex);
-    const extension = filename.slice(lastDotIndex).toLowerCase();
-
-    const slugifiedName = name
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, '_') // Replace spaces with underscores
-        .replace(/[^\w\-]/g, '') // Remove special characters except hyphen
-        .replace(/_+/g, '_'); // Replace multiple underscores with single
-
-    return `${slugifiedName}${extension}`;
 };
 
 /**

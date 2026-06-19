@@ -33,11 +33,6 @@ export type NodeEnv = 'development' | 'production' | null;
  */
 export type HamLiveRole = 'netcontrol' | 'netlogger' | 'netrelay' | 'netuser';
 
-// StringAble type
-export type StringAble = {
-    toString(): string;
-};
-
 export type NPID = ObjectId;
 
 export type SimpleInteractionParams = {

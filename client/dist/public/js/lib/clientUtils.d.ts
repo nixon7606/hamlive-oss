@@ -78,7 +78,6 @@ export declare class Looper {
     protected cancelNextRun(): void;
 }
 export declare const getNpid: () => NPID;
-export declare const hashString: (input: string) => Promise<string>;
 export declare const generateUUID: () => string;
 declare const iconSvgs: {
     readonly 'bi-info-circle': "\n        <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" class=\"bi bi-info-circle\" viewBox=\"0 0 16 16\">\n            <path d=\"M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16\"/>\n            <path d=\"m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0\"/>\n        </svg>\n    ";
@@ -100,7 +99,6 @@ declare const iconSvgs: {
 };
 type IconName = keyof typeof iconSvgs;
 export declare const getIconSvg: (iconName: IconName) => string;
-export declare const makeNonBreaking: (htmlString: string) => string;
 interface UserPreferences {
     usageCollapsed: boolean;
     autoScrollStationTable: boolean;
@@ -132,12 +130,6 @@ export declare enum SchedulingMethod {
     NextAnimationFrame = 2
 }
 export declare const schedule: (callback: () => void, method: SchedulingMethod) => void;
-export interface FileParts {
-    baseName: string;
-    extension: string;
-}
-export declare const getFileParts: (filename: string) => FileParts;
-export declare const slugifyFilename: (filename: string) => string;
 export declare function expiryFromPreset(preset: string, customIso?: string): string | null;
 export {};
 //# sourceMappingURL=clientUtils.d.ts.map
