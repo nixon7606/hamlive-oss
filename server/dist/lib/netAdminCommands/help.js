@@ -41,15 +41,7 @@ class HelpCmd extends NetAdminCmd {
 
             output += ']  aliases:[';
 
-            let i = 1;
-            aliases.forEach(a => {
-                if (i < aliases.length) {
-                    output += `${a.alias}:${a.command}, `;
-                } else {
-                    output += `${a.alias}:${a.command}`;
-                }
-                i++;
-            });
+            output += aliases.map(a => `${a.alias}:${a.command}`).join(', ');
 
             output += ']';
 

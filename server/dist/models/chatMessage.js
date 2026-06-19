@@ -9,15 +9,13 @@ const chatMessageSchema = new Schema(
         netProfile: {
             type: Schema.Types.ObjectId,
             ref: 'NetProfile',
-            required: true,
-            index: true
+            required: true
         },
         // The live net session
         liveNet: {
             type: Schema.Types.ObjectId,
             ref: 'LiveNet',
-            required: true,
-            index: true
+            required: true
         },
         // The sender's user profile
         userProfile: {

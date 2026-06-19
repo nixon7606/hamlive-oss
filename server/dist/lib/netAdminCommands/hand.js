@@ -1,7 +1,7 @@
 /* hamlive-oss — MIT License. See LICENSE. */
 
 // Each NetAdmin command may have potential unhandled promise rejections. This issue was addressed in this file.
-// however, it's recommended to review and refactor all commands to ensure promises are properly awaited and rejections are handled.const NetAdminCmd = require('../netAdminCmd');
+// however, it's recommended to review and refactor all commands to ensure promises are properly awaited and rejections are handled.
 const { logger } = require('../logger');
 const { hand } = require('../sharedNetOps');
 const { wellFormedCall } = require('../serverUtils');

@@ -15,7 +15,6 @@ export declare class EndPointClient {
         redirectOnNonJson: boolean | string;
     });
     private formattedParams;
-    protected reset(): void;
     private handleRedirect;
     private processResponse;
     private fetchWithMethod;

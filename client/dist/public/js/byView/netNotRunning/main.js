@@ -14,7 +14,7 @@ import { serverInfo } from '#@client/lib/serverInfo.js';
             const np = await netProfileDetailApi.index();
             document.getElementById('netTitle').textContent = `${np.data.title}`;
             favorites.interval(i);
-            np.data.live === true && location.reload(true);
+            np.data.live === true && location.reload();
         }
     });
     try {

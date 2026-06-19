@@ -35,11 +35,7 @@ const stationInteractionSchema = new Schema(
     {
         checkedState: {
             type: Boolean,
-            default: null,
-            enum: {
-                values: [true, false, null],
-                message: '{VALUE} is not supported for checkedState'
-            }
+            default: null
         },
         role: {
             type: String,

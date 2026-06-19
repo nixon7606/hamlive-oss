@@ -122,9 +122,6 @@ export class HamLiveElement extends HTMLElement {
             }
         }
     }
-    get online() {
-        return !this.classList.contains('offline');
-    }
     removeAllDefaultElementChildren() {
         if (!this.defaultElement) {
             logger.warn('Default element is not defined in widget, removeAllDefaultElementChildren()');

@@ -98,7 +98,7 @@ const netProfileUpdate = async (req, res) => {
             }
 
             // Schedule guardrails (range validation via helper; async max-3 check kept here)
-            buildAndValidateSchedule(req.body.schedule); // throws on bad field ranges
+            const schedule = buildAndValidateSchedule(req.body.schedule); // throws on bad field ranges
             if (req.body.schedule && req.body.schedule.enabled !== false) {
                 // Enforce max 3 scheduled nets per user
                 const NetProfile = require('../models/netProfile').getNetProfile(null);
@@ -124,7 +124,7 @@ const netProfileUpdate = async (req, res) => {
                         autoIn: req.body.autoIn ? true : false,
                         modeDetails: req.body.modeDetails && req.body.modeDetails.trim(),
                         notes: sanitizeNotes(req.body.notes),
-                        schedule: buildAndValidateSchedule(req.body.schedule)
+                        schedule
                     },
                     { runValidators: true }
                 ))

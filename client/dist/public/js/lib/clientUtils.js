@@ -17,11 +17,6 @@ export class EndPointClient {
     formattedParams() {
         return this.params.length ? this.params.reduce((p, c, idx) => `${p}${idx ? '&' : ''}${c[0]}=${c[1]}`, '?') : '';
     }
-    reset() {
-        this.itemId = null;
-        this.params = [];
-        this.payload = null;
-    }
     handleRedirect(url) {
         if (typeof url === 'string') {
             logger.info(`Redirecting to ${url}`);
