@@ -264,28 +264,23 @@ export class NameCell extends StationTableMember {
             return;
         }
 
-        // This widget will be disconnected and reconnected every time a station row is recreated.
-        // Therefore, many of the conditionals below need to be executed "onConnected".
-        // This is more about handling the widget's lifecycle during subsequent create/destroy cycles
-        // rather than the initial page load.
-
-        // Handle location change
-        if (onConnected || this.haveThisStationPropertiesChanged(['location'])) {
-            this.refreshTooltip();
-        }
-
-        // Handle display name change
-        if (onConnected || this.haveThisStationPropertiesChanged(['displayName'])) {
-            this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
-        }
-
-        // Handle styling for role, checkedState, and presence changes
-        if (onConnected || this.haveThisStationPropertiesChanged(['role', 'checkedState', 'presence'])) {
-            if (!this.station) {
-                throw new Error('Station is null in NameCell widget, render()');
-            }
-
+        // The name and styling are cheap, idempotent writes, so paint them from the
+        // current station on EVERY render. A cell rebuilt while the store already
+        // holds data connects via render(false) (not render(true), see base
+        // connectedCallback), so gating these writes on a per-cycle "displayName
+        // changed" flag left freshly-rebuilt cells blank until the name happened to
+        // change — the roster "all names vanish on update" bug. Writing
+        // unconditionally makes the cell a pure function of current state.
+        this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
+        if (this.station) {
             this.applyStyling(this.defaultElement, this.getStyling(this.station));
+        }
+
+        // The tooltip rebuild is heavier (it disposes and recreates a bootstrap
+        // Tooltip), so only refresh it on connect, when the location changes, or when
+        // this freshly-built cell does not have a tooltip yet.
+        if (onConnected || this.haveThisStationPropertiesChanged(['location']) || !this.tooltip) {
+            this.refreshTooltip();
         }
     }
 
@@ -540,22 +535,18 @@ export class StationRow extends StationTableMember {
         return this.haveThisStationPropertiesChanged(['highlight', 'role', 'checkedState', 'presence']);
     }
 
-    protected render(onConnected: boolean): void {
+    protected render(_onConnected: boolean): void {
         if (!this.defaultElement) {
             throw new Error('Default element is not defined in widget, render()');
         }
 
-        //Handle highlight change
-        if (onConnected || this.haveThisStationPropertiesChanged(['highlight'])) {
-            this.defaultElement.classList.toggle(`highlighted-${this.uuid}`, Boolean(this.station?.highlight));
-        }
-
-        //Handle role and checkedState change
-        //Note-When a station row is disconnected and reconnected, we need to reapply the opacity (thus the onConnected check)
-        if (onConnected || this.haveThisStationPropertiesChanged(['role', 'checkedState', 'presence'])) {
-            if (!this.station) {
-                throw new Error('Station is null in StationRow widget, render()');
-            }
+        // Highlight and opacity are cheap, idempotent writes, so paint them from the
+        // current station on EVERY render. Like NameCell, a row rebuilt while the
+        // store already holds data connects via render(false), so gating these on a
+        // per-cycle change flag left a rebuilt checked-out row un-dimmed (and a
+        // highlighted row un-highlighted) until those props happened to change.
+        this.defaultElement.classList.toggle(`highlighted-${this.uuid}`, Boolean(this.station?.highlight));
+        if (this.station) {
             this.defaultElement.style.opacity = String(this.getStyling(this.station).opacity);
         }
     }
