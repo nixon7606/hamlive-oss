@@ -129,7 +129,7 @@ export const isClient = createTypeGuard<Client>({
 
 // MongoId typeguard
 export const isMongoId = (value: unknown): boolean => {
-    const objectIdRegex = /^(new ObjectId\()?[a-fA-F0-9]{24}\)?$/;
+    const objectIdRegex = /^(new ObjectId\([a-fA-F0-9]{24}\)|[a-fA-F0-9]{24})$/;
     if (typeof value === 'string') {
         return objectIdRegex.test(value);
     } else if (typeof value === 'object' && value !== null) {

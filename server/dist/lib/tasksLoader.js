@@ -23,7 +23,15 @@ process.on('message', mesg => {
                         if (conf.background_tasks[label].enabled) {
                             const tStart = process.hrtime();
 
-                            const t = new (require(`./backgroundTasks/${label}`))({
+                            const TaskClass = require(`./backgroundTasks/${label}`);
+                            if (typeof TaskClass !== 'function') {
+                                // Some enabled background_tasks keys (e.g. scheduledNetStarter)
+                                // are gated elsewhere and export a plain object, not a PluginBase
+                                // class — skip so `new` doesn't throw and abort the whole loader.
+                                logger.debug(`tasksLoader: skipping non-class background task "${label}"`);
+                                continue;
+                            }
+                            const t = new TaskClass({
                                 label,
                                 options: conf.background_tasks[label].options,
                                 db

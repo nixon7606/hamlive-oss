@@ -66,7 +66,7 @@ export const isClient = createTypeGuard({
     level: value => typeof value === 'number'
 });
 export const isMongoId = (value) => {
-    const objectIdRegex = /^(new ObjectId\()?[a-fA-F0-9]{24}\)?$/;
+    const objectIdRegex = /^(new ObjectId\([a-fA-F0-9]{24}\)|[a-fA-F0-9]{24})$/;
     if (typeof value === 'string') {
         return objectIdRegex.test(value);
     }

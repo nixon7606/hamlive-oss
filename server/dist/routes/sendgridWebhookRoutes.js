@@ -21,7 +21,8 @@ router.post('/', webhookLimiter, async (req, res) => {
         return res.status(401).json({ error: 'invalid signature' });
     }
 
-    if (Math.abs(Math.floor(Date.now() / 1000) - parseInt(ts, 10)) > 600) {
+    const tsSeconds = parseInt(ts, 10);
+    if (!Number.isFinite(tsSeconds) || Math.abs(Math.floor(Date.now() / 1000) - tsSeconds) > 600) {
         return res.status(401).json({ error: 'stale timestamp' });
     }
 
