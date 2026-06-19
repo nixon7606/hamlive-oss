@@ -36,12 +36,4 @@ export declare class NetDetails extends LiveNetElement {
     protected onDisconnected(): void;
     static init(store: LiveNetReactiveStore): Promise<void>;
 }
-export declare class RoleStats extends LiveNetElement {
-    protected getTemplate(): string;
-    protected didMyDataSegmentChange(): boolean;
-    protected render(): void;
-    protected onConnected(): void;
-    protected onDisconnected(): void;
-    static init(store: LiveNetReactiveStore): Promise<void>;
-}
 //# sourceMappingURL=info.d.ts.map

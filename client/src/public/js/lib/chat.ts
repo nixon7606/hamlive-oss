@@ -1955,6 +1955,3 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         }
     }
 }
-
-// Keep ChatClient as alias for backward compatibility
-export { ChatWidget as ChatClient };

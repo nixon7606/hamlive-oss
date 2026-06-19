@@ -19,7 +19,7 @@ export { NetworkStatus, StatsTable, ButtonBar, HandInsert } from './widgets/util
 export { FavoritesList, FavoriteInsert, AutoScrollInsert } from './widgets/favorites.js';
 
 // Info panels
-export { StateList, StateCount, NetNotes, NetDetails, RoleStats } from './widgets/info.js';
+export { StateList, StateCount, NetNotes, NetDetails } from './widgets/info.js';
 
 // Net control widgets
 export { NetStartProgress, NetControlUsage, NetControlForm, NetControlPanel, NetControlButton } from './widgets/netcontrol.js';

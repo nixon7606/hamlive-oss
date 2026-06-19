@@ -91,5 +91,4 @@ export declare class ChatWidget extends HTMLElement implements StoreSubscriber {
     private linkifyText;
     static init(store: LiveNetReactiveStore, level: number): void;
 }
-export { ChatWidget as ChatClient };
 //# sourceMappingURL=chat.d.ts.map

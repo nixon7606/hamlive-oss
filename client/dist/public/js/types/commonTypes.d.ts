@@ -18,9 +18,6 @@ export interface SystemNotificationResponse extends EndPointResponse {
 }
 export type NodeEnv = 'development' | 'production' | null;
 export type HamLiveRole = 'netcontrol' | 'netlogger' | 'netrelay' | 'netuser';
-export type StringAble = {
-    toString(): string;
-};
 export type NPID = ObjectId;
 export type SimpleInteractionParams = {
     state: boolean;

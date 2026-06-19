@@ -373,14 +373,6 @@ export const getNpid = () => {
     }
     return NPID;
 };
-export const hashString = async (input) => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(input);
-    const hash = await window.crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(hash))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-};
 export const generateUUID = () => {
     let timestamp = BigInt(Date.now() * 1000);
     let performanceTime = BigInt(Math.round(performance?.now() ? performance.now() * 1000 : 0));
@@ -495,10 +487,6 @@ export const getIconSvg = (iconName) => {
         return '';
     }
     return iconSvgs[iconName];
-};
-export const makeNonBreaking = (htmlString) => {
-    logger.warn('makeNonBreaking() is deprecated. Use CSS white-space: nowrap instead.');
-    return htmlString.replace(/ /g, '\u00A0');
 };
 export class UserAgentPersistentPreferences {
     static STORAGE_KEY = 'userPreferences';
@@ -657,40 +645,6 @@ export const schedule = (callback, method) => {
         default:
             throw new Error('Invalid scheduling method');
     }
-};
-export const getFileParts = (filename) => {
-    const lastDotIndex = filename.lastIndexOf('.');
-    if (lastDotIndex === -1 || lastDotIndex === 0) {
-        return {
-            baseName: filename,
-            extension: ''
-        };
-    }
-    const baseName = filename.slice(0, lastDotIndex);
-    const extension = filename.slice(lastDotIndex + 1).toLowerCase();
-    return {
-        baseName,
-        extension
-    };
-};
-export const slugifyFilename = (filename) => {
-    const lastDotIndex = filename.lastIndexOf('.');
-    if (lastDotIndex === -1 || lastDotIndex === 0) {
-        return filename
-            .toLowerCase()
-            .trim()
-            .replace(/\s+/g, '_')
-            .replace(/[^\w\-]/g, '');
-    }
-    const name = filename.slice(0, lastDotIndex);
-    const extension = filename.slice(lastDotIndex).toLowerCase();
-    const slugifiedName = name
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, '_')
-        .replace(/[^\w\-]/g, '')
-        .replace(/_+/g, '_');
-    return `${slugifiedName}${extension}`;
 };
 export function expiryFromPreset(preset, customIso) {
     const now = Date.now();
