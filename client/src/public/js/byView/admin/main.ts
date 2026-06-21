@@ -176,6 +176,7 @@ async function loadNets() {
         const nets = data.message || [];
         netsCache = nets;
         const sorted = sortNets(nets, netsSortMode);
+        setSortIndicator('admin-nets-tbody', netsSortMode, netsSortMode === 'active' ? null : 'asc');
         if (sorted.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No net profiles found</td></tr>';
             return;
@@ -279,8 +280,12 @@ function sortNets(nets: any[], mode: string): any[] {
     return sortData(nets, mode, 'asc');
 }
 
-function setSortIndicator(tableId: string, field: string, dir: 'asc' | 'desc' | null) {
-    document.querySelectorAll(`#${tableId} th[data-sort-field]`).forEach(th => {
+function setSortIndicator(tbodyId: string, field: string, dir: 'asc' | 'desc' | null) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    const table = tbody.closest('table');
+    if (!table) return;
+    table.querySelectorAll('thead th[data-sort-field]').forEach(th => {
         const f = th.getAttribute('data-sort-field');
         if (f === field && dir) {
             th.setAttribute('data-sort-dir', dir);
