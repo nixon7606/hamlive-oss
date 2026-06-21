@@ -257,7 +257,10 @@ class NetCloseReport extends EmailBase {
     #attendees;
 
     // Static async constructor
-    static async init({ netProfileDoc: { id: NPID, title }, liveNetDoc: { url, started, startedAt }, attendees }) {
+    static async init({ netProfileDoc: { id: NPID, title, timezone }, liveNetDoc: { url, started, startedAt }, attendees }) {
+        // Default timezone if not set
+        const netTZ = timezone || 'America/Denver';
+
         // Attempt to fetch chat log, but continue with empty log if it fails
         let chatLog = null;
         try {
@@ -273,6 +276,7 @@ class NetCloseReport extends EmailBase {
         return new NetCloseReport(NetCloseReport.#_internal, {
             title,
             NPID,
+            netTZ,
             url,
             started,
             startedAt,
@@ -282,7 +286,7 @@ class NetCloseReport extends EmailBase {
     }
 
     // Private constructor
-    constructor(key, { title, NPID, url, started, startedAt, attendees, chatLog }) {
+    constructor(key, { title, NPID, netTZ, url, started, startedAt, attendees, chatLog }) {
         // Check if the key matches the private static symbol
         if (key !== NetCloseReport.#_internal) {
             throw new Error('NetCloseReport constructor is private. Use NetCloseReport.init() instead.');
@@ -290,10 +294,11 @@ class NetCloseReport extends EmailBase {
 
         // Perform computations before calling super()
         const sortedAttendees = NetCloseReport.#sortAttendees(attendees);
-        const formattedAttendees = NetCloseReport.#formatAttendees(sortedAttendees);
+        const formattedAttendees = NetCloseReport.#formatAttendees(sortedAttendees, netTZ);
         const attachments = NetCloseReport.#createAttachments({
             title,
             NPID,
+            netTZ,
             url,
             started,
             startedAt,
@@ -311,7 +316,7 @@ class NetCloseReport extends EmailBase {
                     url: `${conf.base_url}${url}`,
                     title: title,
                     formattedAttendees: formattedAttendees,
-                    startedAtString: started ? new Date(startedAt).toUTCString() : ''
+                    startedAtString: started ? NetCloseReport.#fmtDatetime(startedAt, netTZ) : ''
                 },
                 attachments: attachments
             }
@@ -336,6 +341,32 @@ class NetCloseReport extends EmailBase {
         );
     }
 
+    // Format a Date/timestamp as locale string in the net's timezone
+    // e.g., "Sat, Jun 21, 2026, 7:30 AM MDT"
+    static #fmtDatetime(ts, tz) {
+        return new Date(ts).toLocaleString('en-US', {
+            timeZone: tz,
+            weekday: 'short',
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            timeZoneName: 'short'
+        });
+    }
+
+    // Format just the time portion in the net's timezone
+    // e.g., "7:30 AM MDT"
+    static #fmtTime(ts, tz) {
+        return new Date(ts).toLocaleString('en-US', {
+            timeZone: tz,
+            hour: 'numeric',
+            minute: '2-digit',
+            timeZoneName: 'short'
+        });
+    }
+
     // Static method to sort attendees
     static #sortAttendees(attendees) {
         // Sorting logic based on role and check-in time
@@ -353,7 +384,7 @@ class NetCloseReport extends EmailBase {
     }
 
     // Static method to format attendees
-    static #formatAttendees(attendees) {
+    static #formatAttendees(attendees, tz) {
         // Formatting attendee data for the report
         return attendees.map(a => ({
             callSign: a.callSign,
@@ -366,7 +397,7 @@ class NetCloseReport extends EmailBase {
                         ? 'Logger'
                         : '',
             checkInIsoDate: new Date(a.checkedInAt).toISOString(),
-            checkInTime: new Date(a.checkedInAt).toUTCString().split(' ').slice(4).join(' '),
+            checkInTime: tz ? NetCloseReport.#fmtTime(a.checkedInAt, tz) : new Date(a.checkedInAt).toUTCString().split(' ').slice(4).join(' '),
             displayName: a.displayName || '',
             location: a.location || '',
             sigReport: a.rst || '',
@@ -375,7 +406,7 @@ class NetCloseReport extends EmailBase {
     }
 
     // Static method to create email attachments
-    static #createAttachments({ title, NPID, url, started, startedAt, formattedAttendees, chatLog }) {
+    static #createAttachments({ title, NPID, netTZ, url, started, startedAt, formattedAttendees, chatLog }) {
         // Header and chat log:
         const chatHeader = `${title} (ID: ${NPID})\n\n`;
         const chatLogString = chatLog ? chatHeader + chatLog : chatHeader + '[ Empty Chat Log ]';
