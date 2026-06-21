@@ -163,7 +163,7 @@ async function loadUsers() {
 async function loadNets() {
     const tbody = document.getElementById('admin-nets-tbody') as HTMLTableSectionElement;
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>';
     try {
         const res = await fetch(`${API}/nets`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -171,7 +171,7 @@ async function loadNets() {
         const nets = data.message || [];
         netsCache = nets;
         if (nets.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No net profiles found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No net profiles found</td></tr>';
             return;
         }
         tbody.innerHTML = nets.map((n: any) => {
@@ -184,6 +184,10 @@ async function loadNets() {
                 else statusBadge = '<span class="badge badge-live">Live</span>';
             }
 
+            const permBadge = n.permanent
+                ? '<span class="badge badge-locked">Perm</span>'
+                : '<span class="text-muted">—</span>';
+
             let scheduleInfo = '<span class="text-muted">—</span>';
             if (n.schedule && n.schedule.enabled) {
                 const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -193,22 +197,27 @@ async function loadNets() {
                 scheduleInfo = `<span class="badge badge-scheduled">${day} ${h}:${m}</span>`;
             }
 
+            const permBtnLabel = n.permanent ? 'Un-perm' : 'Perm';
+            const permBtnClass = n.permanent ? 'btn-outline-success' : 'btn-outline-warning';
+
             const created = n.createdAt ? new Date(n.createdAt).toLocaleDateString() : '-';
             return `<tr>
                 <td><strong>${esc(n.title)}</strong></td>
                 <td>${freqMode}</td>
                 <td>${esc(owners)}</td>
                 <td>${statusBadge}</td>
+                <td>${permBadge}</td>
                 <td>${scheduleInfo}</td>
                 <td>${created}</td>
                 <td>
+                    <button class="btn btn-sm ${permBtnClass} me-1" data-action="toggle-perm" data-id="${n._id}" title="Toggle permanent">${permBtnLabel}</button>
                     <button class="btn btn-sm btn-outline-warning me-1" data-action="manage-schedule" data-id="${n._id}" title="Manage Schedule"><i class="bi bi-calendar-week"></i></button>
                     <button class="btn btn-sm btn-outline-danger" data-action="delete-net" data-id="${n._id}" title="Delete Net"><i class="bi bi-trash"></i></button>
                 </td>
             </tr>`;
         }).join('');
     } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-4">Failed to load nets</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Failed to load nets</td></tr>';
         statusMsg(`Error loading nets: ${(err as Error).message}`, 'danger');
     }
 }
@@ -427,6 +436,27 @@ async function confirmDelete(id: string, label: string) {
     modal.show();
 }
 
+/* ── Permanent Toggle ── */
+
+async function togglePermanent(id: string, title: string) {
+    const n = netsCache.find((x: any) => x._id === id);
+    if (!n) { statusMsg('Net not found', 'danger'); return; }
+    const newVal = !n.permanent;
+    try {
+        const res = await fetch(`${API}/nets/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ permanent: newVal })
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed'); }
+        statusMsg(`Net "${title}" ${newVal ? 'set as permanent' : 'no longer permanent'}`, 'success');
+        loadNets();
+        loadStats();
+    } catch (err) {
+        statusMsg(`Error: ${(err as Error).message}`, 'danger');
+    }
+}
+
 /* ── Schedule Management ── */
 
 async function manageSchedule(id: string, title: string) {
@@ -550,6 +580,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const id = btn.getAttribute('data-id') as string;
         const n = netsCache.find((x: any) => x._id === id);
         switch (btn.getAttribute('data-action')) {
+            case 'toggle-perm':
+                togglePermanent(id, n ? n.title : '');
+                break;
             case 'manage-schedule':
                 manageSchedule(id, n ? n.title : '');
                 break;

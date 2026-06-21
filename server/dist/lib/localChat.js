@@ -348,12 +348,14 @@ async function getChatSession({ npid, user }) {
     const netProfile = await getModels().NetProfile.findById(npid);
     if (!netProfile) throw new Error(`Net profile not found: ${npid}`);
     const pinned = await getModels().ChatMessage.findOne({ netProfile: npid, pinned: true, deleted: false });
+    const messageCount = await getModels().ChatMessage.countDocuments({ netProfile: npid, deleted: false });
     return {
         enabled: true,
         roomId: getChatRoomId(npid),
         userId: user._id.toString(),
         callSign: user.callSign || 'UNKNOWN',
         displayName: user.displayName || user.callSign || '',
+        messageCount,
         pinnedMessage: pinned ? await buildMessagePayload(pinned) : null
     };
 }
@@ -415,6 +417,33 @@ async function deleteMessage({ npid, messageId, moderatorCallsign, userProfileId
         }
     }
     return { success: true, messageId };
+}
+
+/**
+ * Clear all chat history for a net profile (NCS only).
+ * Soft-deletes every message and unpins any pinned message.
+ * Broadcasts a 'chat-clear' SSE event so all connected clients flush their UI.
+ */
+async function clearChatHistory({ npid, moderator }) {
+    const { ChatMessage } = getModels();
+    const netProfileId = typeof npid === 'string' ? npid : npid.toString();
+
+    // Soft-delete all messages in this net
+    const result = await ChatMessage.updateMany(
+        { netProfile: netProfileId },
+        { $set: { deleted: true, pinned: false } }
+    );
+
+    logger.info(`Chat: ${result.modifiedCount} messages cleared by ${moderator.callSign} in net ${netProfileId}`);
+
+    // Broadcast clear event to all connected clients
+    try {
+        chatBroadcaster.broadcastClear(netProfileId);
+    } catch (e) {
+        logger.warn(`Chat: broadcastClear failed: ${e.message}`);
+    }
+
+    return { cleared: true, count: result.modifiedCount };
 }
 
 /**
@@ -760,5 +789,6 @@ module.exports = {
     getThreadMessages,
     pinMessage,
     unpinMessage,
+    clearChatHistory,
     chatBroadcaster
 };

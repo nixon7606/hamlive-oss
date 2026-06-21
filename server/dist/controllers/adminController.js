@@ -171,6 +171,7 @@ const listNets = async (req, res) => {
             title: n.title,
             frequency: n.frequency || '',
             mode: n.mode || '',
+            permanent: !!n.permanent,
             owners: (n.owners || []).map(o => ({ _id: o._id, callSign: o.callSign, email: o.email })),
             hasLiveNet: !!n.liveNet,
             liveNetStatus: n.liveNet?.status || null,
@@ -233,6 +234,11 @@ const updateNetSchedule = async (req, res) => {
         const np = await NetProfile.findById(id);
         if (!np) throw new Error('Net profile not found');
 
+        // Admin can toggle permanent flag
+        if (req.body.permanent !== undefined) {
+            np.permanent = !!req.body.permanent;
+        }
+
         // Admin can toggle schedule on/off or set full schedule
         if (req.body.schedule !== undefined) {
             np.schedule = {
@@ -245,8 +251,8 @@ const updateNetSchedule = async (req, res) => {
             np.schedule.enabled = req.body.scheduleEnabled;
         }
         await np.save();
-        logger.info(`admin: updated schedule for net "${np.title}"`);
-        return { message: { updated: true, title: np.title, schedule: np.schedule } };
+        logger.info(`admin: updated net "${np.title}" (permanent: ${np.permanent})`);
+        return { message: { updated: true, title: np.title, permanent: np.permanent, schedule: np.schedule } };
     }, `admin: updateNetSchedule ${req.params.id}`);
 };
 

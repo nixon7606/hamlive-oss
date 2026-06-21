@@ -198,6 +198,15 @@ class ChatSSEBroadcaster {
     }
 
     /**
+     * Broadcast a clear-chat event — tells all clients to flush their message list.
+     */
+    broadcastClear(npid) {
+        const instance = this.streams.get(npid.toString());
+        if (!instance) return;
+        instance.send({ cleared: true, npid: npid.toString() }, 'chat-clear');
+    }
+
+    /**
      * Close the SSE stream for a net when the net closes.
      */
     close(npid) {

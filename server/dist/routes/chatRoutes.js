@@ -27,6 +27,8 @@ const {
     chatBroadcaster,
     pinMessage,
     unpinMessage,
+    checkUserCanModerate,
+    clearChatHistory,
 } = require('../lib/localChat');
 const { logger } = require('../lib/logger');
 
@@ -273,6 +275,27 @@ router.get('/:id/banned', generalLimiter, authCheck(REQ_CALLSIGN), (req, res) =>
         const bans = await getBannedUsers(npid);
         return { message: { bans } };
     }, `getBannedUsers(): ${req.user?.callSign} in net ${req.params.id}`);
+});
+
+// ============================================================================
+// DELETE /api/chat/:id/clear — Clear all chat history (NCS only)
+// ============================================================================
+router.delete('/:id/clear', generalLimiter, authCheck(REQ_CALLSIGN), (req, res) => {
+    handleRequest(res, async () => {
+        const npid = req.params.id;
+        if (!isNpid(npid)) throw new Error(`Invalid NPID: ${npid}`);
+        if (!req.user || !req.user._id) throw new Error('Missing user object');
+        const canModerate = await checkUserCanModerate(npid, req.user._id.toString());
+        if (!canModerate) throw new Error('Only NCS can clear chat history');
+        const result = await clearChatHistory({
+            npid,
+            moderator: {
+                callSign: req.user.callSign || 'unknown',
+                userProfile: req.user._id
+            }
+        });
+        return { message: result };
+    }, `clearChatHistory(): ${req.user?.callSign} cleared chat in net ${req.params.id}`);
 });
 
 // ============================================================================

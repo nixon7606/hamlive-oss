@@ -108,6 +108,10 @@ export class LocalChatConnection {
             this.emit('chat.close', null);
             this.disconnect();
         });
+        this.eventSource.addEventListener('chat-clear', () => {
+            logger.info('Chat: received chat-clear event, flushing messages');
+            this.emit('chat.clear', null);
+        });
         this.eventSource.onerror = (error) => {
             logger.error('Chat SSE error:', error);
         };

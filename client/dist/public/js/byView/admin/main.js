@@ -146,7 +146,7 @@ async function loadNets() {
     const tbody = document.getElementById('admin-nets-tbody');
     if (!tbody)
         return;
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>';
     try {
         const res = await fetch(`${API}/nets`);
         if (!res.ok)
@@ -155,7 +155,7 @@ async function loadNets() {
         const nets = data.message || [];
         netsCache = nets;
         if (nets.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No net profiles found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No net profiles found</td></tr>';
             return;
         }
         tbody.innerHTML = nets.map((n) => {
@@ -176,15 +176,22 @@ async function loadNets() {
                 const m = String(n.schedule.minute || 0).padStart(2, '0');
                 scheduleInfo = `<span class="badge badge-scheduled">${day} ${h}:${m}</span>`;
             }
+            const permBadge = n.permanent
+                ? '<span class="badge badge-locked">Perm</span>'
+                : '<span class="text-muted">—</span>';
+            const permBtnLabel = n.permanent ? 'Un-perm' : 'Perm';
+            const permBtnClass = n.permanent ? 'btn-outline-success' : 'btn-outline-warning';
             const created = n.createdAt ? new Date(n.createdAt).toLocaleDateString() : '-';
             return `<tr>
                 <td><strong>${esc(n.title)}</strong></td>
                 <td>${freqMode}</td>
                 <td>${esc(owners)}</td>
                 <td>${statusBadge}</td>
+                <td>${permBadge}</td>
                 <td>${scheduleInfo}</td>
                 <td>${created}</td>
                 <td>
+                    <button class="btn btn-sm ${permBtnClass} me-1" data-action="toggle-perm" data-id="${n._id}" title="Toggle permanent">${permBtnLabel}</button>
                     <button class="btn btn-sm btn-outline-warning me-1" data-action="manage-schedule" data-id="${n._id}" title="Manage Schedule"><i class="bi bi-calendar-week"></i></button>
                     <button class="btn btn-sm btn-outline-danger" data-action="delete-net" data-id="${n._id}" title="Delete Net"><i class="bi bi-trash"></i></button>
                 </td>
@@ -192,7 +199,7 @@ async function loadNets() {
         }).join('');
     }
     catch (err) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-4">Failed to load nets</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Failed to load nets</td></tr>';
         statusMsg(`Error loading nets: ${err.message}`, 'danger');
     }
 }
@@ -468,6 +475,25 @@ document.getElementById('sched-save-btn')?.addEventListener('click', async () =>
         statusMsg(`Error: ${err.message}`, 'danger');
     }
 });
+async function togglePermanent(id, title) {
+    const n = netsCache.find((x) => x._id === id);
+    if (!n) { statusMsg('Net not found', 'danger'); return; }
+    const newVal = !n.permanent;
+    try {
+        const res = await fetch(`${API}/nets/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ permanent: newVal })
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed'); }
+        statusMsg(`Net "${title}" ${newVal ? 'set as permanent' : 'no longer permanent'}`, 'success');
+        loadNets();
+        loadStats();
+    }
+    catch (err) {
+        statusMsg(`Error: ${err.message}`, 'danger');
+    }
+}
 let currentNetId = null;
 let currentNetTitle = '';
 function confirmNetDelete(id, title) {
@@ -530,6 +556,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const id = btn.getAttribute('data-id');
         const n = netsCache.find((x) => x._id === id);
         switch (btn.getAttribute('data-action')) {
+            case 'toggle-perm':
+                togglePermanent(id, n ? n.title : '');
+                break;
             case 'manage-schedule':
                 manageSchedule(id, n ? n.title : '');
                 break;

@@ -58,7 +58,7 @@ export type ChatEventHandler = (data: unknown) => void;
  * LocalChatConnection manages the connection to the in-house chat system.
  */
 export class LocalChatConnection {
-    private npid: any = getNpid();
+    public npid: any = getNpid();
     private session: LocalChatSession | null = null;
     private eventSource: EventSource | null = null;
     private initialized = false;
@@ -176,6 +176,11 @@ export class LocalChatConnection {
             logger.info('Chat SSE stream closed (net closing)');
             this.emit('chat.close', null);
             this.disconnect();
+        });
+
+        this.eventSource.addEventListener('chat-clear', () => {
+            logger.info('Chat: received chat-clear event, flushing messages');
+            this.emit('chat.clear', null);
         });
 
         this.eventSource.onerror = (error) => {
