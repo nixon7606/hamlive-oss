@@ -3,11 +3,14 @@ import { expiryFromPreset } from '#@client/lib/clientUtils.js';
 const API = '/api/admin';
 let usersCache = [];
 let netsCache = [];
+let netsSortMode = 'active';
 let currentEmailRecipient = '';
 let usersPage = 1;
 let usersSearch = '';
 let usersTotal = 0;
 let usersLimit = 50;
+let usersSortField = 'createdAt';
+let usersSortDir = 'desc';
 let auditPage = 1;
 let auditTotal = 0;
 let auditLimit = 50;
@@ -93,6 +96,8 @@ async function loadUsers() {
         usersCache = users;
         usersTotal = (data.message && data.message.total) || 0;
         usersLimit = (data.message && data.message.limit) || 50;
+        setSortIndicator('admin-users-tbody', usersSortField, usersSortDir);
+        const sortedUsers = sortData(users, usersSortField, usersSortDir);
         const pageInfo = document.getElementById('users-page-info');
         if (pageInfo)
             pageInfo.textContent = `Page ${usersPage} · ${usersTotal} users`;
@@ -106,7 +111,7 @@ async function loadUsers() {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No users found</td></tr>';
             return;
         }
-        tbody.innerHTML = users.map((u) => {
+        tbody.innerHTML = sortedUsers.map((u) => {
             const badges = [];
             if (u.locked)
                 badges.push(`<span class="badge badge-locked">${u.lockedUntil ? 'Locked until ' + new Date(u.lockedUntil).toLocaleDateString() : 'Locked'}</span>`);
@@ -154,11 +159,12 @@ async function loadNets() {
         const data = await res.json();
         const nets = data.message || [];
         netsCache = nets;
-        if (nets.length === 0) {
+        const sorted = sortNets(nets, netsSortMode);
+        if (sorted.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No net profiles found</td></tr>';
             return;
         }
-        tbody.innerHTML = nets.map((n) => {
+        tbody.innerHTML = sorted.map((n) => {
             const owners = (n.owners || []).map((o) => o.callSign || o.email).join(', ') || '-';
             const freqMode = `<span class="freq-mode">${esc(n.frequency || '—')} / ${esc(n.mode || '—')}</span>`;
             let statusBadge = '<span class="badge bg-secondary">Inactive</span>';
@@ -202,6 +208,59 @@ async function loadNets() {
         tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Failed to load nets</td></tr>';
         statusMsg(`Error loading nets: ${err.message}`, 'danger');
     }
+}
+function getSortValue(obj, field) {
+    if (field === 'status') {
+        if (obj.hasLiveNet && obj.liveNetStatus === 'live') return 0;
+        if (obj.hasLiveNet && obj.liveNetStatus === 'waiting') return 1;
+        if (obj.locked) return 2;
+        if (obj.superUser) return 3;
+        return 4;
+    }
+    if (field === 'permanent') return obj.permanent ? 0 : 1;
+    if (field === 'schedule') return (obj.schedule && obj.schedule.enabled) ? 0 : 1;
+    if (field === 'ip') return obj.lastIp || '';
+    if (field === 'createdAt') return obj.createdAt ? new Date(obj.createdAt).getTime() : 0;
+    if (field === 'frequency') {
+        const f = parseFloat(obj.frequency);
+        return isNaN(f) ? 9999 : f;
+    }
+    return (obj[field] || '').toString().toLowerCase();
+}
+function sortData(data, field, dir) {
+    if (!field || !dir) return data;
+    return [...data].sort((a, b) => {
+        const va = getSortValue(a, field);
+        const vb = getSortValue(b, field);
+        if (va < vb) return dir === 'asc' ? -1 : 1;
+        if (va > vb) return dir === 'asc' ? 1 : -1;
+        return 0;
+    });
+}
+function sortNets(nets, mode) {
+    if (mode === 'active') {
+        return [...nets].sort((a, b) => {
+            const aScore = a.hasLiveNet && a.liveNetStatus === 'live' ? 0
+                : a.hasLiveNet && a.liveNetStatus === 'waiting' ? 1
+                : a.permanent ? 2 : 3;
+            const bScore = b.hasLiveNet && b.liveNetStatus === 'live' ? 0
+                : b.hasLiveNet && b.liveNetStatus === 'waiting' ? 1
+                : b.permanent ? 2 : 3;
+            if (aScore !== bScore) return aScore - bScore;
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+    }
+    return sortData(nets, mode, 'asc');
+}
+function setSortIndicator(tableId, field, dir) {
+    document.querySelectorAll(`#${tableId} th[data-sort-field]`).forEach(th => {
+        const f = th.getAttribute('data-sort-field');
+        if (f === field && dir) {
+            th.setAttribute('data-sort-dir', dir);
+        } else {
+            th.removeAttribute('data-sort-dir');
+        }
+    });
 }
 async function loadAudit() {
     const box = document.getElementById('audit-results');
@@ -565,6 +624,31 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'delete-net':
                 confirmNetDelete(id, n ? n.title : 'this net');
                 break;
+        }
+    });
+    document.addEventListener('click', (e) => {
+        const th = e.target.closest('th[data-sort-field]');
+        if (!th) return;
+        const field = th.getAttribute('data-sort-field') || '';
+        const table = th.closest('table');
+        if (!table) return;
+        const tableId = table.id || '';
+        if (tableId === 'admin-users-tbody' || table.closest('#users-panel')) {
+            if (usersSortField === field) {
+                usersSortDir = usersSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                usersSortField = field;
+                usersSortDir = 'asc';
+            }
+            usersPage = 1;
+            loadUsers();
+        } else if (tableId === 'admin-nets-tbody' || table.closest('#nets-panel')) {
+            const oldMode = netsSortMode;
+            netsSortMode = field;
+            if (oldMode === field) {
+                netsSortMode = 'active';
+            }
+            loadNets();
         }
     });
     let userSearchTimer = null;

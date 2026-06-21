@@ -22,6 +22,11 @@
     .freq-mode { font-size: 11px; color: var(--hl-secondary); }
     .app-stat-card.stat-alert { border-color: #dc3545; }
     .app-stat-card.stat-alert .stat-value { color: #ff6b6b; }
+    th[data-sort-field] { cursor: pointer; user-select: none; }
+    th[data-sort-field]:hover { color: #fff; }
+    .sort-arrow { font-size: 10px; margin-left: 2px; color: var(--hl-tertiary); }
+    th[data-sort-dir="asc"] .sort-arrow::after { content: "▲"; color: #ffc107; }
+    th[data-sort-dir="desc"] .sort-arrow::after { content: "▼"; color: #ffc107; }
   </style>
 </head>
 
@@ -83,13 +88,13 @@
             <table class="table table-dark table-striped table-hover admin-table">
               <thead>
                 <tr>
-                  <th>Email</th>
-                  <th>CallSign</th>
-                  <th>Name</th>
-                  <th>Location</th>
-                  <th>IP</th>
-                  <th>Status</th>
-                  <th>Created</th>
+                  <th data-sort-field="email">Email <span class="sort-arrow"></span></th>
+                  <th data-sort-field="callSign">CallSign <span class="sort-arrow"></span></th>
+                  <th data-sort-field="displayName">Name <span class="sort-arrow"></span></th>
+                  <th data-sort-field="location">Location <span class="sort-arrow"></span></th>
+                  <th data-sort-field="ip">IP <span class="sort-arrow"></span></th>
+                  <th data-sort-field="status">Status <span class="sort-arrow"></span></th>
+                  <th data-sort-field="createdAt">Created <span class="sort-arrow"></span></th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -111,13 +116,13 @@
             <table class="table table-dark table-striped table-hover admin-table">
               <thead>
                 <tr>
-                  <th>Title</th>
-                  <th>Freq / Mode</th>
+                  <th data-sort-field="title">Title <span class="sort-arrow"></span></th>
+                  <th data-sort-field="frequency">Freq / Mode <span class="sort-arrow"></span></th>
                   <th>Owners</th>
-                  <th>Status</th>
-                  <th>Perm</th>
-                  <th>Schedule</th>
-                  <th>Created</th>
+                  <th data-sort-field="status">Status <span class="sort-arrow"></span></th>
+                  <th data-sort-field="permanent">Perm <span class="sort-arrow"></span></th>
+                  <th data-sort-field="schedule">Schedule <span class="sort-arrow"></span></th>
+                  <th data-sort-field="createdAt">Created <span class="sort-arrow"></span></th>
                   <th>Actions</th>
                 </tr>
               </thead>
