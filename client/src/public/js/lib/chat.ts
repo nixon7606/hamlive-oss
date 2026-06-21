@@ -215,6 +215,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         this.level = currentLevel;
 
         this.updateModerationButtons();
+        this.updateClearButton();
 
         // Show slash command tip when promoted to NCS/logger
         if (wasPromoted && currentLevel <= 1) {
@@ -423,6 +424,9 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
                     .chat-pinned-bar .chat-pinned-unpin { background: none; border: none; color: var(--hl-tertiary); cursor: pointer; }
                 </style>
                 <div class="chat-pinned-bar d-none"></div>
+                <div class="chat-clear-bar d-none" style="display: flex; align-items: center; justify-content: center; padding: 4px 10px; border-bottom: 1px solid var(--hl-quaternary);">
+                    <button class="chat-clear-btn" type="button" style="background: none; border: 1px solid #dc3545; border-radius: 4px; color: #dc3545; font-size: 11px; padding: 2px 10px; cursor: pointer;">Clear chat history</button>
+                </div>
                 <div class="chat-messages flex-grow-1 overflow-auto px-1 py-1">
                     <div class="text-center text-muted p-4">
                         <p>Connecting to chat...</p>
@@ -499,6 +503,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         this.lastRenderedUserId = null;
         this.messages.forEach(msg => this.renderMessage(msg));
         this.scrollToBottom();
+        this.updateClearButton();
     }
 
     private renderMessage(msg: LocalChatMessage): void {
@@ -657,6 +662,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         this.connection.on('ban', this.handleBanEvent.bind(this));
         this.connection.on('pin', (data: unknown) => this.renderPinnedBar(data));
         this.connection.on('unpin', () => this.clearPinnedBar());
+        this.connection.on('chat.clear', () => this.handleChatClear());
     }
 
     private setupInputListeners(): void {
@@ -770,6 +776,28 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         // Store handler for cleanup in disconnect()
         this.beforeUnloadHandler = () => this.disconnect();
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
+
+        // Clear chat button (NCS only)
+        const clearBtn = this.querySelector('.chat-clear-btn');
+        clearBtn?.addEventListener('click', () => void this.handleClearButtonClick());
+    }
+
+    private async handleClearButtonClick(): Promise<void> {
+        if (!this.connection || !this.canModerate()) return;
+        const npid = this.connection.npid;
+        if (!confirm('Clear ALL chat history for this net? This cannot be undone.')) return;
+        try {
+            const res = await fetch(`/api/chat/${npid}/clear`, { method: 'DELETE' });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || 'Failed to clear chat');
+            }
+            const result = await res.json();
+            logger.info(`Chat cleared: ${result.message?.count || 0} messages removed`);
+        } catch (err) {
+            logger.error('Failed to clear chat:', err);
+            alert(`Failed to clear chat: ${(err as Error).message}`);
+        }
     }
 
     private setupMessageActions(msgEl: HTMLElement, messageId: string, originalText: string): void {
@@ -910,6 +938,30 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
             const msgEl = this.querySelector(`[data-message-id="${event.messageId}"]`);
             if (msgEl) msgEl.remove();
             this.messages = this.messages.filter(m => m.id !== event.messageId);
+        }
+    }
+
+    private handleChatClear(): void {
+        this.messages = [];
+        const messagesContainer = this.querySelector('.chat-messages');
+        if (messagesContainer) {
+            messagesContainer.innerHTML = `
+                <div class="text-center text-muted p-4">
+                    <p>Chat history cleared by NCS</p>
+                </div>
+            `;
+        }
+        this.clearPinnedBar();
+        this.updateClearButton();
+    }
+
+    private updateClearButton(): void {
+        const clearBar = this.querySelector('.chat-clear-bar') as HTMLElement;
+        if (!clearBar) return;
+        if (this.canModerate() && this.messages.length > 0) {
+            clearBar.classList.remove('d-none');
+        } else {
+            clearBar.classList.add('d-none');
         }
     }
 
