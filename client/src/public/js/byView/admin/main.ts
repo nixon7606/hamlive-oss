@@ -15,7 +15,8 @@ const API = '/api/admin';
 // id without re-interpolating strings into HTML attributes.
 let usersCache: any[] = [];
 let netsCache: any[] = [];
-let netsSortMode = 'active'; // 'active' | 'created' | 'title' | 'alpha'
+let netsSortMode = 'active'; // 'active' | field name
+let netsSortDir: 'asc' | 'desc' | null = null;
 let currentEmailRecipient = '';
 
 // User search + pagination state
@@ -175,8 +176,8 @@ async function loadNets() {
         const data = await res.json();
         const nets = data.message || [];
         netsCache = nets;
-        const sorted = sortNets(nets, netsSortMode);
-        setSortIndicator('admin-nets-tbody', netsSortMode, netsSortMode === 'active' ? null : 'asc');
+        const sorted = sortNets(nets, netsSortMode, netsSortDir);
+        setSortIndicator('admin-nets-tbody', netsSortMode, netsSortDir);
         if (sorted.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No net profiles found</td></tr>';
             return;
@@ -261,7 +262,7 @@ function sortData(data: any[], field: string, dir: 'asc' | 'desc' | null): any[]
     });
 }
 
-function sortNets(nets: any[], mode: string): any[] {
+function sortNets(nets: any[], mode: string, dir: 'asc' | 'desc' | null): any[] {
     if (mode === 'active') {
         return [...nets].sort((a, b) => {
             // Live first, then waiting, then permanent, then inactive by created
@@ -277,7 +278,7 @@ function sortNets(nets: any[], mode: string): any[] {
             return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
     }
-    return sortData(nets, mode, 'asc');
+    return sortData(nets, mode, dir || 'asc');
 }
 
 function setSortIndicator(tbodyId: string, field: string, dir: 'asc' | 'desc' | null) {
@@ -684,12 +685,18 @@ document.addEventListener('DOMContentLoaded', () => {
             usersPage = 1;
             loadUsers();
         } else if (tableId === 'admin-nets-tbody' || table.closest('#nets-panel')) {
-            const oldMode = netsSortMode;
-            netsSortMode = field;
-            // Toggle on re-click, but keep active as default reset
-            if (oldMode === field) {
-                // Re-click toggles back to 'active' default
-                netsSortMode = 'active';
+            if (netsSortMode === field) {
+                // Same field: toggle asc → desc → active
+                if (netsSortDir === 'asc') {
+                    netsSortDir = 'desc';
+                } else {
+                    netsSortMode = 'active';
+                    netsSortDir = null;
+                }
+            } else {
+                // New field: set to ascending
+                netsSortMode = field;
+                netsSortDir = 'asc';
             }
             loadNets();
         }

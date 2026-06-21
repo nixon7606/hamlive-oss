@@ -4,6 +4,7 @@ const API = '/api/admin';
 let usersCache = [];
 let netsCache = [];
 let netsSortMode = 'active';
+let netsSortDir = null;
 let currentEmailRecipient = '';
 let usersPage = 1;
 let usersSearch = '';
@@ -159,8 +160,8 @@ async function loadNets() {
         const data = await res.json();
         const nets = data.message || [];
         netsCache = nets;
-        const sorted = sortNets(nets, netsSortMode);
-        setSortIndicator('admin-nets-tbody', netsSortMode, netsSortMode === 'active' ? null : 'asc');
+        const sorted = sortNets(nets, netsSortMode, netsSortDir);
+        setSortIndicator('admin-nets-tbody', netsSortMode, netsSortDir);
         if (sorted.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No net profiles found</td></tr>';
             return;
@@ -238,7 +239,7 @@ function sortData(data, field, dir) {
         return 0;
     });
 }
-function sortNets(nets, mode) {
+function sortNets(nets, mode, dir) {
     if (mode === 'active') {
         return [...nets].sort((a, b) => {
             const aScore = a.hasLiveNet && a.liveNetStatus === 'live' ? 0
@@ -251,7 +252,7 @@ function sortNets(nets, mode) {
             return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
     }
-    return sortData(nets, mode, 'asc');
+    return sortData(nets, mode, dir || 'asc');
 }
 function setSortIndicator(tbodyId, field, dir) {
     const tbody = document.getElementById(tbodyId);
@@ -648,10 +649,18 @@ document.addEventListener('DOMContentLoaded', () => {
             usersPage = 1;
             loadUsers();
         } else if (tableId === 'admin-nets-tbody' || table.closest('#nets-panel')) {
-            const oldMode = netsSortMode;
-            netsSortMode = field;
-            if (oldMode === field) {
-                netsSortMode = 'active';
+            if (netsSortMode === field) {
+                // Same field: toggle asc → desc → active
+                if (netsSortDir === 'asc') {
+                    netsSortDir = 'desc';
+                } else {
+                    netsSortMode = 'active';
+                    netsSortDir = null;
+                }
+            } else {
+                // New field: set to ascending
+                netsSortMode = field;
+                netsSortDir = 'asc';
             }
             loadNets();
         }
