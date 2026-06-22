@@ -37,11 +37,11 @@ router.get('/dataprivacy', authCheck(REQ_LOGIN), (req, res) => {
     res.render('dataPrivacy', populate(req, res, { VIEW: 'dataPrivacy' }));
 });
 
-router.get('/favorites', authCheck(REQ_LOGIN), (req, res) => {
+router.get('/favorites', authCheck(REQ_CALLSIGN), (req, res) => {
     res.render('favorites', populate(req, res, { VIEW: 'favorites' }));
 });
 
-router.get('/dashboard', (req, res) => {
+router.get('/dashboard', authCheck(REQ_CALLSIGN), (req, res) => {
     res.render('dashboard', populate(req, res, { VIEW: 'dashboard' }));
 });
 
