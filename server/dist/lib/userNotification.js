@@ -257,9 +257,9 @@ class NetCloseReport extends EmailBase {
     #attendees;
 
     // Static async constructor
-    static async init({ netProfileDoc: { id: NPID, title, timezone }, liveNetDoc: { url, started, startedAt }, attendees }) {
+    static async init({ netProfileDoc: { id: NPID, title, schedule }, liveNetDoc: { url, started, startedAt }, attendees }) {
         // Default timezone if not set
-        const netTZ = timezone || 'America/Denver';
+        const netTZ = (schedule && schedule.timezone) || 'America/Denver';
 
         // Attempt to fetch chat log, but continue with empty log if it fails
         let chatLog = null;
@@ -316,7 +316,9 @@ class NetCloseReport extends EmailBase {
                     url: `${conf.base_url}${url}`,
                     title: title,
                     formattedAttendees: formattedAttendees,
-                    startedAtString: started ? NetCloseReport.#fmtDatetime(startedAt, netTZ) : ''
+                    startedAtString: started ? NetCloseReport.#fmtDatetime(startedAt, netTZ) : '',
+                    timezoneAbbr: new Intl.DateTimeFormat('en-US', { timeZone: netTZ, timeZoneName: 'short' })
+                        .formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || 'Local'
                 },
                 attachments: attachments
             }
