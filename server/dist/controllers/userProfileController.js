@@ -120,6 +120,13 @@ const userProfileUpdate = async (req, res) => {
                 }
             });
 
+            // Require callsign — the My Account form already enforces this via
+            // HTML required attribute, but we also enforce server-side so the API
+            // cannot be used to bypass it (e.g., curl PATCH with empty callSign).
+            if ('callSign' in updatedData && (!updatedData.callSign || updatedData.callSign.trim() === '')) {
+                throw new Error('Callsign is required');
+            }
+
             if (updatedData.callSign) {
                 updatedData.callSign = updatedData.callSign.toUpperCase();
             }
