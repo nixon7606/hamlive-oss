@@ -11,6 +11,7 @@ tinymce.init({
     toolbar: 'bullist italic',
     menubar: '',
     statusbar: false,
+    promotion: false,
     max_height: 235
 });
 
