@@ -236,15 +236,22 @@ export class NameCell extends StationTableMember {
         let el = this.defaultElement;
         while (el && el !== document.documentElement) {
             const style = getComputedStyle(el);
-            if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+            const oy = style.overflowY;
+            const ox = style.overflowX;
+            if (
+                (oy.includes('auto') || oy.includes('scroll')) ||
+                (ox.includes('auto') || ox.includes('scroll'))
+            ) {
                 scrollTarget = el;
                 break;
             }
             el = el.parentElement;
         }
         scrollTarget ??= window;
+        console.debug('[NameCell] scrollTarget:', scrollTarget);
         this.scrollDismissHandler = () => this.hideTooltip();
         scrollTarget.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+        scrollTarget.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
         this.scrollTarget = scrollTarget;
         this.clickDismissHandler = (e) => {
             if (this.defaultElement && !this.defaultElement.contains(e.target)) {
@@ -261,6 +268,7 @@ export class NameCell extends StationTableMember {
         this.hideTooltip();
         if (this.scrollDismissHandler && this.scrollTarget) {
             this.scrollTarget.removeEventListener('scroll', this.scrollDismissHandler);
+            this.scrollTarget.removeEventListener('touchmove', this.scrollDismissHandler);
             this.scrollDismissHandler = null;
         }
         this.scrollTarget = null;
