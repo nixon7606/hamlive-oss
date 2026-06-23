@@ -221,6 +221,7 @@ export class NameCell extends StationTableMember {
     private clickDismissHandler: ((e: Event) => void) | null = null;
     private _tooltipShowHandler: (() => void) | null = null;
     private tooltipVisible = false;
+    private scrollTarget: EventTarget | null = null;
 
     protected getTemplate(): string {
         return /*html*/ `
@@ -317,9 +318,26 @@ export class NameCell extends StationTableMember {
     }
 
     protected onConnected(): void {
-        // Dismiss the tooltip on scroll (mobile-friendly)
+        // Find the nearest scrollable ancestor to attach the dismiss listener.
+        // The station table lives inside a .height-40vh container with
+        // overflow-y: auto — scroll events on that container do NOT bubble
+        // to document/window on iOS, so we must listen directly on it.
+        let scrollTarget: EventTarget | null = null;
+        let el: HTMLElement | null = this.defaultElement;
+        while (el && el !== document.documentElement) {
+            const style = getComputedStyle(el);
+            if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+                scrollTarget = el;
+                break;
+            }
+            el = el.parentElement;
+        }
+        scrollTarget ??= window;
+
         this.scrollDismissHandler = () => this.hideTooltip();
-        document.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+        scrollTarget.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+        this.scrollTarget = scrollTarget;
+
         // Dismiss on any tap/click outside the name cell
         this.clickDismissHandler = (e: Event) => {
             if (this.defaultElement && !this.defaultElement.contains(e.target as Node)) {
@@ -336,10 +354,11 @@ export class NameCell extends StationTableMember {
 
     protected onDisconnected(): void {
         this.hideTooltip();
-        if (this.scrollDismissHandler) {
-            document.removeEventListener('scroll', this.scrollDismissHandler);
+        if (this.scrollDismissHandler && this.scrollTarget) {
+            this.scrollTarget.removeEventListener('scroll', this.scrollDismissHandler);
             this.scrollDismissHandler = null;
         }
+        this.scrollTarget = null;
         if (this.clickDismissHandler) {
             document.removeEventListener('click', this.clickDismissHandler);
             this.clickDismissHandler = null;
