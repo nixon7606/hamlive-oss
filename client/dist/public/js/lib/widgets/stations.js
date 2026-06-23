@@ -178,65 +178,52 @@ export class CallSignCell extends StationTableMember {
     }
 }
 export class NameCell extends StationTableMember {
-    tooltipEl = null;
+    tooltip = null;
     scrollDismissHandler = null;
-    clickDismissHandler = null;
-    _tooltipShowHandler = null;
-    tooltipVisible = false;
     scrollTarget = null;
-    windowFallbackBound = false;
-    touchStartHandler = null;
-    touchMoveDismissHandler = null;
-    touchStartX = 0;
-    touchStartY = 0;
     getTemplate() {
-        return `\n        <style>\n            #${this.defaultElementId} {\n                display: grid;\n                align-items: center;\n                justify-items: start;\n                padding: 10px;\n                /* Remaining styles by applyStyling() */\n            }\n            .namecell-tooltip {\n                position: absolute;\n                z-index: 999;\n                background-color: #333;\n                color: #fff;\n                padding: 4px 8px;\n                border-radius: 4px;\n                font-size: 0.85rem;\n                white-space: nowrap;\n                pointer-events: none;\n                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);\n                display: none;\n            }\n        </style>\n\n        <div id="${this.defaultElementId}">\n        </div>\n        `;
+        return `\n        <style>\n            #${this.defaultElementId} {\n                display: grid;\n                align-items: center;\n                justify-items: start;\n                padding: 10px;\n                /* Remaining styles by applyStyling() */\n            }\n        </style>\n\n        <div id="${this.defaultElementId}">\n        </div>\n        `;
     }
     didMyDataSegmentChange() {
         return this.haveThisStationPropertiesChanged(['location', 'displayName', 'role', 'checkedState', 'presence']);
     }
-    showTooltip() {
-        if (!this.defaultElement || this.tooltipVisible) return;
-        this.tooltipVisible = true;
-        if (!this.tooltipEl) {
-            this.tooltipEl = document.createElement('div');
-            this.tooltipEl.className = 'namecell-tooltip';
-            this.defaultElement.parentElement?.appendChild(this.tooltipEl);
+    refreshTooltip() {
+        this.cleanupTooltip();
+        if (!this.defaultElement) {
+            logger.warn(`Default element is not defined in ${this.constructor.name}, refreshTooltip()`);
+            return;
         }
-        this.tooltipEl.textContent = this.station?.location ?? '🚫';
-        const rect = this.defaultElement.getBoundingClientRect();
-        this.tooltipEl.style.left = rect.left + 'px';
-        this.tooltipEl.style.top = (rect.bottom + window.scrollY + 4) + 'px';
-        this.tooltipEl.style.display = 'block';
-    }
-    hideTooltip() {
-        if (this.tooltipEl) {
-            this.tooltipEl.style.display = 'none';
+        this.defaultElement.setAttribute('data-bs-toggle', 'tooltip');
+        this.defaultElement.setAttribute('data-bs-placement', 'left');
+        if (!this.callSign) {
+            throw new Error('Call sign is not defined in NameCell widget, refreshTooltip()');
         }
-        this.tooltipVisible = false;
-    }
-    disposeTooltip() {
-        if (this.tooltipEl) {
-            this.tooltipEl.remove();
-            this.tooltipEl = null;
-        }
-        this.tooltipVisible = false;
-        this._tooltipShowHandler = null;
+        this.defaultElement.setAttribute('title', this.station?.location ?? '🚫');
+        this.tooltip = new window.bootstrap.Tooltip(this.defaultElement);
     }
     render(onConnected) {
         if (!this.defaultElement) {
             logger.warn(`Default element is not defined in ${this.constructor.name}, render()`);
             return;
         }
-        this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
-        if (this.station) {
-            this.applyStyling(this.defaultElement, this.getStyling(this.station));
+        if (onConnected || this.haveThisStationPropertiesChanged(['location'])) {
+            this.refreshTooltip();
         }
-        if (this.tooltipVisible && this.tooltipEl) {
-            this.tooltipEl.textContent = this.station?.location ?? '🚫';
+        if (onConnected || this.haveThisStationPropertiesChanged(['displayName'])) {
+            this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
+        }
+        if (onConnected || this.haveThisStationPropertiesChanged(['role', 'checkedState', 'presence'])) {
+            if (!this.station) {
+                throw new Error('Station is null in NameCell widget, render()');
+            }
+            this.applyStyling(this.defaultElement, this.getStyling(this.station));
         }
     }
     onConnected() {
+        // Dismiss the Bootstrap tooltip when the roster scrolls. Resolve the scroll
+        // container by walking up from `this` (the host element, in the light DOM) —
+        // NOT defaultElement, whose parentElement chain can't cross the closed
+        // shadow-root boundary.
         let scrollTarget = null;
         let el = this;
         while (el && el !== document.documentElement) {
@@ -248,79 +235,32 @@ export class NameCell extends StationTableMember {
             el = el.parentElement;
         }
         scrollTarget ??= window;
-        this.scrollDismissHandler = () => this.hideTooltip();
-        scrollTarget.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
         this.scrollTarget = scrollTarget;
-        this.touchStartHandler = (e) => {
-            const t = e.touches[0];
-            this.touchStartX = t ? t.clientX : 0;
-            this.touchStartY = t ? t.clientY : 0;
-        };
-        this.touchMoveDismissHandler = (e) => {
-            const t = e.touches[0];
-            if (!t) return;
-            const dx = Math.abs(t.clientX - this.touchStartX);
-            const dy = Math.abs(t.clientY - this.touchStartY);
-            if (dx > 10 || dy > 10) {
-                this.hideTooltip();
-            }
-        };
-        document.addEventListener('touchstart', this.touchStartHandler, { passive: true });
-        scrollTarget.addEventListener('touchmove', this.touchMoveDismissHandler, { passive: true });
+        // hide() (not dispose) so the tooltip can re-open on the next tap.
+        this.scrollDismissHandler = () => this.tooltip?.hide();
+        scrollTarget.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+        scrollTarget.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
         if (scrollTarget !== window) {
             window.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
-            window.addEventListener('touchmove', this.touchMoveDismissHandler, { passive: true });
-            this.windowFallbackBound = true;
-        }
-        this.clickDismissHandler = (e) => {
-            if (!this.contains(e.target)) {
-                this.hideTooltip();
-            }
-        };
-        document.addEventListener('click', this.clickDismissHandler);
-        this._tooltipShowHandler = () => this.showTooltip();
-        if (this.defaultElement) {
-            this.defaultElement.addEventListener('click', this._tooltipShowHandler);
+            window.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
         }
     }
     onDisconnected() {
-        this.hideTooltip();
         if (this.scrollDismissHandler) {
             if (this.scrollTarget) {
                 this.scrollTarget.removeEventListener('scroll', this.scrollDismissHandler);
+                this.scrollTarget.removeEventListener('touchmove', this.scrollDismissHandler);
             }
-            if (this.windowFallbackBound) {
-                window.removeEventListener('scroll', this.scrollDismissHandler);
-            }
+            window.removeEventListener('scroll', this.scrollDismissHandler);
+            window.removeEventListener('touchmove', this.scrollDismissHandler);
             this.scrollDismissHandler = null;
         }
-        if (this.touchMoveDismissHandler) {
-            if (this.scrollTarget) {
-                this.scrollTarget.removeEventListener('touchmove', this.touchMoveDismissHandler);
-            }
-            if (this.windowFallbackBound) {
-                window.removeEventListener('touchmove', this.touchMoveDismissHandler);
-            }
-            this.touchMoveDismissHandler = null;
-        }
-        if (this.touchStartHandler) {
-            document.removeEventListener('touchstart', this.touchStartHandler);
-            this.touchStartHandler = null;
-        }
         this.scrollTarget = null;
-        this.windowFallbackBound = false;
-        if (this.clickDismissHandler) {
-            document.removeEventListener('click', this.clickDismissHandler);
-            this.clickDismissHandler = null;
-        }
-        if (this.defaultElement && this._tooltipShowHandler) {
-            this.defaultElement.removeEventListener('click', this._tooltipShowHandler);
-        }
-        this._tooltipShowHandler = null;
+        this.cleanupTooltip();
     }
-    // Kept for compatibility; delegates to disposeTooltip.
     cleanupTooltip() {
-        this.disposeTooltip();
+        this.tooltip?.dispose();
+        this.tooltip = null;
     }
     static async init(store) {
         await this.initElement('namecell', NameCell, store);

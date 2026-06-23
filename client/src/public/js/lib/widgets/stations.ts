@@ -216,17 +216,9 @@ export class CallSignCell extends StationTableMember {
 }
 
 export class NameCell extends StationTableMember {
-    private tooltipEl: HTMLElement | null = null;
+    private tooltip: bootstrap.Tooltip | null = null;
     private scrollDismissHandler: (() => void) | null = null;
-    private clickDismissHandler: ((e: Event) => void) | null = null;
-    private _tooltipShowHandler: (() => void) | null = null;
-    private tooltipVisible = false;
     private scrollTarget: EventTarget | null = null;
-    private windowFallbackBound = false;
-    private touchStartHandler: ((e: TouchEvent) => void) | null = null;
-    private touchMoveDismissHandler: ((e: TouchEvent) => void) | null = null;
-    private touchStartX = 0;
-    private touchStartY = 0;
 
     protected getTemplate(): string {
         return /*html*/ `
@@ -237,19 +229,6 @@ export class NameCell extends StationTableMember {
                 justify-items: start;
                 padding: 10px;
                 /* Remaining styles by applyStyling() */
-            }
-            .namecell-tooltip {
-                position: absolute;
-                z-index: 999;
-                background-color: #333;
-                color: #fff;
-                padding: 4px 8px;
-                border-radius: 4px;
-                font-size: 0.85rem;
-                white-space: nowrap;
-                pointer-events: none;
-                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-                display: none;
             }
         </style>
 
@@ -262,40 +241,23 @@ export class NameCell extends StationTableMember {
         return this.haveThisStationPropertiesChanged(['location', 'displayName', 'role', 'checkedState', 'presence']);
     }
 
-    private showTooltip(): void {
-        if (!this.defaultElement || this.tooltipVisible) return;
-        this.tooltipVisible = true;
+    private refreshTooltip(): void {
+        this.cleanupTooltip();
 
-        if (!this.tooltipEl) {
-            this.tooltipEl = document.createElement('div');
-            this.tooltipEl.className = 'namecell-tooltip';
-            // Insert into the same parent so scroll context is correct
-            this.defaultElement.parentElement?.appendChild(this.tooltipEl);
+        if (!this.defaultElement) {
+            logger.warn(`Default element is not defined in ${this.constructor.name}, refreshTooltip()`);
+            return;
         }
 
-        this.tooltipEl.textContent = this.station?.location ?? '🚫';
+        this.defaultElement.setAttribute('data-bs-toggle', 'tooltip');
+        this.defaultElement.setAttribute('data-bs-placement', 'left');
 
-        // Position below the name cell using viewport coords
-        const rect = this.defaultElement.getBoundingClientRect();
-        this.tooltipEl.style.left = rect.left + 'px';
-        this.tooltipEl.style.top = (rect.bottom + window.scrollY + 4) + 'px';
-        this.tooltipEl.style.display = 'block';
-    }
-
-    private hideTooltip(): void {
-        if (this.tooltipEl) {
-            this.tooltipEl.style.display = 'none';
+        if (!this.callSign) {
+            throw new Error('Call sign is not defined in NameCell widget, refreshTooltip()');
         }
-        this.tooltipVisible = false;
-    }
 
-    private disposeTooltip(): void {
-        if (this.tooltipEl) {
-            this.tooltipEl.remove();
-            this.tooltipEl = null;
-        }
-        this.tooltipVisible = false;
-        this._tooltipShowHandler = null;
+        this.defaultElement.setAttribute('title', this.station?.location ?? '🚫');
+        this.tooltip = new window.bootstrap.Tooltip(this.defaultElement);
     }
 
     protected render(onConnected: boolean): void {
@@ -304,35 +266,37 @@ export class NameCell extends StationTableMember {
             return;
         }
 
-        // The name and styling are cheap, idempotent writes, so paint them from the
-        // current station on EVERY render. A cell rebuilt while the store already
-        // holds data connects via render(false) (not render(true), see base
-        // connectedCallback), so gating these writes on a per-cycle "displayName
-        // changed" flag left freshly-rebuilt cells blank until the name happened to
-        // change — the roster "all names vanish on update" bug. Writing
-        // unconditionally makes the cell a pure function of current state.
-        this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
-        if (this.station) {
-            this.applyStyling(this.defaultElement, this.getStyling(this.station));
+        // This widget will be disconnected and reconnected every time a station row is recreated.
+        // Therefore, many of the conditionals below need to be executed "onConnected".
+        // This is more about handling the widget's lifecycle during subsequent create/destroy cycles
+        // rather than the initial page load.
+
+        // Handle location change
+        if (onConnected || this.haveThisStationPropertiesChanged(['location'])) {
+            this.refreshTooltip();
         }
 
-        // Update tooltip content if visible (location may have changed)
-        if (this.tooltipVisible && this.tooltipEl) {
-            this.tooltipEl.textContent = this.station?.location ?? '🚫';
+        // Handle display name change
+        if (onConnected || this.haveThisStationPropertiesChanged(['displayName'])) {
+            this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
+        }
+
+        // Handle styling for role, checkedState, and presence changes
+        if (onConnected || this.haveThisStationPropertiesChanged(['role', 'checkedState', 'presence'])) {
+            if (!this.station) {
+                throw new Error('Station is null in NameCell widget, render()');
+            }
+
+            this.applyStyling(this.defaultElement, this.getStyling(this.station));
         }
     }
 
     protected onConnected(): void {
-        // Resolve the scroll container that should dismiss the tooltip.
-        //
-        // CRITICAL: `this.defaultElement` lives inside this component's CLOSED
-        // shadow root. Walking up its `.parentElement` chain never escapes the
-        // shadow boundary (a shadow root has no parentElement), so the old walk
-        // always hit null and fell back to `window` on every platform — which is
-        // why scroll-to-dismiss never fired on the real `.height-40vh` scroller.
-        //
-        // `this` (the <hl-namecell> custom element host) IS in the light DOM, so
-        // we walk up from the host to find the nearest vertical scroll ancestor.
+        // Dismiss the Bootstrap tooltip when the roster scrolls. The roster lives
+        // inside a .height-40vh container (overflow-y: auto). Because this widget
+        // uses a CLOSED shadow root, we resolve the scroll container by walking up
+        // from `this` (the host element, which IS in the light DOM) — NOT from
+        // defaultElement, whose parentElement chain can't cross the shadow boundary.
         let scrollTarget: EventTarget | null = null;
         let el: HTMLElement | null = this as unknown as HTMLElement;
         while (el && el !== document.documentElement) {
@@ -344,102 +308,36 @@ export class NameCell extends StationTableMember {
             el = el.parentElement;
         }
         scrollTarget ??= window;
-
-        // Dismiss on scroll of the resolved container.
-        this.scrollDismissHandler = () => this.hideTooltip();
-        scrollTarget.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
         this.scrollTarget = scrollTarget;
 
-        // iOS Safari/Chrome do not reliably fire 'scroll' during an active touch
-        // drag, so we also watch touchmove. BUT a plain tap also fires touchmove
-        // with sub-pixel jitter — if we dismissed on any touchmove, the tooltip
-        // would vanish on the very tap that opened it (the Chrome-mobile bug).
-        // Only dismiss once the finger has actually MOVED past a threshold, which
-        // distinguishes a scroll drag from a tap.
-        this.touchStartHandler = (e: TouchEvent) => {
-            const t = e.touches[0];
-            this.touchStartX = t ? t.clientX : 0;
-            this.touchStartY = t ? t.clientY : 0;
-        };
-        this.touchMoveDismissHandler = (e: TouchEvent) => {
-            const t = e.touches[0];
-            if (!t) return;
-            const dx = Math.abs(t.clientX - this.touchStartX);
-            const dy = Math.abs(t.clientY - this.touchStartY);
-            if (dx > 10 || dy > 10) {
-                this.hideTooltip();
-            }
-        };
-        document.addEventListener('touchstart', this.touchStartHandler, { passive: true });
-        scrollTarget.addEventListener('touchmove', this.touchMoveDismissHandler, { passive: true });
-
-        // Belt-and-suspenders: also dismiss on window scroll/touchmove in case the
-        // resolved container is ever wrong. Skip if the target already IS window
-        // (no double-binding). Tracked separately so cleanup removes exactly what
-        // it added.
+        // hide() (not dispose) so the tooltip can re-open on the next tap.
+        this.scrollDismissHandler = () => this.tooltip?.hide();
+        scrollTarget.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+        // iOS does not fire 'scroll' during an active touch drag; touchmove does.
+        scrollTarget.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
         if (scrollTarget !== window) {
             window.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
-            window.addEventListener('touchmove', this.touchMoveDismissHandler, { passive: true });
-            this.windowFallbackBound = true;
-        }
-
-        // Dismiss on any tap/click outside the name cell. Compare against the host
-        // element (this), not defaultElement: defaultElement is inside the closed
-        // shadow root, so event retargeting makes e.target the host — contains()
-        // on the inner div would be false even for taps ON our own cell, dismissing
-        // the tooltip on the same tap that opened it.
-        this.clickDismissHandler = (e: Event) => {
-            if (!this.contains(e.target as Node)) {
-                this.hideTooltip();
-            }
-        };
-        document.addEventListener('click', this.clickDismissHandler);
-        // Show tooltip on click/tap of the name cell
-        this._tooltipShowHandler = () => this.showTooltip();
-        if (this.defaultElement) {
-            this.defaultElement.addEventListener('click', this._tooltipShowHandler);
+            window.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
         }
     }
 
     protected onDisconnected(): void {
-        this.hideTooltip();
         if (this.scrollDismissHandler) {
             if (this.scrollTarget) {
                 this.scrollTarget.removeEventListener('scroll', this.scrollDismissHandler);
+                this.scrollTarget.removeEventListener('touchmove', this.scrollDismissHandler);
             }
-            if (this.windowFallbackBound) {
-                window.removeEventListener('scroll', this.scrollDismissHandler);
-            }
+            window.removeEventListener('scroll', this.scrollDismissHandler);
+            window.removeEventListener('touchmove', this.scrollDismissHandler);
             this.scrollDismissHandler = null;
         }
-        if (this.touchMoveDismissHandler) {
-            if (this.scrollTarget) {
-                this.scrollTarget.removeEventListener('touchmove', this.touchMoveDismissHandler);
-            }
-            if (this.windowFallbackBound) {
-                window.removeEventListener('touchmove', this.touchMoveDismissHandler);
-            }
-            this.touchMoveDismissHandler = null;
-        }
-        if (this.touchStartHandler) {
-            document.removeEventListener('touchstart', this.touchStartHandler);
-            this.touchStartHandler = null;
-        }
         this.scrollTarget = null;
-        this.windowFallbackBound = false;
-        if (this.clickDismissHandler) {
-            document.removeEventListener('click', this.clickDismissHandler);
-            this.clickDismissHandler = null;
-        }
-        if (this.defaultElement && this._tooltipShowHandler) {
-            this.defaultElement.removeEventListener('click', this._tooltipShowHandler);
-        }
-        this._tooltipShowHandler = null;
+        this.cleanupTooltip();
     }
 
-    // Kept for compatibility; delegates to disposeTooltip.
     private cleanupTooltip(): void {
-        this.disposeTooltip();
+        this.tooltip?.dispose();
+        this.tooltip = null;
     }
 
     public static async init(store: LiveNetReactiveStore): Promise<void> {
