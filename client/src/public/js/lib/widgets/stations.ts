@@ -290,13 +290,13 @@ export class NameCell extends StationTableMember {
         // do not auto-dismiss on mobile, so the city/state tooltip would
         // persist indefinitely during scroll.
         this.scrollDismissHandler = () => this.tooltip?.hide();
-        document.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+        window.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
     }
 
     protected onDisconnected(): void {
         this.cleanupTooltip();
         if (this.scrollDismissHandler) {
-            document.removeEventListener('scroll', this.scrollDismissHandler);
+            window.removeEventListener('scroll', this.scrollDismissHandler);
             this.scrollDismissHandler = null;
         }
     }
