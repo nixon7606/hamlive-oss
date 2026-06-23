@@ -222,6 +222,7 @@ export class NameCell extends StationTableMember {
     private _tooltipShowHandler: (() => void) | null = null;
     private tooltipVisible = false;
     private scrollTarget: EventTarget | null = null;
+    private windowFallbackBound = false;
 
     protected getTemplate(): string {
         return /*html*/ `
@@ -347,6 +348,16 @@ export class NameCell extends StationTableMember {
         scrollTarget.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
         this.scrollTarget = scrollTarget;
 
+        // Belt-and-suspenders: also dismiss on window scroll/touchmove in case the
+        // resolved container is ever wrong. Skip if the target already IS window
+        // (no double-binding). Tracked separately so cleanup removes exactly what
+        // it added.
+        if (scrollTarget !== window) {
+            window.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+            window.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
+            this.windowFallbackBound = true;
+        }
+
         // Dismiss on any tap/click outside the name cell
         this.clickDismissHandler = (e: Event) => {
             if (this.defaultElement && !this.defaultElement.contains(e.target as Node)) {
@@ -363,12 +374,19 @@ export class NameCell extends StationTableMember {
 
     protected onDisconnected(): void {
         this.hideTooltip();
-        if (this.scrollDismissHandler && this.scrollTarget) {
-            this.scrollTarget.removeEventListener('scroll', this.scrollDismissHandler);
-            this.scrollTarget.removeEventListener('touchmove', this.scrollDismissHandler);
+        if (this.scrollDismissHandler) {
+            if (this.scrollTarget) {
+                this.scrollTarget.removeEventListener('scroll', this.scrollDismissHandler);
+                this.scrollTarget.removeEventListener('touchmove', this.scrollDismissHandler);
+            }
+            if (this.windowFallbackBound) {
+                window.removeEventListener('scroll', this.scrollDismissHandler);
+                window.removeEventListener('touchmove', this.scrollDismissHandler);
+            }
             this.scrollDismissHandler = null;
         }
         this.scrollTarget = null;
+        this.windowFallbackBound = false;
         if (this.clickDismissHandler) {
             document.removeEventListener('click', this.clickDismissHandler);
             this.clickDismissHandler = null;

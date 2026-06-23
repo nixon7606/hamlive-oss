@@ -184,6 +184,7 @@ export class NameCell extends StationTableMember {
     _tooltipShowHandler = null;
     tooltipVisible = false;
     scrollTarget = null;
+    windowFallbackBound = false;
     getTemplate() {
         return `\n        <style>\n            #${this.defaultElementId} {\n                display: grid;\n                align-items: center;\n                justify-items: start;\n                padding: 10px;\n                /* Remaining styles by applyStyling() */\n            }\n            .namecell-tooltip {\n                position: absolute;\n                z-index: 999;\n                background-color: #333;\n                color: #fff;\n                padding: 4px 8px;\n                border-radius: 4px;\n                font-size: 0.85rem;\n                white-space: nowrap;\n                pointer-events: none;\n                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);\n                display: none;\n            }\n        </style>\n\n        <div id="${this.defaultElementId}">\n        </div>\n        `;
     }
@@ -247,6 +248,11 @@ export class NameCell extends StationTableMember {
         scrollTarget.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
         scrollTarget.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
         this.scrollTarget = scrollTarget;
+        if (scrollTarget !== window) {
+            window.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+            window.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
+            this.windowFallbackBound = true;
+        }
         this.clickDismissHandler = (e) => {
             if (this.defaultElement && !this.defaultElement.contains(e.target)) {
                 this.hideTooltip();
@@ -260,12 +266,19 @@ export class NameCell extends StationTableMember {
     }
     onDisconnected() {
         this.hideTooltip();
-        if (this.scrollDismissHandler && this.scrollTarget) {
-            this.scrollTarget.removeEventListener('scroll', this.scrollDismissHandler);
-            this.scrollTarget.removeEventListener('touchmove', this.scrollDismissHandler);
+        if (this.scrollDismissHandler) {
+            if (this.scrollTarget) {
+                this.scrollTarget.removeEventListener('scroll', this.scrollDismissHandler);
+                this.scrollTarget.removeEventListener('touchmove', this.scrollDismissHandler);
+            }
+            if (this.windowFallbackBound) {
+                window.removeEventListener('scroll', this.scrollDismissHandler);
+                window.removeEventListener('touchmove', this.scrollDismissHandler);
+            }
             this.scrollDismissHandler = null;
         }
         this.scrollTarget = null;
+        this.windowFallbackBound = false;
         if (this.clickDismissHandler) {
             document.removeEventListener('click', this.clickDismissHandler);
             this.clickDismissHandler = null;
