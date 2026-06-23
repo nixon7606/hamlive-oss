@@ -327,11 +327,7 @@ export class NameCell extends StationTableMember {
         while (el && el !== document.documentElement) {
             const style = getComputedStyle(el);
             const oy = style.overflowY;
-            const ox = style.overflowX;
-            if (
-                (oy.includes('auto') || oy.includes('scroll')) ||
-                (ox.includes('auto') || ox.includes('scroll'))
-            ) {
+            if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') {
                 scrollTarget = el;
                 break;
             }
