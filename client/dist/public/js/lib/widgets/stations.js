@@ -180,6 +180,7 @@ export class CallSignCell extends StationTableMember {
 export class NameCell extends StationTableMember {
     tooltip = null;
     scrollDismissHandler = null;
+    _tooltipShowHandler = null;
     getTemplate() {
         return `
         <style>
@@ -205,13 +206,16 @@ export class NameCell extends StationTableMember {
             logger.warn(`Default element is not defined in ${this.constructor.name}, refreshTooltip()`);
             return;
         }
-        this.defaultElement.setAttribute('data-bs-toggle', 'tooltip');
-        this.defaultElement.setAttribute('data-bs-placement', 'left');
         if (!this.callSign) {
             throw new Error('Call sign is not defined in NameCell widget, refreshTooltip()');
         }
-        this.defaultElement.setAttribute('title', this.station?.location ?? '🚫');
-        this.tooltip = new window.bootstrap.Tooltip(this.defaultElement);
+        this.tooltip = new window.bootstrap.Tooltip(this.defaultElement, {
+            title: this.station?.location ?? '🚫',
+            placement: 'left',
+            trigger: 'manual'
+        });
+        this._tooltipShowHandler = () => this.tooltip?.show();
+        this.defaultElement.addEventListener('click', this._tooltipShowHandler);
     }
     render(onConnected) {
         if (!this.defaultElement) {
@@ -229,17 +233,23 @@ export class NameCell extends StationTableMember {
     onConnected() {
         this.scrollDismissHandler = () => this.tooltip?.hide();
         window.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+        window.addEventListener('touchstart', this.scrollDismissHandler, { passive: true });
     }
     onDisconnected() {
         this.cleanupTooltip();
         if (this.scrollDismissHandler) {
             window.removeEventListener('scroll', this.scrollDismissHandler);
+            window.removeEventListener('touchstart', this.scrollDismissHandler);
             this.scrollDismissHandler = null;
         }
     }
     cleanupTooltip() {
         this.tooltip?.dispose();
         this.tooltip = null;
+        if (this.defaultElement && this._tooltipShowHandler) {
+            this.defaultElement.removeEventListener('click', this._tooltipShowHandler);
+            this._tooltipShowHandler = null;
+        }
     }
     static async init(store) {
         await this.initElement('namecell', NameCell, store);
