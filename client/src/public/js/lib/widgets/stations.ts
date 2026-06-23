@@ -223,6 +223,10 @@ export class NameCell extends StationTableMember {
     private tooltipVisible = false;
     private scrollTarget: EventTarget | null = null;
     private windowFallbackBound = false;
+    private touchStartHandler: ((e: TouchEvent) => void) | null = null;
+    private touchMoveDismissHandler: ((e: TouchEvent) => void) | null = null;
+    private touchStartX = 0;
+    private touchStartY = 0;
 
     protected getTemplate(): string {
         return /*html*/ `
@@ -341,12 +345,33 @@ export class NameCell extends StationTableMember {
         }
         scrollTarget ??= window;
 
+        // Dismiss on scroll of the resolved container.
         this.scrollDismissHandler = () => this.hideTooltip();
         scrollTarget.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
-        // iOS Safari does not reliably fire 'scroll' during an active touch drag.
-        // 'touchmove' fires continuously while the user drags their finger.
-        scrollTarget.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
         this.scrollTarget = scrollTarget;
+
+        // iOS Safari/Chrome do not reliably fire 'scroll' during an active touch
+        // drag, so we also watch touchmove. BUT a plain tap also fires touchmove
+        // with sub-pixel jitter — if we dismissed on any touchmove, the tooltip
+        // would vanish on the very tap that opened it (the Chrome-mobile bug).
+        // Only dismiss once the finger has actually MOVED past a threshold, which
+        // distinguishes a scroll drag from a tap.
+        this.touchStartHandler = (e: TouchEvent) => {
+            const t = e.touches[0];
+            this.touchStartX = t ? t.clientX : 0;
+            this.touchStartY = t ? t.clientY : 0;
+        };
+        this.touchMoveDismissHandler = (e: TouchEvent) => {
+            const t = e.touches[0];
+            if (!t) return;
+            const dx = Math.abs(t.clientX - this.touchStartX);
+            const dy = Math.abs(t.clientY - this.touchStartY);
+            if (dx > 10 || dy > 10) {
+                this.hideTooltip();
+            }
+        };
+        document.addEventListener('touchstart', this.touchStartHandler, { passive: true });
+        scrollTarget.addEventListener('touchmove', this.touchMoveDismissHandler, { passive: true });
 
         // Belt-and-suspenders: also dismiss on window scroll/touchmove in case the
         // resolved container is ever wrong. Skip if the target already IS window
@@ -354,13 +379,17 @@ export class NameCell extends StationTableMember {
         // it added.
         if (scrollTarget !== window) {
             window.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
-            window.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
+            window.addEventListener('touchmove', this.touchMoveDismissHandler, { passive: true });
             this.windowFallbackBound = true;
         }
 
-        // Dismiss on any tap/click outside the name cell
+        // Dismiss on any tap/click outside the name cell. Compare against the host
+        // element (this), not defaultElement: defaultElement is inside the closed
+        // shadow root, so event retargeting makes e.target the host — contains()
+        // on the inner div would be false even for taps ON our own cell, dismissing
+        // the tooltip on the same tap that opened it.
         this.clickDismissHandler = (e: Event) => {
-            if (this.defaultElement && !this.defaultElement.contains(e.target as Node)) {
+            if (!this.contains(e.target as Node)) {
                 this.hideTooltip();
             }
         };
@@ -377,13 +406,24 @@ export class NameCell extends StationTableMember {
         if (this.scrollDismissHandler) {
             if (this.scrollTarget) {
                 this.scrollTarget.removeEventListener('scroll', this.scrollDismissHandler);
-                this.scrollTarget.removeEventListener('touchmove', this.scrollDismissHandler);
             }
             if (this.windowFallbackBound) {
                 window.removeEventListener('scroll', this.scrollDismissHandler);
-                window.removeEventListener('touchmove', this.scrollDismissHandler);
             }
             this.scrollDismissHandler = null;
+        }
+        if (this.touchMoveDismissHandler) {
+            if (this.scrollTarget) {
+                this.scrollTarget.removeEventListener('touchmove', this.touchMoveDismissHandler);
+            }
+            if (this.windowFallbackBound) {
+                window.removeEventListener('touchmove', this.touchMoveDismissHandler);
+            }
+            this.touchMoveDismissHandler = null;
+        }
+        if (this.touchStartHandler) {
+            document.removeEventListener('touchstart', this.touchStartHandler);
+            this.touchStartHandler = null;
         }
         this.scrollTarget = null;
         this.windowFallbackBound = false;

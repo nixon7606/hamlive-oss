@@ -185,6 +185,10 @@ export class NameCell extends StationTableMember {
     tooltipVisible = false;
     scrollTarget = null;
     windowFallbackBound = false;
+    touchStartHandler = null;
+    touchMoveDismissHandler = null;
+    touchStartX = 0;
+    touchStartY = 0;
     getTemplate() {
         return `\n        <style>\n            #${this.defaultElementId} {\n                display: grid;\n                align-items: center;\n                justify-items: start;\n                padding: 10px;\n                /* Remaining styles by applyStyling() */\n            }\n            .namecell-tooltip {\n                position: absolute;\n                z-index: 999;\n                background-color: #333;\n                color: #fff;\n                padding: 4px 8px;\n                border-radius: 4px;\n                font-size: 0.85rem;\n                white-space: nowrap;\n                pointer-events: none;\n                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);\n                display: none;\n            }\n        </style>\n\n        <div id="${this.defaultElementId}">\n        </div>\n        `;
     }
@@ -246,15 +250,30 @@ export class NameCell extends StationTableMember {
         scrollTarget ??= window;
         this.scrollDismissHandler = () => this.hideTooltip();
         scrollTarget.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
-        scrollTarget.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
         this.scrollTarget = scrollTarget;
+        this.touchStartHandler = (e) => {
+            const t = e.touches[0];
+            this.touchStartX = t ? t.clientX : 0;
+            this.touchStartY = t ? t.clientY : 0;
+        };
+        this.touchMoveDismissHandler = (e) => {
+            const t = e.touches[0];
+            if (!t) return;
+            const dx = Math.abs(t.clientX - this.touchStartX);
+            const dy = Math.abs(t.clientY - this.touchStartY);
+            if (dx > 10 || dy > 10) {
+                this.hideTooltip();
+            }
+        };
+        document.addEventListener('touchstart', this.touchStartHandler, { passive: true });
+        scrollTarget.addEventListener('touchmove', this.touchMoveDismissHandler, { passive: true });
         if (scrollTarget !== window) {
             window.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
-            window.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });
+            window.addEventListener('touchmove', this.touchMoveDismissHandler, { passive: true });
             this.windowFallbackBound = true;
         }
         this.clickDismissHandler = (e) => {
-            if (this.defaultElement && !this.defaultElement.contains(e.target)) {
+            if (!this.contains(e.target)) {
                 this.hideTooltip();
             }
         };
@@ -269,13 +288,24 @@ export class NameCell extends StationTableMember {
         if (this.scrollDismissHandler) {
             if (this.scrollTarget) {
                 this.scrollTarget.removeEventListener('scroll', this.scrollDismissHandler);
-                this.scrollTarget.removeEventListener('touchmove', this.scrollDismissHandler);
             }
             if (this.windowFallbackBound) {
                 window.removeEventListener('scroll', this.scrollDismissHandler);
-                window.removeEventListener('touchmove', this.scrollDismissHandler);
             }
             this.scrollDismissHandler = null;
+        }
+        if (this.touchMoveDismissHandler) {
+            if (this.scrollTarget) {
+                this.scrollTarget.removeEventListener('touchmove', this.touchMoveDismissHandler);
+            }
+            if (this.windowFallbackBound) {
+                window.removeEventListener('touchmove', this.touchMoveDismissHandler);
+            }
+            this.touchMoveDismissHandler = null;
+        }
+        if (this.touchStartHandler) {
+            document.removeEventListener('touchstart', this.touchStartHandler);
+            this.touchStartHandler = null;
         }
         this.scrollTarget = null;
         this.windowFallbackBound = false;
