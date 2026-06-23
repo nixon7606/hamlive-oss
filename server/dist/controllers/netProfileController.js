@@ -29,7 +29,7 @@ function buildAndValidateSchedule(input) {
         dayOfWeek: s.dayOfWeek,
         hour: s.hour,
         minute: s.minute,
-        timezone: s.timezone || 'America/Denver',
+        timezone: s.timezone || 'UTC',
         notifyBeforeMinutes: s.notifyBeforeMinutes || 15,
         enabled: s.enabled !== false
     };

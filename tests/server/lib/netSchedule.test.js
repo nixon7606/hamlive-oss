@@ -6,7 +6,7 @@ test('returns undefined for no input', () => {
 });
 test('normalizes a valid schedule with defaults', () => {
   const out = buildAndValidateSchedule({ dayOfWeek: 2, hour: 19, minute: 30, enabled: true });
-  expect(out).toMatchObject({ dayOfWeek: 2, hour: 19, minute: 30, timezone: 'America/Denver', notifyBeforeMinutes: 15, enabled: true });
+  expect(out).toMatchObject({ dayOfWeek: 2, hour: 19, minute: 30, timezone: 'UTC', notifyBeforeMinutes: 15, enabled: true });
 });
 test('rejects out-of-range dayOfWeek', () => {
   expect(() => buildAndValidateSchedule({ dayOfWeek: 9, hour: 1, minute: 1 })).toThrow(/dayOfWeek/);

@@ -96,7 +96,7 @@ async function checkScheduledNets() {
  * notifyMin defaults to 0, which preserves the original "fire at start" behavior.
  */
 function isTimeMatch(now, sched, notifyMin = 0) {
-    const tz = sched.timezone || 'America/Denver';
+    const tz = sched.timezone || 'UTC';
     try {
         const effective = new Date(now.getTime() + (notifyMin || 0) * 60000);
         const formatter = new Intl.DateTimeFormat('en-CA', {

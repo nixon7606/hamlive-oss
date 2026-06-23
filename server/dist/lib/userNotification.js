@@ -259,7 +259,7 @@ class NetCloseReport extends EmailBase {
     // Static async constructor
     static async init({ netProfileDoc: { id: NPID, title, schedule }, liveNetDoc: { url, started, startedAt }, attendees }) {
         // Default timezone if not set
-        const netTZ = (schedule && schedule.timezone) || 'America/Denver';
+        const netTZ = (schedule && schedule.timezone) || 'UTC';
 
         // Attempt to fetch chat log, but continue with empty log if it fails
         let chatLog = null;

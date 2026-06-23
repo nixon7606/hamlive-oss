@@ -251,7 +251,7 @@ window.netProfileEditByID = async function (id) {
             document.getElementById('input_schedule_time').value =
                 `${String(sched.hour).padStart(2, '0')}:${String(sched.minute).padStart(2, '0')}`;
         }
-        document.getElementById('input_schedule_tz').value = sched.timezone || 'America/Denver';
+        document.getElementById('input_schedule_tz').value = sched.timezone || 'UTC';
         document.getElementById('input_schedule_notify').value = String(sched.notifyBeforeMinutes ?? 30);
     }
     else {

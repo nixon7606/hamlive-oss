@@ -329,7 +329,7 @@ function refreshNetList() {
             (document.getElementById('input_schedule_time') as HTMLInputElement).value =
                 `${String(sched.hour).padStart(2, '0')}:${String(sched.minute).padStart(2, '0')}`;
         }
-        (document.getElementById('input_schedule_tz') as HTMLSelectElement).value = sched.timezone || 'America/Denver';
+        (document.getElementById('input_schedule_tz') as HTMLSelectElement).value = sched.timezone || 'UTC';
         (document.getElementById('input_schedule_notify') as HTMLInputElement).value = String(sched.notifyBeforeMinutes ?? 30);
     } else {
         schedEnabledEl.checked = false;

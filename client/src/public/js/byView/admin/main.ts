@@ -548,7 +548,7 @@ async function manageSchedule(id: string, title: string) {
         if (s.hour !== undefined && s.minute !== undefined) {
             (document.getElementById('sched-time') as HTMLInputElement).value = `${String(s.hour).padStart(2,'0')}:${String(s.minute).padStart(2,'0')}`;
         }
-        (document.getElementById('sched-tz') as HTMLSelectElement).value = s.timezone || 'America/Denver';
+        (document.getElementById('sched-tz') as HTMLSelectElement).value = s.timezone || 'UTC';
         document.getElementById('sched-status')!.textContent = s.enabled ? 'Active' : 'Disabled';
         document.getElementById('sched-status')!.className = s.enabled ? 'text-success' : 'text-muted';
     } catch (err) {
