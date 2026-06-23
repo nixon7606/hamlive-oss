@@ -319,7 +319,7 @@ export class NameCell extends StationTableMember {
     protected onConnected(): void {
         // Dismiss the tooltip on scroll (mobile-friendly)
         this.scrollDismissHandler = () => this.hideTooltip();
-        window.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+        document.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
         // Dismiss on any tap/click outside the name cell
         this.clickDismissHandler = (e: Event) => {
             if (this.defaultElement && !this.defaultElement.contains(e.target as Node)) {
@@ -337,7 +337,7 @@ export class NameCell extends StationTableMember {
     protected onDisconnected(): void {
         this.hideTooltip();
         if (this.scrollDismissHandler) {
-            window.removeEventListener('scroll', this.scrollDismissHandler);
+            document.removeEventListener('scroll', this.scrollDismissHandler);
             this.scrollDismissHandler = null;
         }
         if (this.clickDismissHandler) {

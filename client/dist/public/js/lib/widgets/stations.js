@@ -232,7 +232,7 @@ export class NameCell extends StationTableMember {
     }
     onConnected() {
         this.scrollDismissHandler = () => this.hideTooltip();
-        window.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+        document.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
         this.clickDismissHandler = (e) => {
             if (this.defaultElement && !this.defaultElement.contains(e.target)) {
                 this.hideTooltip();
@@ -247,7 +247,7 @@ export class NameCell extends StationTableMember {
     onDisconnected() {
         this.hideTooltip();
         if (this.scrollDismissHandler) {
-            window.removeEventListener('scroll', this.scrollDismissHandler);
+            document.removeEventListener('scroll', this.scrollDismissHandler);
             this.scrollDismissHandler = null;
         }
         if (this.clickDismissHandler) {
