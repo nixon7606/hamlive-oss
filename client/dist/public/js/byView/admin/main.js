@@ -495,6 +495,7 @@ async function manageSchedule(id, title) {
         if (s.hour !== undefined && s.minute !== undefined) {
             document.getElementById('sched-time').value = `${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}`;
         }
+        document.getElementById('sched-tz').value = s.timezone || 'America/Denver';
         document.getElementById('sched-status').textContent = s.enabled ? 'Active' : 'Disabled';
         document.getElementById('sched-status').className = s.enabled ? 'text-success' : 'text-muted';
     }
@@ -523,7 +524,8 @@ document.getElementById('sched-save-btn')?.addEventListener('click', async () =>
                     enabled,
                     dayOfWeek: parseInt(document.getElementById('sched-day').value, 10),
                     hour,
-                    minute
+                    minute,
+                    timezone: document.getElementById('sched-tz').value
                 }
             })
         });

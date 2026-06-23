@@ -362,9 +362,10 @@ function np_submitHandler(e: Event) {
         modeDetails: formDataToSend.get('modedetails') as string
     };
 
-    const schedEnabled = (document.getElementById('input_schedule_enabled') as HTMLInputElement).checked;
-    let schedule: any = { enabled: false };
-    if (schedEnabled) {
+    const schedEnabled = document.getElementById('input_schedule_enabled').checked;
+        const tz = document.getElementById('input_schedule_tz').value;
+        let schedule = { enabled: false, timezone: tz };
+        if (schedEnabled) {
         const timeVal = (document.getElementById('input_schedule_time') as HTMLInputElement).value;
         let hour = 0, minute = 0;
         if (timeVal) { const p = timeVal.split(':'); hour = parseInt(p[0], 10); minute = parseInt(p[1], 10); }

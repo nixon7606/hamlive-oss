@@ -290,6 +290,18 @@
             <label class="form-label small">Time</label>
             <input type="time" class="form-control" id="sched-time">
           </div>
+          <div class="mb-2">
+            <label class="form-label small">Timezone</label>
+            <select class="form-control" id="sched-tz">
+              <option value="America/New_York">Eastern</option>
+              <option value="America/Chicago">Central</option>
+              <option value="America/Denver" selected>Mountain</option>
+              <option value="America/Los_Angeles">Pacific</option>
+              <option value="America/Anchorage">Alaska</option>
+              <option value="Pacific/Honolulu">Hawaii</option>
+              <option value="UTC">UTC</option>
+            </select>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
