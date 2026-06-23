@@ -318,15 +318,20 @@ export class NameCell extends StationTableMember {
     }
 
     protected onConnected(): void {
-        // Find the nearest scrollable ancestor to attach the dismiss listener.
-        // The station table lives inside a .height-40vh container with
-        // overflow-y: auto — scroll events on that container do NOT bubble
-        // to document/window on iOS, so we must listen directly on it.
+        // Resolve the scroll container that should dismiss the tooltip.
+        //
+        // CRITICAL: `this.defaultElement` lives inside this component's CLOSED
+        // shadow root. Walking up its `.parentElement` chain never escapes the
+        // shadow boundary (a shadow root has no parentElement), so the old walk
+        // always hit null and fell back to `window` on every platform — which is
+        // why scroll-to-dismiss never fired on the real `.height-40vh` scroller.
+        //
+        // `this` (the <hl-namecell> custom element host) IS in the light DOM, so
+        // we walk up from the host to find the nearest vertical scroll ancestor.
         let scrollTarget: EventTarget | null = null;
-        let el: HTMLElement | null = this.defaultElement;
+        let el: HTMLElement | null = this as unknown as HTMLElement;
         while (el && el !== document.documentElement) {
-            const style = getComputedStyle(el);
-            const oy = style.overflowY;
+            const oy = getComputedStyle(el).overflowY;
             if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') {
                 scrollTarget = el;
                 break;
