@@ -334,7 +334,6 @@ export class NameCell extends StationTableMember {
             el = el.parentElement;
         }
         scrollTarget ??= window;
-        console.debug(`[NameCell] scrollTarget:`, scrollTarget);
 
         this.scrollDismissHandler = () => this.hideTooltip();
         scrollTarget.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
