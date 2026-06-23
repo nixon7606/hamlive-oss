@@ -216,9 +216,11 @@ export class CallSignCell extends StationTableMember {
 }
 
 export class NameCell extends StationTableMember {
-    private tooltip: bootstrap.Tooltip | null = null;
+    private tooltipEl: HTMLElement | null = null;
     private scrollDismissHandler: (() => void) | null = null;
+    private clickDismissHandler: ((e: Event) => void) | null = null;
     private _tooltipShowHandler: (() => void) | null = null;
+    private tooltipVisible = false;
 
     protected getTemplate(): string {
         return /*html*/ `
@@ -229,6 +231,19 @@ export class NameCell extends StationTableMember {
                 justify-items: start;
                 padding: 10px;
                 /* Remaining styles by applyStyling() */
+            }
+            .namecell-tooltip {
+                position: absolute;
+                z-index: 999;
+                background-color: #333;
+                color: #fff;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 0.85rem;
+                white-space: nowrap;
+                pointer-events: none;
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+                display: none;
             }
         </style>
 
@@ -241,26 +256,40 @@ export class NameCell extends StationTableMember {
         return this.haveThisStationPropertiesChanged(['location', 'displayName', 'role', 'checkedState', 'presence']);
     }
 
-    private refreshTooltip(): void {
-        this.cleanupTooltip();
+    private showTooltip(): void {
+        if (!this.defaultElement || this.tooltipVisible) return;
+        this.tooltipVisible = true;
 
-        if (!this.defaultElement) {
-            logger.warn(`Default element is not defined in ${this.constructor.name}, refreshTooltip()`);
-            return;
+        if (!this.tooltipEl) {
+            this.tooltipEl = document.createElement('div');
+            this.tooltipEl.className = 'namecell-tooltip';
+            // Insert into the same parent so scroll context is correct
+            this.defaultElement.parentElement?.appendChild(this.tooltipEl);
         }
 
-        if (!this.callSign) {
-            throw new Error('Call sign is not defined in NameCell widget, refreshTooltip()');
+        this.tooltipEl.textContent = this.station?.location ?? '🚫';
+
+        // Position below the name cell using viewport coords
+        const rect = this.defaultElement.getBoundingClientRect();
+        this.tooltipEl.style.left = rect.left + 'px';
+        this.tooltipEl.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+        this.tooltipEl.style.display = 'block';
+    }
+
+    private hideTooltip(): void {
+        if (this.tooltipEl) {
+            this.tooltipEl.style.display = 'none';
         }
+        this.tooltipVisible = false;
+    }
 
-        this.tooltip = new window.bootstrap.Tooltip(this.defaultElement, {
-            title: this.station?.location ?? '🚫',
-            placement: 'left',
-            trigger: 'manual'
-        });
-
-        this._tooltipShowHandler = () => this.tooltip?.show();
-        this.defaultElement.addEventListener('click', this._tooltipShowHandler);
+    private disposeTooltip(): void {
+        if (this.tooltipEl) {
+            this.tooltipEl.remove();
+            this.tooltipEl = null;
+        }
+        this.tooltipVisible = false;
+        this._tooltipShowHandler = null;
     }
 
     protected render(onConnected: boolean): void {
@@ -281,40 +310,49 @@ export class NameCell extends StationTableMember {
             this.applyStyling(this.defaultElement, this.getStyling(this.station));
         }
 
-        // The tooltip rebuild is heavier (it disposes and recreates a bootstrap
-        // Tooltip), so only refresh it on connect, when the location changes, or when
-        // this freshly-built cell does not have a tooltip yet.
-        if (onConnected || this.haveThisStationPropertiesChanged(['location']) || !this.tooltip) {
-            this.refreshTooltip();
+        // Update tooltip content if visible (location may have changed)
+        if (this.tooltipVisible && this.tooltipEl) {
+            this.tooltipEl.textContent = this.station?.location ?? '🚫';
         }
     }
 
     protected onConnected(): void {
-        // Dismiss the tooltip when the user scrolls — Bootstrap tooltips
-        // do not auto-dismiss on mobile, so the city/state tooltip would
-        // persist indefinitely during scroll.
-        this.scrollDismissHandler = () => this.tooltip?.hide();
+        // Dismiss the tooltip on scroll (mobile-friendly)
+        this.scrollDismissHandler = () => this.hideTooltip();
         window.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
-        // Also dismiss on touchstart for more reliable mobile dismissal
-        window.addEventListener('touchstart', this.scrollDismissHandler, { passive: true });
+        // Dismiss on any tap/click outside the name cell
+        this.clickDismissHandler = (e: Event) => {
+            if (this.defaultElement && !this.defaultElement.contains(e.target as Node)) {
+                this.hideTooltip();
+            }
+        };
+        document.addEventListener('click', this.clickDismissHandler);
+        // Show tooltip on click/tap of the name cell
+        this._tooltipShowHandler = () => this.showTooltip();
+        if (this.defaultElement) {
+            this.defaultElement.addEventListener('click', this._tooltipShowHandler);
+        }
     }
 
     protected onDisconnected(): void {
-        this.cleanupTooltip();
+        this.hideTooltip();
         if (this.scrollDismissHandler) {
             window.removeEventListener('scroll', this.scrollDismissHandler);
-            window.removeEventListener('touchstart', this.scrollDismissHandler);
             this.scrollDismissHandler = null;
         }
-    }
-
-    private cleanupTooltip(): void {
-        this.tooltip?.dispose();
-        this.tooltip = null;
+        if (this.clickDismissHandler) {
+            document.removeEventListener('click', this.clickDismissHandler);
+            this.clickDismissHandler = null;
+        }
         if (this.defaultElement && this._tooltipShowHandler) {
             this.defaultElement.removeEventListener('click', this._tooltipShowHandler);
-            this._tooltipShowHandler = null;
         }
+        this._tooltipShowHandler = null;
+    }
+
+    // Kept for compatibility; delegates to disposeTooltip.
+    private cleanupTooltip(): void {
+        this.disposeTooltip();
     }
 
     public static async init(store: LiveNetReactiveStore): Promise<void> {
