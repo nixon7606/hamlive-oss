@@ -179,6 +179,7 @@ export class CallSignCell extends StationTableMember {
 }
 export class NameCell extends StationTableMember {
     tooltip = null;
+    scrollDismissHandler = null;
     getTemplate() {
         return `
         <style>
@@ -225,9 +226,16 @@ export class NameCell extends StationTableMember {
             this.refreshTooltip();
         }
     }
-    onConnected() { }
+    onConnected() {
+        this.scrollDismissHandler = () => this.tooltip?.hide();
+        document.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+    }
     onDisconnected() {
         this.cleanupTooltip();
+        if (this.scrollDismissHandler) {
+            document.removeEventListener('scroll', this.scrollDismissHandler);
+            this.scrollDismissHandler = null;
+        }
     }
     cleanupTooltip() {
         this.tooltip?.dispose();

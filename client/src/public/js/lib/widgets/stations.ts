@@ -217,6 +217,7 @@ export class CallSignCell extends StationTableMember {
 
 export class NameCell extends StationTableMember {
     private tooltip: bootstrap.Tooltip | null = null;
+    private scrollDismissHandler: (() => void) | null = null;
 
     protected getTemplate(): string {
         return /*html*/ `
@@ -284,10 +285,20 @@ export class NameCell extends StationTableMember {
         }
     }
 
-    protected onConnected(): void {}
+    protected onConnected(): void {
+        // Dismiss the tooltip when the user scrolls — Bootstrap tooltips
+        // do not auto-dismiss on mobile, so the city/state tooltip would
+        // persist indefinitely during scroll.
+        this.scrollDismissHandler = () => this.tooltip?.hide();
+        document.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
+    }
 
     protected onDisconnected(): void {
         this.cleanupTooltip();
+        if (this.scrollDismissHandler) {
+            document.removeEventListener('scroll', this.scrollDismissHandler);
+            this.scrollDismissHandler = null;
+        }
     }
 
     private cleanupTooltip(): void {
