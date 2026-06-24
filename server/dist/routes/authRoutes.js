@@ -17,6 +17,21 @@ const { isCurrentlyLocked } = require('../lib/serverUtils');
 // the limiter's keying (per real CF-Connecting-IP, not the shared ::1 socket) is
 // unit-testable. clientIp is reused below for saving the visitor's IP on login.
 
+// Derive a UserProfile.displayName that always satisfies the schema validator
+// (/^[A-Za-z0-9À-ÿ\-'.()\/ ]+$/, minlength 2). Email local-parts can contain '+'
+// or '_', and Google display names can contain non-Latin scripts, emoji, commas,
+// etc. — feeding those raw into the validator threw "invalid characters in display
+// name", which aborted account creation and surfaced to the user as an auth
+// failure (passport got `false` → bounced to /views/login).
+const sanitizeDisplayName = raw => {
+    const cleaned = String(raw || '')
+        .replace(/[^A-Za-z0-9À-ÿ\-'.()\/ ]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 40);
+    return cleaned.length >= 2 ? cleaned : 'New User';
+};
+
 //MagicLogin Auth:
 const magicLogin = new MagicLoginStrategy({
     secret: conf.magic_link_secret,
@@ -103,7 +118,7 @@ const magicLogin = new MagicLoginStrategy({
                 // if not, create user in our db
                 new UserProfile({
                     lastAuthVia: 'email',
-                    displayName: payload.destination.split('@')[0].slice(0, 40) || 'New User',
+                    displayName: sanitizeDisplayName(payload.destination.split('@')[0]),
                     flexOptions: {
                         option: {}
                     },
@@ -205,7 +220,7 @@ if (googleAuthEnabled) {
                     // if not, create user in our db
                     new UserProfile({
                         lastAuthVia: 'google',
-                        displayName: profile.displayName,
+                        displayName: sanitizeDisplayName(profile.displayName),
                         googleId: profile.id,
                         flexOptions: {
                             option: {}
