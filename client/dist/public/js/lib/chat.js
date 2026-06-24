@@ -435,7 +435,7 @@ export class ChatWidget extends HTMLElement {
         if (msg.imageUrl) {
             messageContent += `
                 <div class="mt-1">
-                    <img src="${this.escapeHtml(msg.imageUrl)}"
+                    <img src="${this.escapeAttr(msg.imageUrl)}"
                          alt="Shared image"
                          class="chat-image img-fluid rounded chat-image-clickable"
                          style="max-height: 200px; cursor: pointer; border: 1px solid var(--hl-quaternary);">
@@ -617,9 +617,11 @@ export class ChatWidget extends HTMLElement {
         clearBtn?.addEventListener('click', () => void this.handleClearButtonClick());
     }
     async handleClearButtonClick() {
-        if (!this.connection || !this.canModerate()) return;
+        if (!this.connection || !this.canModerate())
+            return;
         const npid = this.connection.npid;
-        if (!confirm('Clear ALL chat history for this net? This cannot be undone.')) return;
+        if (!confirm('Clear ALL chat history for this net? This cannot be undone.'))
+            return;
         try {
             const res = await fetch(`/api/chat/${npid}/clear`, { method: 'DELETE' });
             if (!res.ok) {
@@ -628,7 +630,8 @@ export class ChatWidget extends HTMLElement {
             }
             const result = await res.json();
             logger.info(`Chat cleared: ${result.message?.count || 0} messages removed`);
-        } catch (err) {
+        }
+        catch (err) {
             logger.error('Failed to clear chat:', err);
             alert(`Failed to clear chat: ${err.message}`);
         }
@@ -765,10 +768,12 @@ export class ChatWidget extends HTMLElement {
     }
     updateClearButton() {
         const clearBar = this.querySelector('.chat-clear-bar');
-        if (!clearBar) return;
+        if (!clearBar)
+            return;
         if (this.canModerate() && this.messages.length > 0) {
             clearBar.classList.remove('d-none');
-        } else {
+        }
+        else {
             clearBar.classList.add('d-none');
         }
     }
@@ -1126,7 +1131,7 @@ export class ChatWidget extends HTMLElement {
             return;
         const originalHtml = contentEl.innerHTML;
         contentEl.innerHTML = `
-            <input type="text" class="chat-edit-input" value="${this.escapeHtml(originalText)}" maxlength="500">
+            <input type="text" class="chat-edit-input" value="${this.escapeAttr(originalText)}" maxlength="500">
             <div class="chat-edit-actions">
                 <button class="chat-edit-save">Save</button>
                 <button class="chat-edit-cancel">Cancel</button>
@@ -1266,6 +1271,14 @@ export class ChatWidget extends HTMLElement {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+    escapeAttr(text) {
+        return String(text ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
     formatSmartTimestamp(date) {
         const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1642,7 +1655,8 @@ export class ChatWidget extends HTMLElement {
         const urlPattern = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
         return text.replace(urlPattern, url => {
             const href = url.startsWith('www.') ? `https://${url}` : url;
-            return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color: var(--hl-success);">${url}</a>`;
+            const safeHref = href.replace(/"/g, '%22').replace(/'/g, '%27');
+            return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" style="color: var(--hl-success);">${url}</a>`;
         });
     }
     static init(store, level) {

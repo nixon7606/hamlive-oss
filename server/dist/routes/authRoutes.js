@@ -288,8 +288,10 @@ router.get('/login', (req, res) => {
 
 /**
  * Send a fresh magic sign-in link to an address using the same flow as
- * /auth/magiclogin. Resolves with { devMagicLink } (non-null only when email
- * delivery is disabled, mirroring the login route). For admin resend.
+ * /auth/magiclogin. Resolves with { devMagicLink } — the link is always captured
+ * and returned here, so CALLERS are responsible for not exposing it when an email
+ * was actually sent (see adminController, which gates it behind !emailEnabled).
+ * For admin resend.
  */
 function sendMagicSignInLink(email) {
     if (typeof email !== 'string' || !validator.isEmail(email)) {

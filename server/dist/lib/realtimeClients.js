@@ -169,7 +169,9 @@ class RealtimeClients {
                         return mw(req, res, next);
                     }
                     else {
-                        throw new Error('RTC: flexOpts is not of type FlexOptions');
+                        // Don't throw from middleware (no upstream catch → process
+                        // crash). Route to the global error handler instead.
+                        return next(new Error('RTC: flexOpts is not of type FlexOptions'));
                     }
                 }
                 else {
@@ -177,7 +179,7 @@ class RealtimeClients {
                 }
             }
             else {
-                throw new Error(`RTC(${dynoId}): unknown npid ${npid} from param, in middleware`);
+                return next(new Error(`RTC(${dynoId}): unknown npid ${npid} from param, in middleware`));
             }
         };
     }

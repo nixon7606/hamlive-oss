@@ -564,7 +564,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         if (msg.imageUrl) {
             messageContent += `
                 <div class="mt-1">
-                    <img src="${this.escapeHtml(msg.imageUrl)}"
+                    <img src="${this.escapeAttr(msg.imageUrl)}"
                          alt="Shared image"
                          class="chat-image img-fluid rounded chat-image-clickable"
                          style="max-height: 200px; cursor: pointer; border: 1px solid var(--hl-quaternary);">
@@ -1366,7 +1366,7 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
 
         // Replace content with edit input
         contentEl.innerHTML = `
-            <input type="text" class="chat-edit-input" value="${this.escapeHtml(originalText)}" maxlength="500">
+            <input type="text" class="chat-edit-input" value="${this.escapeAttr(originalText)}" maxlength="500">
             <div class="chat-edit-actions">
                 <button class="chat-edit-save">Save</button>
                 <button class="chat-edit-cancel">Cancel</button>
@@ -1530,6 +1530,21 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /**
+     * Escape a value for use inside a double-quoted HTML attribute. Unlike
+     * escapeHtml (textContent-based, which does NOT escape quotes), this escapes
+     * " and ' so a value cannot break out of an attribute. Use this for any
+     * `attr="${...}"` interpolation.
+     */
+    private escapeAttr(text: string): string {
+        return String(text ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     /** Format a date into a smart timestamp: today → "12:34 PM", yesterday → "Yesterday 12:34 PM", older → "Jun 8 12:34 PM" */
@@ -1985,7 +2000,11 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         const urlPattern = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
         return text.replace(urlPattern, url => {
             const href = url.startsWith('www.') ? `https://${url}` : url;
-            return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color: var(--hl-success);">${url}</a>`;
+            // `text` is escaped for <>& but NOT quotes, so a URL containing a
+            // quote would break out of the href attribute. Percent-encode quotes
+            // (valid in a URL) to keep it confined to the attribute.
+            const safeHref = href.replace(/"/g, '%22').replace(/'/g, '%27');
+            return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" style="color: var(--hl-success);">${url}</a>`;
         });
     }
 

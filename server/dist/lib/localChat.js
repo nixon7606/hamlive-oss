@@ -134,11 +134,22 @@ async function deleteChatChannel(npid) {
  * Validate that an imageUrl points to a safe local path or HTTPS URL.
  */
 function validateImageUrl(url) {
-    if (!url) return null;
+    if (!url || typeof url !== 'string') return null;
+    // Reject any character that could break out of the src="..." HTML attribute
+    // this URL is later rendered into (quotes, angle brackets, whitespace,
+    // backslash). Primary defense against stored XSS via imageUrl.
+    if (/["'<>\\\s]/.test(url)) return null;
     // Allow relative paths (our uploads)
     if (url.startsWith('/uploads/chat/')) return url;
-    // Allow HTTPS images (external, e.g., embeds)
-    if (url.startsWith('https://')) return url;
+    // Allow external HTTPS images, but only if they parse as a real https URL.
+    if (url.startsWith('https://')) {
+        try {
+            if (new URL(url).protocol === 'https:') return url;
+        } catch {
+            return null;
+        }
+        return null;
+    }
     // Everything else is rejected (no javascript:, data:, http:, etc.)
     return null;
 }
@@ -790,5 +801,6 @@ module.exports = {
     pinMessage,
     unpinMessage,
     clearChatHistory,
-    chatBroadcaster
+    chatBroadcaster,
+    validateImageUrl
 };

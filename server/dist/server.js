@@ -11,6 +11,29 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { logger, httpLogger } = require('./lib/logger');
+
+// ── Process-level safety net ────────────────────────────────────────────────
+// Without these, a single unhandled promise rejection or stray throw takes the
+// whole process down (killing every live net, SSE/chat connection, and the
+// scheduler). Log rejections and keep serving; on a truly uncaught exception the
+// process state is undefined, so exit and let the supervisor (systemd) restart.
+let httpServer = null;
+process.on('unhandledRejection', reason => {
+    logger.error(`Unhandled promise rejection: ${reason && reason.stack ? reason.stack : reason}`);
+});
+process.on('uncaughtException', err => {
+    logger.error(`Uncaught exception: ${err && err.stack ? err.stack : err}`);
+    process.exit(1);
+});
+function gracefulShutdown(signal) {
+    logger.info(`${signal} received — shutting down`);
+    const finish = () => mongoose.connection.close(false).catch(() => {}).finally(() => process.exit(0));
+    if (httpServer) httpServer.close(finish); else finish();
+    // Backstop: don't hang forever if a connection won't drain.
+    setTimeout(() => process.exit(1), 10_000).unref();
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 const {
     addServerInfo,
     populate,
@@ -79,9 +102,9 @@ mongoose
     .then(() => {
         logger.info('Connected to db (realtime pool)');
         if (useHttps) {
-            https.createServer(sslOptions, app).listen(PORT);
+            httpServer = https.createServer(sslOptions, app).listen(PORT);
         } else {
-            app.listen(PORT);
+            httpServer = app.listen(PORT);
         }
         const scheme = useHttps ? 'https' : 'http';
         logger.info(`${conf.applogname} listening on ${scheme}://localhost:${PORT}`);
@@ -333,4 +356,19 @@ if (conf.background_tasks?.scheduledNetStarter?.enabled !== false) {
 
 app.use((req, res) => {
     if (!res.headersSent) return res.status(404).render('404', populate(req, res, { VIEW: '404' }));
+});
+
+// Global error handler (must be last, 4-arg). Backstop so a throw or next(err)
+// from any route/middleware returns a clean response instead of crashing the
+// process or leaving a request hanging. Detailed errors are logged server-side
+// only; clients get a generic message.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+    logger.error(`Unhandled route error (${req.method} ${req.path}): ${err && err.stack ? err.stack : err}`);
+    if (res.headersSent) return next(err);
+    const status = (err && err.status) || 500;
+    if (req.path.startsWith('/api/')) {
+        return res.status(status).json({ error: 'Internal server error' });
+    }
+    return res.status(status).send('Something went wrong. Please try again.');
 });

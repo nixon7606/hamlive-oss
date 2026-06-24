@@ -41,10 +41,13 @@ export declare class ChatWidget extends HTMLElement implements StoreSubscriber {
     private renderReactions;
     private setupConnectionListeners;
     private setupInputListeners;
+    private handleClearButtonClick;
     private setupMessageActions;
     private handleNewMessage;
     private updateParentReplyCount;
     private handleDeletedMessage;
+    private handleChatClear;
+    private updateClearButton;
     private handleUpdatedMessage;
     private handleReaction;
     private handleInputTyping;
@@ -69,6 +72,7 @@ export declare class ChatWidget extends HTMLElement implements StoreSubscriber {
     private isNearBottom;
     private scrollToBottom;
     private escapeHtml;
+    private escapeAttr;
     private formatSmartTimestamp;
     private dateKey;
     private formatUsername;
