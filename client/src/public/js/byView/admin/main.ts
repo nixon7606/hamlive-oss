@@ -431,6 +431,44 @@ async function loadEmailActivity(recipient: string) {
     }
 }
 
+/**
+ * Show a magic sign-in link in the email results panel as a click-to-copy element.
+ * Used when SendGrid is enabled (production) — the admin can copy the link and
+ * manually deliver it to a user whose email is bouncing.
+ */
+function showCopyableLink(link: string, email: string) {
+    const box = document.getElementById('email-results');
+    if (!box) return;
+    const card = document.createElement('div');
+    card.className = 'app-card mb-2';
+    card.style.borderColor = '#ffc107';
+    const linkId = `magic-link-${Date.now()}`;
+    card.innerHTML = `<div class="text-warning small mb-1"><i class="bi bi-link-45deg"></i> Magic sign-in for <strong>${esc(email)}</strong> (click to copy):</div>
+        <div class="magic-link-copy" id="${linkId}" style="cursor:pointer; word-break:break-all; font-family:monospace; font-size:12px; color:var(--hl-tertiary);" title="Click to copy magic link">${esc(link)}</div>
+        <div class="text-success copy-confirm small mt-1" style="display:none;"><i class="bi bi-check-circle"></i> Copied!</div>`;
+    const copyTarget = card.querySelector('.magic-link-copy') as HTMLElement;
+    const confirm = card.querySelector('.copy-confirm') as HTMLElement;
+    copyTarget.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(link);
+        } catch {
+            // Fallback for non-HTTPS / older browsers
+            const ta = document.createElement('textarea');
+            ta.value = link;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+        confirm.style.display = 'block';
+        setTimeout(() => { confirm.style.display = 'none'; }, 2000);
+    });
+    box.insertBefore(card, box.firstChild);
+    statusMsg('Magic link ready — click to copy', 'success');
+}
+
 /* ── Recent Sends ── */
 
 function recentRangeFromControls(presetDays?: number): { from: string; to: string } {
@@ -796,14 +834,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
                 });
                 if (!res.ok) throw new Error((await res.json()).error || 'Failed');
-                statusMsg('Sign-in link resent', 'success');
+                const body = await res.json();
+                const devMagicLink = body.message && body.message.devMagicLink;
+                if (devMagicLink) {
+                    showCopyableLink(devMagicLink, email);
+                } else {
+                    statusMsg('Sign-in link resent', 'success');
+                }
             } else if (action === 'unsuppress') {
                 const list = btn.getAttribute('data-list');
                 const res = await fetch(`${API}/email/unsuppress`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, list })
                 });
                 if (!res.ok) throw new Error((await res.json()).error || 'Failed');
-                statusMsg('Suppression removed and link resent', 'success');
+                const body = await res.json();
+                const devMagicLink = body.message && body.message.devMagicLink;
+                if (devMagicLink) {
+                    showCopyableLink(devMagicLink, email);
+                } else {
+                    statusMsg('Suppression removed and link resent', 'success');
+                }
                 loadEmailActivity(email);
             }
         } catch (err) {

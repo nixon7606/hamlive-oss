@@ -300,10 +300,10 @@ const resendSignInLink = async (req, res) => {
     const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
     if (!email || !validator.isEmail(email)) return res.status(400).json({ error: 'a valid email is required' });
     handleRequest(res, async () => {
-        await sendMagicSignInLink(email);
+        const result = await sendMagicSignInLink(email);
         logger.info(`admin resend sign-in link to ${email}`);
         recordAudit(req, { action: 'resend-login', targetType: 'email', targetLabel: email });
-        return { message: { sent: true } };
+        return { message: { sent: true, devMagicLink: result.devMagicLink || null } };
     }, 'admin: resendSignInLink');
 };
 
@@ -317,10 +317,10 @@ const unsuppressEmail = async (req, res) => {
     if (!email || !validator.isEmail(email) || !list) return res.status(400).json({ error: 'email and list are required' });
     handleRequest(res, async () => {
         await removeSuppression(email, list);
-        await sendMagicSignInLink(email);
+        const result = await sendMagicSignInLink(email);
         logger.info(`admin removed ${list} suppression for ${email} and resent link`);
         recordAudit(req, { action: 'unsuppress', targetType: 'email', targetLabel: email, details: list });
-        return { message: { removed: true } };
+        return { message: { removed: true, devMagicLink: result.devMagicLink || null } };
     }, 'admin: unsuppressEmail');
 };
 

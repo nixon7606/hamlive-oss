@@ -24,12 +24,14 @@ const magicLogin = new MagicLoginStrategy({
 
     sendMagicLink: async (destination, href, _code, req) => {
         const link = `${conf.base_url}${href}`;
+        // Always capture the magic link on the request so it can be surfaced
+        // in the admin panel for manual delivery when email bounces.
+        if (req) req._devMagicLink = link;
 
         // Local test drive: when email delivery is not configured, surface the
         // sign-in link directly (returned to the browser by the route below) and
         // also print it to the server console.
         if (!emailEnabled) {
-            if (req) req._devMagicLink = link;
             logger.info(
                 `\n\n========== LOCAL LOGIN (email delivery disabled) ==========\n` +
                     `Magic sign-in link for ${destination}:\n${link}\n` +

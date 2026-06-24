@@ -176,6 +176,9 @@ async function loadNets() {
                 else
                     statusBadge = '<span class="badge badge-live">Live</span>';
             }
+            const permBadge = n.permanent
+                ? '<span class="badge badge-locked">Perm</span>'
+                : '<span class="text-muted">—</span>';
             let scheduleInfo = '<span class="text-muted">—</span>';
             if (n.schedule && n.schedule.enabled) {
                 const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -184,9 +187,6 @@ async function loadNets() {
                 const m = String(n.schedule.minute || 0).padStart(2, '0');
                 scheduleInfo = `<span class="badge badge-scheduled">${day} ${h}:${m}</span>`;
             }
-            const permBadge = n.permanent
-                ? '<span class="badge badge-locked">Perm</span>'
-                : '<span class="text-muted">—</span>';
             const permBtnLabel = n.permanent ? 'Un-perm' : 'Perm';
             const permBtnClass = n.permanent ? 'btn-outline-success' : 'btn-outline-warning';
             const created = n.createdAt ? new Date(n.createdAt).toLocaleDateString() : '-';
@@ -213,16 +213,24 @@ async function loadNets() {
 }
 function getSortValue(obj, field) {
     if (field === 'status') {
-        if (obj.hasLiveNet && obj.liveNetStatus === 'live') return 0;
-        if (obj.hasLiveNet && obj.liveNetStatus === 'waiting') return 1;
-        if (obj.locked) return 2;
-        if (obj.superUser) return 3;
+        if (obj.hasLiveNet && obj.liveNetStatus === 'live')
+            return 0;
+        if (obj.hasLiveNet && obj.liveNetStatus === 'waiting')
+            return 1;
+        if (obj.locked)
+            return 2;
+        if (obj.superUser)
+            return 3;
         return 4;
     }
-    if (field === 'permanent') return obj.permanent ? 0 : 1;
-    if (field === 'schedule') return (obj.schedule && obj.schedule.enabled) ? 0 : 1;
-    if (field === 'ip') return obj.lastIp || '';
-    if (field === 'createdAt') return obj.createdAt ? new Date(obj.createdAt).getTime() : 0;
+    if (field === 'permanent')
+        return obj.permanent ? 0 : 1;
+    if (field === 'schedule')
+        return (obj.schedule && obj.schedule.enabled) ? 0 : 1;
+    if (field === 'ip')
+        return obj.lastIp || '';
+    if (field === 'createdAt')
+        return obj.createdAt ? new Date(obj.createdAt).getTime() : 0;
     if (field === 'frequency') {
         const f = parseFloat(obj.frequency);
         return isNaN(f) ? 9999 : f;
@@ -230,12 +238,15 @@ function getSortValue(obj, field) {
     return (obj[field] || '').toString().toLowerCase();
 }
 function sortData(data, field, dir) {
-    if (!field || !dir) return data;
+    if (!field || !dir)
+        return data;
     return [...data].sort((a, b) => {
         const va = getSortValue(a, field);
         const vb = getSortValue(b, field);
-        if (va < vb) return dir === 'asc' ? -1 : 1;
-        if (va > vb) return dir === 'asc' ? 1 : -1;
+        if (va < vb)
+            return dir === 'asc' ? -1 : 1;
+        if (va > vb)
+            return dir === 'asc' ? 1 : -1;
         return 0;
     });
 }
@@ -244,11 +255,14 @@ function sortNets(nets, mode, dir) {
         return [...nets].sort((a, b) => {
             const aScore = a.hasLiveNet && a.liveNetStatus === 'live' ? 0
                 : a.hasLiveNet && a.liveNetStatus === 'waiting' ? 1
-                : a.permanent ? 2 : 3;
+                    : a.permanent ? 2
+                        : 3;
             const bScore = b.hasLiveNet && b.liveNetStatus === 'live' ? 0
                 : b.hasLiveNet && b.liveNetStatus === 'waiting' ? 1
-                : b.permanent ? 2 : 3;
-            if (aScore !== bScore) return aScore - bScore;
+                    : b.permanent ? 2
+                        : 3;
+            if (aScore !== bScore)
+                return aScore - bScore;
             return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
     }
@@ -256,14 +270,17 @@ function sortNets(nets, mode, dir) {
 }
 function setSortIndicator(tbodyId, field, dir) {
     const tbody = document.getElementById(tbodyId);
-    if (!tbody) return;
+    if (!tbody)
+        return;
     const table = tbody.closest('table');
-    if (!table) return;
+    if (!table)
+        return;
     table.querySelectorAll('thead th[data-sort-field]').forEach(th => {
         const f = th.getAttribute('data-sort-field');
         if (f === field && dir) {
             th.setAttribute('data-sort-dir', dir);
-        } else {
+        }
+        else {
             th.removeAttribute('data-sort-dir');
         }
     });
@@ -396,6 +413,39 @@ async function loadEmailActivity(recipient) {
         box.innerHTML = `<p class="text-danger">Error: ${esc(err.message)}</p>`;
     }
 }
+function showCopyableLink(link, email) {
+    const box = document.getElementById('email-results');
+    if (!box)
+        return;
+    const card = document.createElement('div');
+    card.className = 'app-card mb-2';
+    card.style.borderColor = '#ffc107';
+    const linkId = `magic-link-${Date.now()}`;
+    card.innerHTML = `<div class="text-warning small mb-1"><i class="bi bi-link-45deg"></i> Magic sign-in for <strong>${esc(email)}</strong> (click to copy):</div>
+        <div class="magic-link-copy" id="${linkId}" style="cursor:pointer; word-break:break-all; font-family:monospace; font-size:12px; color:var(--hl-tertiary);" title="Click to copy magic link">${esc(link)}</div>
+        <div class="text-success copy-confirm small mt-1" style="display:none;"><i class="bi bi-check-circle"></i> Copied!</div>`;
+    const copyTarget = card.querySelector('.magic-link-copy');
+    const confirm = card.querySelector('.copy-confirm');
+    copyTarget.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(link);
+        }
+        catch {
+            const ta = document.createElement('textarea');
+            ta.value = link;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+        confirm.style.display = 'block';
+        setTimeout(() => { confirm.style.display = 'none'; }, 2000);
+    });
+    box.insertBefore(card, box.firstChild);
+    statusMsg('Magic link ready — click to copy', 'success');
+}
 function recentRangeFromControls(presetDays) {
     const to = new Date();
     let from;
@@ -477,6 +527,31 @@ async function confirmDelete(id, label) {
     const modal = new bootstrap.Modal(document.getElementById('deleteUserModal'));
     modal.show();
 }
+async function togglePermanent(id, title) {
+    const n = netsCache.find((x) => x._id === id);
+    if (!n) {
+        statusMsg('Net not found', 'danger');
+        return;
+    }
+    const newVal = !n.permanent;
+    try {
+        const res = await fetch(`${API}/nets/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ permanent: newVal })
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed');
+        }
+        statusMsg(`Net "${title}" ${newVal ? 'set as permanent' : 'no longer permanent'}`, 'success');
+        loadNets();
+        loadStats();
+    }
+    catch (err) {
+        statusMsg(`Error: ${err.message}`, 'danger');
+    }
+}
 async function manageSchedule(id, title) {
     document.getElementById('sched-net-id').value = id;
     document.getElementById('sched-net-title').textContent = title;
@@ -542,25 +617,6 @@ document.getElementById('sched-save-btn')?.addEventListener('click', async () =>
         statusMsg(`Error: ${err.message}`, 'danger');
     }
 });
-async function togglePermanent(id, title) {
-    const n = netsCache.find((x) => x._id === id);
-    if (!n) { statusMsg('Net not found', 'danger'); return; }
-    const newVal = !n.permanent;
-    try {
-        const res = await fetch(`${API}/nets/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ permanent: newVal })
-        });
-        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed'); }
-        statusMsg(`Net "${title}" ${newVal ? 'set as permanent' : 'no longer permanent'}`, 'success');
-        loadNets();
-        loadStats();
-    }
-    catch (err) {
-        statusMsg(`Error: ${err.message}`, 'danger');
-    }
-}
 let currentNetId = null;
 let currentNetTitle = '';
 function confirmNetDelete(id, title) {
@@ -636,31 +692,35 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.addEventListener('click', (e) => {
         const th = e.target.closest('th[data-sort-field]');
-        if (!th) return;
+        if (!th)
+            return;
         const field = th.getAttribute('data-sort-field') || '';
         const table = th.closest('table');
-        if (!table) return;
+        if (!table)
+            return;
         const tableId = table.id || '';
         if (tableId === 'admin-users-tbody' || table.closest('#users-panel')) {
             if (usersSortField === field) {
                 usersSortDir = usersSortDir === 'asc' ? 'desc' : 'asc';
-            } else {
+            }
+            else {
                 usersSortField = field;
                 usersSortDir = 'asc';
             }
             usersPage = 1;
             loadUsers();
-        } else if (tableId === 'admin-nets-tbody' || table.closest('#nets-panel')) {
+        }
+        else if (tableId === 'admin-nets-tbody' || table.closest('#nets-panel')) {
             if (netsSortMode === field) {
-                // Same field: toggle asc → desc → active
                 if (netsSortDir === 'asc') {
                     netsSortDir = 'desc';
-                } else {
+                }
+                else {
                     netsSortMode = 'active';
                     netsSortDir = null;
                 }
-            } else {
-                // New field: set to ascending
+            }
+            else {
                 netsSortMode = field;
                 netsSortDir = 'asc';
             }
@@ -761,7 +821,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 if (!res.ok)
                     throw new Error((await res.json()).error || 'Failed');
-                statusMsg('Sign-in link resent', 'success');
+                const body = await res.json();
+                const devMagicLink = body.message && body.message.devMagicLink;
+                if (devMagicLink) {
+                    showCopyableLink(devMagicLink, email);
+                }
+                else {
+                    statusMsg('Sign-in link resent', 'success');
+                }
             }
             else if (action === 'unsuppress') {
                 const list = btn.getAttribute('data-list');
@@ -770,7 +837,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 if (!res.ok)
                     throw new Error((await res.json()).error || 'Failed');
-                statusMsg('Suppression removed and link resent', 'success');
+                const body = await res.json();
+                const devMagicLink = body.message && body.message.devMagicLink;
+                if (devMagicLink) {
+                    showCopyableLink(devMagicLink, email);
+                }
+                else {
+                    statusMsg('Suppression removed and link resent', 'success');
+                }
                 loadEmailActivity(email);
             }
         }
