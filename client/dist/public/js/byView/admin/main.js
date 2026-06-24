@@ -490,7 +490,9 @@ async function loadRecentEmails(range) {
             <th>Time</th><th>Recipient</th><th>Type</th><th>Subject</th><th>Status</th></tr></thead><tbody>${rows.map((r) => `<tr>
                 <td>${r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}</td>
                 <td>${esc(r.recipient)}</td>
-                <td>${esc(r.type)}</td>
+                <td>${r.type === 'magic-login'
+            ? `<span class="magic-link-copy-recent" data-action="copy-magic-link" data-recipient="${esc(r.recipient)}" style="cursor:pointer; text-decoration:underline; text-decoration-style:dotted;" title="Click to copy magic sign-in link">${esc(r.type)}</span>`
+            : esc(r.type)}</td>
                 <td>${esc(r.subject || '')}</td>
                 <td><span class="badge bg-${EVENT_COLORS[r.status] || 'secondary'}">${esc(r.status)}</span></td>
             </tr>`).join('')}</tbody></table>`;
@@ -880,6 +882,54 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         finally {
             btn.disabled = false;
+        }
+    });
+    const recentResults = document.getElementById('recent-results');
+    recentResults?.addEventListener('click', async (e) => {
+        const el = e.target.closest('[data-action="copy-magic-link"]');
+        if (!el)
+            return;
+        const recipient = el.getAttribute('data-recipient');
+        if (!recipient)
+            return;
+        const origText = el.textContent;
+        el.textContent = '…';
+        try {
+            const res = await fetch(`${API}/email/resend-login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: recipient })
+            });
+            if (!res.ok)
+                throw new Error((await res.json()).error || 'Failed');
+            const body = await res.json();
+            const devMagicLink = body.message && body.message.devMagicLink;
+            if (devMagicLink) {
+                try {
+                    await navigator.clipboard.writeText(devMagicLink);
+                }
+                catch {
+                    const ta = document.createElement('textarea');
+                    ta.value = devMagicLink;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                }
+                el.textContent = 'Copied!';
+                el.style.color = '#3cce3c';
+                setTimeout(() => { el.textContent = origText; el.style.color = ''; }, 1500);
+            }
+            else {
+                el.textContent = origText;
+                statusMsg('Sign-in link resent (check console for devMagicLink)', 'warning');
+            }
+        }
+        catch (err) {
+            el.textContent = origText;
+            statusMsg(`Error: ${err.message}`, 'danger');
         }
     });
     document.getElementById('edit-ban-btn')?.addEventListener('click', () => {
