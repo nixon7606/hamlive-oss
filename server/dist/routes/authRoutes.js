@@ -28,6 +28,11 @@ const magicLogin = new MagicLoginStrategy({
         // in the admin panel for manual delivery when email bounces.
         if (req) req._devMagicLink = link;
 
+        // Generate-only mode (admin "copy link" without emailing a possibly
+        // bouncing address): the link is already captured above, so skip both
+        // the local-login log and the SendGrid send. Nothing is persisted.
+        if (req && req.generateOnly) return;
+
         // Local test drive: when email delivery is not configured, surface the
         // sign-in link directly (returned to the browser by the route below) and
         // also print it to the server console.
@@ -45,7 +50,6 @@ const magicLogin = new MagicLoginStrategy({
             const email = new EmailBase({
                 subject: 'Sign in to netcontrol.live',
                 type: 'magic-login',
-                magicLink: link,
                 message:
                     `<div style="background-color:#f4f2ec; padding:24px 12px; font-family:Arial,Helvetica,sans-serif;">` +
                     `<table role="presentation" align="center" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; background-color:#ffffff; border:1px solid #e2ddd0; border-radius:10px; overflow:hidden;">` +
@@ -306,6 +310,33 @@ function sendMagicSignInLink(email) {
     });
 }
 
+/**
+ * Mint a fresh magic sign-in link for an address WITHOUT sending any email,
+ * using the same passport-magic-login flow as sendMagicSignInLink. The link is
+ * single-use and never persisted; it is only returned to the caller so an admin
+ * can hand-deliver it when SendGrid can't reach the recipient. Resolves with
+ * { devMagicLink }.
+ */
+function generateMagicSignInLink(email) {
+    if (typeof email !== 'string' || !validator.isEmail(email)) {
+        return Promise.reject(new Error('invalid email'));
+    }
+    return new Promise((resolve, reject) => {
+        const req = { body: { destination: email }, generateOnly: true };
+        const res = {
+            statusCode: 200,
+            status(code) { this.statusCode = code; return this; },
+            json(body) { resolve({ devMagicLink: req._devMagicLink || null, ...body }); return this; }
+        };
+        try {
+            magicLogin.send(req, res, err => (err ? reject(err) : resolve({ devMagicLink: req._devMagicLink || null })));
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
 module.exports = router;
 module.exports.sendMagicSignInLink = sendMagicSignInLink;
+module.exports.generateMagicSignInLink = generateMagicSignInLink;
 module.exports.clientIp = clientIp;

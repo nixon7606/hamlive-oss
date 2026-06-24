@@ -29,16 +29,14 @@ class EmailBase {
     #subject;
     #message;
     #body;
-    #magicLink;
     type;
 
     constructor(param = {}) {
-        const { subject, message, body, type, magicLink } = param;
+        const { subject, message, body, type } = param;
 
         this.#subject = subject;
         this.#message = message;
         this.#body = body;
-        this.#magicLink = magicLink || null;
         this.type = type || 'generic';
 
         if (!body && !(subject && message)) {
@@ -152,9 +150,8 @@ class EmailBase {
     recordEmailLogs(recipients, subject, batchId, sgMessageId) {
         if (!emailEnabled) return;
         const EmailLog = getEmailLog();
-        const magicLink = this.#magicLink;
         Promise.all(recipients.map(r => EmailLog.create({
-            recipient: r, type: this.type, subject, batchId, magicLink, sgMessageId, status: 'queued'
+            recipient: r, type: this.type, subject, batchId, sgMessageId, status: 'queued'
         }))).catch(err => logger.error(`recordEmailLogs() failed: ${err.message}`));
     }
 

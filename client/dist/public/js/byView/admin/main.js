@@ -401,12 +401,9 @@ async function loadEmailActivity(recipient) {
                 return `<div class="small mb-1"><span class="badge bg-${color}">${esc(ev.event)}</span> <span class="text-muted">${when}</span>${ev.reason ? ' — ' + esc(ev.reason) : ''}</div>`;
             }).join('') || '<div class="small text-muted">No delivery events recorded yet.</div>';
             const sent = l.createdAt ? new Date(l.createdAt).toLocaleString() : '';
-            const typeLabelHtml = l.type === 'magic-login' && l.magicLink
-                ? ` · <span class="magic-link-copy" style="cursor:pointer; text-decoration:underline; text-decoration-style:dotted;" data-magic-link="${esc(l.magicLink)}" title="Click to copy magic link">${esc(l.type)}</span>`
-                : '';
             return `<div class="app-card mb-2">
                 <div><strong>${esc(l.subject || l.type)}</strong> <span class="text-muted small">(${esc(l.type)})</span></div>
-                <div class="small text-muted">Sent ${sent} · status: ${esc(l.status)}${l.sgMessageId ? ' · id ' + esc(l.sgMessageId) : ''}${typeLabelHtml}</div>
+                <div class="small text-muted">Sent ${sent} · status: ${esc(l.status)}${l.sgMessageId ? ' · id ' + esc(l.sgMessageId) : ''}</div>
                 <div class="mt-2">${evs}</div>
             </div>`;
         }).join('');
@@ -811,30 +808,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     const emailResults = document.getElementById('email-results');
     emailResults?.addEventListener('click', async (e) => {
-        const magicLinkEl = e.target.closest('.magic-link-copy');
-        if (magicLinkEl) {
-            const link = magicLinkEl.getAttribute('data-magic-link');
-            if (link) {
-                try {
-                    await navigator.clipboard.writeText(link);
-                }
-                catch {
-                    const ta = document.createElement('textarea');
-                    ta.value = link;
-                    ta.style.position = 'fixed';
-                    ta.style.opacity = '0';
-                    document.body.appendChild(ta);
-                    ta.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(ta);
-                }
-                const orig = magicLinkEl.textContent;
-                magicLinkEl.textContent = 'Copied!';
-                magicLinkEl.style.color = '#3cce3c';
-                setTimeout(() => { magicLinkEl.textContent = orig; magicLinkEl.style.color = ''; }, 1500);
-            }
-            return;
-        }
         const btn = e.target.closest('button[data-email-action]');
         if (!btn || !emailResults.contains(btn))
             return;
@@ -895,7 +868,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const origText = el.textContent;
         el.textContent = '…';
         try {
-            const res = await fetch(`${API}/email/resend-login`, {
+            const res = await fetch(`${API}/email/generate-login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: recipient })
@@ -924,7 +897,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             else {
                 el.textContent = origText;
-                statusMsg('Sign-in link resent (check console for devMagicLink)', 'warning');
+                statusMsg('Link generated but could not be read from the response', 'warning');
             }
         }
         catch (err) {

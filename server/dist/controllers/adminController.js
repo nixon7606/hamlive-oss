@@ -15,7 +15,7 @@ const { getEmailEvent } = require('../models/emailEvent');
 const { handleRequest } = require('../lib/responseUtils');
 const { logger } = require('../lib/logger');
 const mongoose = require('mongoose');
-const { sendMagicSignInLink } = require('../routes/authRoutes');
+const { sendMagicSignInLink, generateMagicSignInLink } = require('../routes/authRoutes');
 const { getSuppressions, removeSuppression } = require('../lib/sendgridSuppression');
 
 function toCsv(rows) {
@@ -308,6 +308,24 @@ const resendSignInLink = async (req, res) => {
 };
 
 /**
+ * POST /api/admin/email/generate-login { email } — mint a fresh single-use magic
+ * sign-in link WITHOUT sending any email. For when SendGrid can't reach the
+ * recipient: the admin copies the link and hand-delivers it. The link is never
+ * persisted; it is only returned in the response.
+ */
+const generateSignInLink = async (req, res) => {
+    const rawEmail = req.body && req.body.email;
+    const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
+    if (!email || !validator.isEmail(email)) return res.status(400).json({ error: 'a valid email is required' });
+    handleRequest(res, async () => {
+        const result = await generateMagicSignInLink(email);
+        logger.info(`admin generated sign-in link (no email) for ${email}`);
+        recordAudit(req, { action: 'generate-login', targetType: 'email', targetLabel: email });
+        return { message: { generated: true, devMagicLink: result.devMagicLink || null } };
+    }, 'admin: generateSignInLink');
+};
+
+/**
  * POST /api/admin/email/unsuppress { email, list } — remove a suppression, then resend
  */
 const unsuppressEmail = async (req, res) => {
@@ -402,5 +420,5 @@ const listAudit = async (req, res) => {
     }, 'admin: listAudit');
 };
 
-module.exports = { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity, resendSignInLink, unsuppressEmail, recentEmails, listAudit };
+module.exports = { listUsers, updateUser, deleteUser, listNets, getStats, deleteNet, updateNetSchedule, listEmailActivity, resendSignInLink, generateSignInLink, unsuppressEmail, recentEmails, listAudit };
 
