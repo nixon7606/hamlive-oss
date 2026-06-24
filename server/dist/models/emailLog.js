@@ -11,6 +11,7 @@ const emailLogSchema = new Schema({
     relatedUserId: { type: Schema.Types.ObjectId, ref: 'UserProfile' },
     relatedNetId:  { type: Schema.Types.ObjectId, ref: 'NetProfile' },
     batchId:       { type: String, required: true, index: true },
+    magicLink:     { type: String },
     sgMessageId:   { type: String },
     // `status` holds the latest SendGrid event name verbatim (delivered, bounce,
     // dropped, deferred, …) — intentionally not an enum so new SendGrid event
