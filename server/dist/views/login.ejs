@@ -32,9 +32,13 @@
         <div class="col-xs-4 col-sm-4 col-md-4 mt-2 d-flex align-items-center justify-content-center">
           <div class="card w-45">
             <div class="card-body bg-dark">
-              <span class="card-title text-light">Sign in with email link</span>
+              <span class="card-title text-light">Sign in</span>
+              <p class="small text-muted mt-2 mb-2">
+                Enter your email below and click Sign In. We'll email you a link. Click that link and you'll be signed in.
+              </p>
               <form id="magic-auth">
                 <input type="email" class="form-control text-primary" name="magic-auth-email_addr" id="input_magic-auth-email_addr" placeholder="example@domain" />
+                <button type="submit" class="btn btn-primary w-100 mt-2">Sign In</button>
               </form>
               <% if (!server.emailEnabled) { %>
               <p class="small text-warning mt-2 mb-0">
@@ -43,8 +47,9 @@
               </p>
               <% } else { %>
               <p class="small text-muted mt-2 mb-0">
-                Didn't receive your login email? Check your spam folder, or email
-                <a href="mailto:support@netcontrol.live">support@netcontrol.live</a> and we'll help you sign in.
+                Didn't get the email? Give it a minute or two, then check your spam or junk folder.
+                Still nothing? Email
+                <a href="mailto:support@netcontrol.live">support@netcontrol.live</a> and we'll sign you in.
               </p>
               <% } %>
               <div id="dev-magic-link" class="mt-2"></div>
