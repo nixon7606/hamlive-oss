@@ -18,6 +18,9 @@ const { logger, httpLogger } = require('./lib/logger');
 // scheduler). Log rejections and keep serving; on a truly uncaught exception the
 // process state is undefined, so exit and let the supervisor (systemd) restart.
 let httpServer = null;
+// Open sockets, tracked so graceful shutdown can force-close the long-lived
+// SSE/chat connections that never end on their own.
+const openSockets = new Set();
 process.on('unhandledRejection', reason => {
     logger.error(`Unhandled promise rejection: ${reason && reason.stack ? reason.stack : reason}`);
 });
@@ -28,9 +31,21 @@ process.on('uncaughtException', err => {
 function gracefulShutdown(signal) {
     logger.info(`${signal} received — shutting down`);
     const finish = () => mongoose.connection.close(false).catch(() => {}).finally(() => process.exit(0));
-    if (httpServer) httpServer.close(finish); else finish();
+    if (httpServer) {
+        httpServer.close(finish);
+        // SSE/chat connections are long-lived and never end on their own, so
+        // httpServer.close() would otherwise hang until the backstop (the ~10s
+        // restart stall seen on deploys). Give in-flight requests a brief grace,
+        // then destroy any lingering sockets so close() completes promptly.
+        // Clients auto-reconnect their SSE stream.
+        setTimeout(() => {
+            for (const socket of openSockets) socket.destroy();
+        }, 1_000).unref();
+    } else {
+        finish();
+    }
     // Backstop: don't hang forever if a connection won't drain.
-    setTimeout(() => process.exit(1), 10_000).unref();
+    setTimeout(() => process.exit(1), 5_000).unref();
 }
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
@@ -106,6 +121,12 @@ mongoose
         } else {
             httpServer = app.listen(PORT);
         }
+        // Track open sockets so gracefulShutdown() can force-close lingering
+        // SSE/chat connections instead of hanging on httpServer.close().
+        httpServer.on('connection', socket => {
+            openSockets.add(socket);
+            socket.on('close', () => openSockets.delete(socket));
+        });
         const scheme = useHttps ? 'https' : 'http';
         logger.info(`${conf.applogname} listening on ${scheme}://localhost:${PORT}`);
 
