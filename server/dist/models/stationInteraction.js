@@ -78,6 +78,15 @@ const stationInteractionSchema = new Schema(
             type: Boolean,
             default: false
         },
+        // Set true when net control clears a check-in with the `ui` (undo-check-in)
+        // command, so a mis-typed or mistaken check-in leaves the roster immediately
+        // instead of lingering for the lurker grace window. A genuine viewer behind
+        // the callsign un-sets this on their next presence heartbeat (see
+        // updateStationInteraction) and reappears as a normal lurker.
+        clearedByNc: {
+            type: Boolean,
+            default: false
+        },
         chatEnabled: {
             type: Boolean,
             default: true

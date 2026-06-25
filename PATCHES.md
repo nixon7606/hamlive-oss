@@ -159,6 +159,34 @@ producing unhelpful errors, and they fix one validator that could hang a login.
 
 ---
 
+## Roster / net control
+
+### `ui` (undo-check-in) removes a station from the roster immediately
+- **Files:** `server/dist/lib/rosterMembership.js`,
+  `server/dist/lib/sharedNetOps.js` (`checkState`),
+  `server/dist/lib/controllers/liveNetHelpers.js`,
+  `server/dist/models/stationInteraction.js`
+- **Change:** added a `clearedByNc` flag to the station-interaction doc. The `ui`
+  command sets it (and any check-in/out clears it); `shouldKeepInRoster` drops a
+  flagged `null`-state station at once instead of holding it for the 3-minute
+  lurker grace window. A live presence heartbeat clears the flag, so a real
+  viewer behind the callsign reappears as a normal lurker — only a typo'd ghost
+  callsign (no heartbeat) stays gone.
+- **Why:** net controls reported that on upstream's deployment a mistaken
+  check-in typed and then `ui`'d "vanishes and goes away," whereas here the
+  cleared call lingered ~3 minutes. The fork had decoupled roster membership
+  from the short ~25s presence cutoff (`shouldKeepInRoster`) to stop present-but-
+  idle viewers flickering out; that anti-flicker window also caught `ui`'d
+  stations. This restores upstream's immediate-removal behaviour for explicit
+  `ui` clears while keeping the flicker fix for ordinary lurkers.
+- **Upstream:** dropped any `checkedState === null && presence === 'offline'`
+  station in `liveNetHelpers` (no `rosterMembership` module, no `clearedByNc`
+  field), so an `ui`'d call with no live viewer left the roster right away.
+- **Tests:** `tests/server/lib/rosterMembership.test.js` extended with the
+  cleared-by-NC cases.
+
+---
+
 ## Not applied (intentionally noted)
 
 ### Geocoding swap to Nominatim

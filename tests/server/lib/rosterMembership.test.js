@@ -28,6 +28,24 @@ describe('shouldKeepInRoster — roster membership is decoupled from the 25s pre
         expect(shouldKeepInRoster(null, 0)).toBe(true);
     });
 
+    test('drops a station net control just cleared with `ui`, even if recently seen', () => {
+        // clearedByNc === true: an undo-check-in must vanish immediately rather than
+        // ride the lurker grace window — so a typo'd check-in disappears at once.
+        expect(shouldKeepInRoster(null, 0, true)).toBe(false);
+        expect(shouldKeepInRoster(null, 40 * SECONDS, true)).toBe(false);
+    });
+
+    test('a checked-in/out station ignores the cleared-by-NC mark', () => {
+        // The check-state branch wins first; the mark only matters for null state.
+        expect(shouldKeepInRoster(true, 0, true)).toBe(true);
+        expect(shouldKeepInRoster(false, 0, true)).toBe(true);
+    });
+
+    test('an un-marked lurker still gets the grace window (flicker fix preserved)', () => {
+        expect(shouldKeepInRoster(null, 40 * SECONDS, false)).toBe(true);
+        expect(shouldKeepInRoster(null, ROSTER_GONE_AFTER_MS + 1, false)).toBe(false);
+    });
+
     test('gone window is generous enough to absorb heartbeat jitter (>> 25s away cutoff)', () => {
         expect(ROSTER_GONE_AFTER_MS).toBeGreaterThanOrEqual(120 * SECONDS);
     });

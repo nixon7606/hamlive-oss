@@ -235,6 +235,14 @@ async function checkState({
             throw new Error(`${dia.callSign} must be checked-in prior to check-out (use io command for in-out)`);
         }
 
+        // Mark/un-mark for immediate roster removal. `ui` (state === null) flags the
+        // station so the roster drops it at once (mistaken check-in vanishes); any
+        // check-in/out (state !== null) clears the flag. Tracked separately from the
+        // check-state dupe so an `ui` on an already-lurking station still persists.
+        const desiredCleared = state === null;
+        const markChanged = Boolean(dia.clearedByNc) !== desiredCleared;
+        dia.clearedByNc = desiredCleared;
+
         if (state === null) {
             //changing to lurker:
             dia.checkedState = null;
@@ -248,8 +256,8 @@ async function checkState({
             }
         }
 
-        // If the requested check-state is not a dupe, save the document
-        if (!dupe) {
+        // Save when the check-state changed (not a dupe) or the cleared-by-NC mark did.
+        if (!dupe || markChanged) {
             dia.save();
         }
 

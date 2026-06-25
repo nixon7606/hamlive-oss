@@ -44,11 +44,12 @@ const genLiveNetDetails = async ({ npid, flexOpts = {}, permitCachedResponse = f
     const now = Date.now();
 
     stationInteractions.forEach(ia => {
-        // Drop only non-checked-in viewers idle past the "really gone" window. Roster
-        // membership is decoupled from the short ~25s presence dot, so present-but-idle
-        // lobby viewers (and yourself, on SSE pushes that omit requestingCallSign) stay
-        // visible instead of flickering out when a heartbeat lands late.
-        if (ia && shouldKeepInRoster(ia.checkedState, now - ia.lastSeen)) {
+        // Drop non-checked-in viewers idle past the "really gone" window — and stations
+        // net control just cleared with `ui`, which leave at once. Roster membership is
+        // otherwise decoupled from the short ~25s presence dot, so present-but-idle lobby
+        // viewers (and yourself, on SSE pushes that omit requestingCallSign) stay visible
+        // instead of flickering out when a heartbeat lands late.
+        if (ia && shouldKeepInRoster(ia.checkedState, now - ia.lastSeen, ia.clearedByNc)) {
             response.stations.push(buildStationResponse(ia, awayInMs, requestingCallSign));
         }
     });
@@ -257,7 +258,12 @@ const updateStationInteraction = async ({ req, res, netProfileDoc, liveNetDoc })
         photo,
         userProfile: userId,
         location,
-        chatEnabled: chat
+        chatEnabled: chat,
+        // A live heartbeat means a real viewer is behind this callsign, so clear any
+        // `ui` (cleared-by-NC) mark: a present, non-checked-in viewer belongs on the
+        // roster as a normal lurker. Only ghost/typo callsigns (no heartbeat) keep the
+        // mark and stay dropped.
+        clearedByNc: false
     };
 
     if (lastSeenDelta > awayInMs) {

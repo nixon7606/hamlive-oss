@@ -14,13 +14,23 @@ const ROSTER_GONE_AFTER_MS = 180000; // 3 minutes
  *
  * @param {boolean|null} checkedState - true (checked in), false (checked out), or null (viewing only).
  * @param {number} lastSeenDeltaMs - ms since the station's lastSeen.
+ * @param {boolean} [clearedByNc] - true if net control just cleared this station with `ui`.
  * @param {number} [goneAfterMs] - idle window after which a non-checked-in viewer is dropped.
  * @returns {boolean} true to keep the station in the roster.
  */
-const shouldKeepInRoster = (checkedState, lastSeenDeltaMs, goneAfterMs = ROSTER_GONE_AFTER_MS) => {
+const shouldKeepInRoster = (checkedState, lastSeenDeltaMs, clearedByNc = false, goneAfterMs = ROSTER_GONE_AFTER_MS) => {
     // Checked-in (true) and checked-out (false) stations always remain on the roster.
     if (checkedState !== null) {
         return true;
+    }
+
+    // A station net control explicitly cleared with `ui` (undo-check-in) leaves the
+    // roster at once, so a mis-typed or mistaken check-in disappears immediately
+    // instead of riding the lurker grace window below. A real viewer behind the
+    // callsign clears this mark on their next presence heartbeat and reappears as a
+    // normal lurker; a typo'd ghost callsign never heartbeats, so it stays gone.
+    if (clearedByNc) {
+        return false;
     }
 
     // A viewer who has never been seen (no/invalid lastSeen) has just arrived — keep them.
