@@ -276,17 +276,15 @@ export class NameCell extends StationTableMember {
             this.refreshTooltip();
         }
 
-        // Handle display name change
-        if (onConnected || this.haveThisStationPropertiesChanged(['displayName'])) {
-            this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
-        }
-
-        // Handle styling for role, checkedState, and presence changes
-        if (onConnected || this.haveThisStationPropertiesChanged(['role', 'checkedState', 'presence'])) {
-            if (!this.station) {
-                throw new Error('Station is null in NameCell widget, render()');
-            }
-
+        // Paint name + styling UNCONDITIONALLY on every render. This re-applies the
+        // fd878b1 fix that 5b11a66's tooltip rework reverted. A cell rebuilt while the
+        // store already holds data connects via render(false) (not render(true), see
+        // base connectedCallback), so gating these writes on a per-cycle "displayName
+        // changed" flag left freshly-rebuilt cells blank until the name happened to
+        // change — the roster "names vanish on update" bug. Writing unconditionally
+        // makes the cell a pure function of current state and self-heals on any render.
+        this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
+        if (this.station) {
             this.applyStyling(this.defaultElement, this.getStyling(this.station));
         }
     }

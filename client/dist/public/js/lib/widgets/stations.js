@@ -209,13 +209,9 @@ export class NameCell extends StationTableMember {
         if (onConnected || this.haveThisStationPropertiesChanged(['location'])) {
             this.refreshTooltip();
         }
-        if (onConnected || this.haveThisStationPropertiesChanged(['displayName'])) {
-            this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
-        }
-        if (onConnected || this.haveThisStationPropertiesChanged(['role', 'checkedState', 'presence'])) {
-            if (!this.station) {
-                throw new Error('Station is null in NameCell widget, render()');
-            }
+        // Paint name + styling unconditionally every render (re-applies fd878b1, reverted by 5b11a66's tooltip rework) — fixes roster names vanishing on update.
+        this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
+        if (this.station) {
             this.applyStyling(this.defaultElement, this.getStyling(this.station));
         }
     }
