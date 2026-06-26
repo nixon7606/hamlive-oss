@@ -106,10 +106,22 @@ const handleRequest = async (res, callback, successMessage) => {
         handleResponse.sendResponse(res, 'OK', result);
     }
     catch (err) {
-        const rawMessage = err instanceof Error ? err.message : typeof err === 'string' ? err : 'An unknown error occurred';
-        const isInternal = err != null &&
+        // Mongoose ValidationError messages are author-defined in the schema
+        // (e.g. "That callsign already has an account…") and are SAFE and intended
+        // to be shown to the user. Surface them instead of masking. Build the text
+        // from err.errors so we drop Mongoose's "Validation failed: <path>:" prefix
+        // (and never echo the offending value). Genuine driver errors (E11000,
+        // MongoServerError, CastError) stay masked — they can leak index/internal
+        // details. See PATCHES.md "Validation errors are shown to the user".
+        const isValidationError = err != null && typeof err === 'object' && err['name'] === 'ValidationError';
+        const validationMsg = isValidationError && err['errors']
+            ? Object.values(err['errors']).map(e => e && e.message).filter(Boolean).join(' ')
+            : null;
+        const rawMessage = validationMsg || (err instanceof Error ? err.message : typeof err === 'string' ? err : 'An unknown error occurred');
+        const isInternal = !isValidationError &&
+            err != null &&
             typeof err === 'object' &&
-            ((['MongoServerError', 'MongoError', 'ValidationError', 'CastError', 'MongooseError'].includes(err['name']) ||
+            ((['MongoServerError', 'MongoError', 'CastError', 'MongooseError'].includes(err['name']) ||
                 typeof err['code'] === 'number' ||
                 (typeof err['code'] === 'string' &&
                     /^E\d|11000/.test(String(err['code'])))));

@@ -9,6 +9,21 @@ const queryString = window.location.search;
 const urlParams = new URLSearchParams(queryString);
 const consent_modal = new bootstrap.Modal(document.getElementById('consent_modal'));
 
+// Server-side maxlength for `location` (see server/dist/models/userProfile.js).
+// QRZ auto-fill sets the field's value programmatically, which bypasses the
+// input's HTML maxlength, so we truncate here as a hard backstop.
+const LOCATION_MAX = 60;
+
+// Show a server-provided validation message (duplicate callsign, location too
+// long, …) in a prominent popup. Falls back silently if the modal is absent.
+function showValidationPopup(message: string) {
+    const el = document.getElementById('validation_modal');
+    if (!el) return;
+    const body = document.getElementById('validation_modal_body');
+    if (body) body.textContent = message;
+    bootstrap.Modal.getOrCreateInstance(el).show();
+}
+
 function getConsent(done) {
     consent_modal.show();
 
@@ -49,8 +64,8 @@ function lookupLocationFromCallSign(callSign: string, targetInput?: HTMLInputEle
             }
 
             if (result.data && result.data.location) {
-                el.value = result.data.location;
-                userProfileFormState.mesg('info', `Location: ${result.data.location} (from QRZ)`);
+                el.value = String(result.data.location).slice(0, LOCATION_MAX);
+                userProfileFormState.mesg('info', `Location: ${el.value} (from QRZ)`);
             } else {
                 el.placeholder = 'Location ...';
                 userProfileFormState.mesg('info', 'No location found on QRZ — enter manually');
@@ -226,6 +241,7 @@ document.getElementById('userprofile_form')!.addEventListener('submit', (e: Even
         .catch((error: any) => {
             if (error.response.data.errorMessage) {
                 userProfileFormState.mesg('error', error.response.data.errorMessage);
+                showValidationPopup(error.response.data.errorMessage);
                 console.error(error.response.data.errorMessage);
             } else {
                 userProfileFormState.mesg('error', 'error');

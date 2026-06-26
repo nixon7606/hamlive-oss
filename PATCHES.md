@@ -47,11 +47,27 @@ producing unhelpful errors, and they fix one validator that could hang a login.
 ### location is genuinely optional
 - **File:** `server/dist/models/userProfile.js`
 - **Change:** removed `minlength: 5` and added an empty-value guard, so a blank
-  location saves; when present it must still be 5 to 24 characters. Clearer
+  location saves; when present it must still be 5 to 60 characters. Clearer
   message.
 - **Upstream:** `minlength: 5` with no empty guard, so saving a profile with no
   location failed validation. (The sibling `frequency` and `modeDetails` fields
   already had the empty guard; `location` was the inconsistent one.)
+
+### location max raised 24 -> 60 (QRZ auto-fill no longer blocks save)
+- **Files:** `server/dist/models/userProfile.js`,
+  `server/dist/views/myAccount.ejs` (input `maxlength`),
+  `server/dist/views/admin.ejs` (admin edit input `maxlength`),
+  `client/src/public/js/byView/myAccount/main.ts` +
+  `client/dist/public/js/byView/myAccount/main.js`
+- **Change:** `location` `maxlength` 24 -> 60 with a custom (non-value-echoing)
+  message; form inputs match. The QRZ auto-fill in `main.ts/.js` truncates the
+  returned location to 60 chars (`LOCATION_MAX`) because it sets the field value
+  programmatically, which bypasses the input's HTML `maxlength`.
+- **Why:** QRZ builds `City (Country)` strings (e.g.
+  `Sapphire Central (Australia)`, 28 chars) that exceeded 24 and made the whole
+  profile PATCH fail — which, because callsign + location save together, also
+  blocked first-time callsign registration. Reported via prod log
+  `ValidationError: ... location ... longer than the maximum allowed length (24)`.
 
 ### displayName allows real-world names
 - **File:** `server/dist/models/userProfile.js`
@@ -71,8 +87,29 @@ producing unhelpful errors, and they fix one validator that could hang a login.
 
 ### Clearer callsign-already-registered message
 - **File:** `server/dist/models/userProfile.js` (unique-validator plugin)
-- **Change:** reworded the duplicate-callsign error to plain guidance.
+- **Change:** reworded the duplicate-callsign error to plain guidance. Now also
+  appends "or email `${SUPPORT_EMAIL}` to change the email on your account" when
+  the optional `SUPPORT_EMAIL` env var is set (clause omitted if unset). See
+  `.env.example`.
 - **Upstream:** terse message referencing logging out and back in.
+
+### Validation errors are shown to the user (not masked as "internal error")
+- **Files:** `server/dist/lib/responseUtils.js` (`handleRequest`),
+  `server/dist/views/myAccount.ejs` (validation popup modal),
+  `client/src/public/js/byView/myAccount/main.ts` +
+  `client/dist/public/js/byView/myAccount/main.js`
+- **Change:** `handleRequest` no longer classifies Mongoose `ValidationError` as
+  "internal". In production these author-defined messages (built cleanly from
+  `err.errors`, dropping the `Validation failed: <path>:` prefix and never
+  echoing the offending value) are now returned to the client instead of the
+  generic "An internal error occurred." Genuine driver errors (`E11000`,
+  `MongoServerError`, `CastError`) stay masked. `myAccount` additionally surfaces
+  the returned message in a Bootstrap popup (`#validation_modal`) on save
+  failure, keeping the inline status line as a fallback.
+- **Why:** the schema's helpful messages (duplicate callsign, location too long)
+  were being swallowed in prod, so users saw only "An internal error occurred."
+  and a self-service fix turned into a support ticket. This is a **global**
+  server change — it unmasks validation messages app-wide, by design.
 
 ---
 

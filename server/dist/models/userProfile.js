@@ -55,13 +55,16 @@ const userProfileSchema = new Schema(
         location: {
             type: String,
             unique: false,
-            maxlength: 24,
+            // Raised 24 -> 60: QRZ auto-fill builds "City (Country)" strings that
+            // legitimately exceed 24 (e.g. "Sapphire Central (Australia)"), which
+            // previously failed validation and blocked the whole profile save.
+            maxlength: [60, 'Location must be 60 characters or fewer.'],
             validate: {
                 validator: function (v) {
                     if (v === '' || v == null) { return true; }
                     return v.length >= 5 && /^[0-9A-Za-zÀ-ÿ-', ()]+$/.test(v);
                 },
-                message: 'location must be 5 to 24 characters'
+                message: 'location must be 5 to 60 characters'
             }
         },
         newAccount: { type: Boolean, default: true },
@@ -121,9 +124,14 @@ const userProfileSchema = new Schema(
     { timestamps: true }
 );
 
+// SUPPORT_EMAIL (optional) lets the duplicate-callsign message point users who
+// need to change the email on an existing account at a real support address.
+// Unset -> the message omits that clause. See .env.example.
+const SUPPORT_EMAIL = (process.env.SUPPORT_EMAIL || '').trim();
 userProfileSchema.plugin(uniqueValidator, {
-    message:
-        'That callsign already has an account. If it is yours, sign out and sign back in with the email you first registered it with.'
+    message: SUPPORT_EMAIL
+        ? `That callsign already has an account. If it is yours, sign out and sign back in with the email you first registered it with, or email ${SUPPORT_EMAIL} to change the email on your account.`
+        : 'That callsign already has an account. If it is yours, sign out and sign back in with the email you first registered it with.'
 });
 
 module.exports = {

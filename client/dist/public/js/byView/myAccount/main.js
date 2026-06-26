@@ -4,6 +4,21 @@ const userProfileApi = new HttpClient('userprofile', '/api/data/userprofiles');
 const queryString = window.location.search;
 const urlParams = new URLSearchParams(queryString);
 const consent_modal = new bootstrap.Modal(document.getElementById('consent_modal'));
+// Server-side maxlength for `location` (see server/dist/models/userProfile.js).
+// QRZ auto-fill sets the field's value programmatically, which bypasses the
+// input's HTML maxlength, so we truncate here as a hard backstop.
+const LOCATION_MAX = 60;
+// Show a server-provided validation message (duplicate callsign, location too
+// long, …) in a prominent popup. Falls back silently if the modal is absent.
+function showValidationPopup(message) {
+    const el = document.getElementById('validation_modal');
+    if (!el)
+        return;
+    const body = document.getElementById('validation_modal_body');
+    if (body)
+        body.textContent = message;
+    bootstrap.Modal.getOrCreateInstance(el).show();
+}
 function getConsent(done) {
     consent_modal.show();
     document.getElementById('consent_accept').addEventListener('click', () => {
@@ -38,8 +53,8 @@ function lookupLocationFromCallSign(callSign, targetInput) {
             return;
         }
         if (result.data && result.data.location) {
-            el.value = result.data.location;
-            userProfileFormState.mesg('info', `Location: ${result.data.location} (from QRZ)`);
+            el.value = String(result.data.location).slice(0, LOCATION_MAX);
+            userProfileFormState.mesg('info', `Location: ${el.value} (from QRZ)`);
         }
         else {
             el.placeholder = 'Location ...';
@@ -191,6 +206,7 @@ document.getElementById('userprofile_form').addEventListener('submit', (e) => {
         .catch((error) => {
         if (error.response.data.errorMessage) {
             userProfileFormState.mesg('error', error.response.data.errorMessage);
+            showValidationPopup(error.response.data.errorMessage);
             console.error(error.response.data.errorMessage);
         }
         else {
