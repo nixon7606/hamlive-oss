@@ -113,3 +113,6 @@ backups/
 
 # Chat image uploads (in-house chat replacement for GetStream)
 uploads/
+
+# SDD execution scratch (briefs, reports, ledger) — not part of the product
+.superpowers/
