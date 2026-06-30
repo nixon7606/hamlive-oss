@@ -1,5 +1,6 @@
 /* hamlive-oss — MIT License. See LICENSE. */
 const sgMail = require('@sendgrid/mail');
+const nodemailer = require('nodemailer');
 const { conf } = require('./configLib');
 const { logger } = require('./logger');
 
@@ -45,6 +46,30 @@ class SendGridTransport {
     }
 }
 
+class SmtpTransport {
+    constructor({ host, port, secure, user, pass, from }) {
+        this._from = from;
+        this._tx = nodemailer.createTransport({
+            host, port: Number(port), secure: Boolean(secure),
+            auth: user ? { user, pass } : undefined
+        });
+    }
+    async send(msg) {
+        if (msg.templateId && !msg.html) {
+            throw new Error('SmtpTransport cannot render a remote SendGrid template (no html provided)');
+        }
+        const mail = {
+            from: msg.from || this._from,
+            to: (msg.to || []).join(', '),
+            subject: msg.subject,
+            html: msg.html
+        };
+        if (msg.attachments && msg.attachments.length) mail.attachments = msg.attachments.map(toNodemailerAttachment);
+        const info = await this._tx.sendMail(mail);
+        return { messageId: info.messageId || null };
+    }
+}
+
 // ── active-transport resolution (env/console only; Task 4 adds DB settings) ──
 let _cached = null;
 function invalidateTransportCache() { _cached = null; }
@@ -62,6 +87,6 @@ async function getActiveTransport() {
 
 module.exports = {
     buildSendGridPayload, toSendGridAttachment, toNodemailerAttachment,
-    ConsoleTransport, SendGridTransport,
+    ConsoleTransport, SendGridTransport, SmtpTransport,
     getActiveTransport, invalidateTransportCache
 };
