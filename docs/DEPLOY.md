@@ -43,6 +43,23 @@ RESTART_EXEC='ssh root@your-host' \
 See the header of `scripts/deploy.sh` for every variable (`APP_DIR`, `SERVICE`,
 `FORCE`, Cloudflare purge vars).
 
+## Handling dependency updates
+
+When a deploy introduces new npm dependencies (noted in `PATCHES.md`), run
+`npm install` after `git reset --hard` and before restarting the service. For
+example:
+
+```bash
+cd $APP_DIR
+git reset --hard origin/<branch>
+npm install                 # required when dependencies are added
+systemctl restart hamlive
+```
+
+Subsequent deploys without dependency changes do not need `npm install` — a plain
+`git reset --hard` + restart is sufficient. The repo's commit message and
+`PATCHES.md` catalog which releases added new dependencies.
+
 ## Prerequisite: strong production secrets
 
 In production (`NODE_ENV=production`) the app **refuses to start** if

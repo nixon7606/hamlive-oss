@@ -149,6 +149,39 @@ producing unhelpful errors, and they fix one validator that could hang a login.
 - **Change:** inline HTML rebranded to match the rest. Kept inline (no
   account-specific template ID).
 
+### In-house email — pluggable transports and admin UI
+- **New files:** `server/dist/lib/secretBox.js` (AES-256-GCM encryption for SMTP
+  credentials), `server/dist/lib/emailTransports.js` (provider selector &
+  SendGrid/SMTP/console transports), `server/dist/lib/templateService.js`
+  (Handlebars template engine with seeded email templates),
+  `server/dist/models/emailSettings.js` (database admin email config),
+  `server/dist/models/emailTemplate.js` (database email templates),
+  `server/dist/controllers/emailAdminController.js` (admin UI endpoints),
+  `server/dist/views/emails/*.hbs` (email templates in Handlebars format)
+- **Modified files:** `server/dist/lib/userNotification.js` (uses new pluggable
+  transports instead of SendGrid dynamic templates),
+  `server/dist/lib/authRoutes.js` (magic-link email uses templateService),
+  `server/dist/controllers/adminController.js` (admin UI includes Email
+  Settings), `server/dist/routes/adminRoutes.js` (Email Settings endpoints),
+  `server/dist/lib/serverUtils.js` (admin mail test endpoint),
+  `server/dist/controllers/liveNetController.js` (net-close uses new transports),
+  `server/dist/server.js` (seeds email templates on startup), `server/dist/views/admin.ejs`
+  (Email Settings UI added)
+- **Client:** new `client/dist/public/js/lib/emailTransportClient.ts` (admin
+  transport picker)
+- **Breaking change:** net-close report no longer uses the SendGrid dynamic
+  template `d-c2c75b3765954b5dbc043576c67493a7`. It now uses the in-house
+  Handlebars template engine.
+- **Dependencies:** new `nodemailer` (SMTP), `handlebars` (template engine). Both
+  require `npm install` on deploy (see `docs/DEPLOY.md`).
+- **Why:** in-house transports let admins configure email (SendGrid API key, SMTP
+  host, or console logging) entirely in the database admin UI — no need to
+  restart the app or edit `.env` to switch providers or add a password. The
+  `secretBox.js` module encrypts stored SMTP credentials with AES-256-GCM,
+  using `EMAIL_SECRET_KEY` if set or falling back to `COOKIE_SESSION_KEY`. The
+  Handlebars template engine replaces dependency on account-specific SendGrid
+  template IDs.
+
 ---
 
 ## Branding
