@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Net Close Report</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f2ec; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
+  <!-- preheader (hidden) -->
+  <div style="display:none; max-height:0; overflow:hidden; opacity:0;">{{title}} net close report &middot; full attendee log attached.</div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f2ec;">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; background-color:#ffffff; border:1px solid #e2ddd0; border-radius:10px; overflow:hidden;">
+
+          <!-- header band (dark; logo PNG has matching dark bg so it blends) -->
+          <tr>
+            <td align="center" bgcolor="#23262B" style="background-color:#23262B; padding:20px 0;">
+              <img src="https://netcontrol.live/img/hamlive-logo-tagline-beta-horizontal-darkbg.png"
+                   alt="netcontrol.live" width="300"
+                   style="display:block; width:300px; max-width:82%; height:auto; border:0;">
+            </td>
+          </tr>
+
+          <!-- title -->
+          <tr>
+            <td style="padding:28px 32px 2px 32px; font-family:Georgia,'Times New Roman',serif;">
+              <a href="{{url}}" style="color:#C24A38; font-size:22px; font-weight:bold; text-decoration:none;">{{title}}</a>
+            </td>
+          </tr>
+
+          <!-- subtitle / start time -->
+          <tr>
+            <td style="padding:2px 32px 20px 32px; font-family:Arial,Helvetica,sans-serif; color:#7a756a; font-size:13px;">
+              Net Close Report &middot; Started {{startedAtString}}
+            </td>
+          </tr>
+
+          <!-- station info table -->
+          <tr>
+            <td style="padding:0 32px 4px 32px;">
+              <div style="font-family:Arial,Helvetica,sans-serif; font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#C4933F; font-weight:bold; padding-bottom:8px;">Station Info</div>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; font-family:Arial,Helvetica,sans-serif; font-size:14px; border:1px solid #ece8dd;">
+                <tr style="background-color:#23262B;">
+                  <th align="left" style="padding:9px 10px; color:#EFE6D2; font-size:11px; text-transform:uppercase; letter-spacing:0.6px;">Role</th>
+                  <th align="left" style="padding:9px 10px; color:#EFE6D2; font-size:11px; text-transform:uppercase; letter-spacing:0.6px;">Callsign</th>
+                  <th align="left" style="padding:9px 10px; color:#EFE6D2; font-size:11px; text-transform:uppercase; letter-spacing:0.6px;">Name</th>
+                  <th align="left" style="padding:9px 10px; color:#EFE6D2; font-size:11px; text-transform:uppercase; letter-spacing:0.6px;">Check-In ({{timezoneAbbr}})</th>
+                </tr>
+                {{#each formattedAttendees}}
+                <tr style="{{#if this.highlight}}background-color:#faf3e2;{{else}}background-color:#ffffff;{{/if}} border-bottom:1px solid #ece8dd;">
+                  <td style="padding:8px 10px; color:#8a6d2f; font-weight:bold; white-space:nowrap;">{{#if this.role}}[{{this.role}}]{{/if}}</td>
+                  <td style="padding:8px 10px; color:#23262B; font-weight:bold; white-space:nowrap;">{{this.callSign}}</td>
+                  <td style="padding:8px 10px; color:#444444;">{{this.displayName}}</td>
+                  <td style="padding:8px 10px; color:#666666; font-style:italic; white-space:nowrap;">{{this.checkInTime}}</td>
+                </tr>
+                {{/each}}
+              </table>
+            </td>
+          </tr>
+
+          <!-- view button -->
+          <tr>
+            <td style="padding:22px 32px 28px 32px;">
+              <a href="{{url}}" style="display:inline-block; background-color:#C24A38; color:#ffffff; font-family:Arial,Helvetica,sans-serif; font-size:14px; font-weight:bold; text-decoration:none; padding:11px 22px; border-radius:6px;">View this net</a>
+            </td>
+          </tr>
+
+          <!-- footer -->
+          <tr>
+            <td bgcolor="#23262B" style="background-color:#23262B; padding:18px 32px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.6; color:#9a9a9a;">
+              Sent by <a href="https://netcontrol.live" style="color:#C4933F; text-decoration:none;">netcontrol.live</a> &middot; Amateur Radio Net Control<br>
+              A full attendee CSV and the net chat log are attached to this email.
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
