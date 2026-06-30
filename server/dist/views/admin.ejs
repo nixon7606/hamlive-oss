@@ -4,6 +4,7 @@
 
 <head>
   <%- include('./partials/head') %> <%- include('./partials/pageTopFeatures') %>
+  <%- include('./partials/featureTinyMceJs') %>
   <title><%= server.appName %> - Admin <%if (server.logLevel !== "info") {%> (<%= server.logLevel %>) <%}%></title>
   <style>
     .admin-table { font-size: 13px; margin-bottom: 0; }
@@ -154,6 +155,96 @@
       </div>
 
       <div class="tab-pane fade" id="email-panel" role="tabpanel">
+
+        <!-- Email Settings (provider config + test) -->
+        <div class="app-card" id="email-settings-panel">
+          <div class="app-card-header"><i class="bi bi-gear"></i> Email Settings</div>
+          <form id="email-provider-form" class="mt-3">
+            <fieldset class="mb-3">
+              <legend class="small fw-semibold text-muted mb-2">Provider</legend>
+              <div class="d-flex flex-wrap gap-3">
+                <label class="d-flex align-items-center gap-2"><input type="radio" name="provider" value="smtp"> SMTP</label>
+                <label class="d-flex align-items-center gap-2"><input type="radio" name="provider" value="sendgrid"> SendGrid</label>
+                <label class="d-flex align-items-center gap-2"><input type="radio" name="provider" value="console"> Console (log only)</label>
+              </div>
+            </fieldset>
+            <div id="smtp-fields" class="row g-2 mb-3">
+              <div class="col-md-6">
+                <label class="form-label small">Host</label>
+                <input name="host" type="text" class="app-input w-100">
+              </div>
+              <div class="col-md-2">
+                <label class="form-label small">Port</label>
+                <input name="port" type="number" value="587" class="app-input w-100">
+              </div>
+              <div class="col-md-4 d-flex align-items-end pb-1">
+                <label class="d-flex align-items-center gap-2"><input name="secure" type="checkbox"> Secure (TLS)</label>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small">Username</label>
+                <input name="user" type="text" class="app-input w-100">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small">Password</label>
+                <div class="d-flex align-items-center gap-2">
+                  <input name="password" type="password" placeholder="•••• (leave blank to keep)" class="app-input flex-grow-1">
+                  <span id="smtp-password-status" class="small text-muted text-nowrap"></span>
+                </div>
+              </div>
+              <div class="col-12">
+                <label class="form-label small">From override</label>
+                <input name="fromOverride" type="text" placeholder="Name &lt;addr@example.com&gt;" class="app-input w-100">
+              </div>
+            </div>
+            <div class="d-flex align-items-center gap-3 mb-3">
+              <button type="submit" class="app-btn app-btn-primary">Save provider settings</button>
+              <span id="email-settings-status" role="status" class="small"></span>
+            </div>
+          </form>
+          <div id="email-test" class="border-top pt-3">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <label class="d-flex align-items-center gap-2">
+                Test template
+                <select id="email-test-key" class="app-input">
+                  <option value="magic-link">Sign-in (magic link)</option>
+                  <option value="net-announce">Net going live</option>
+                  <option value="net-close">Net Close Report</option>
+                </select>
+              </label>
+              <button id="email-test-send" type="button" class="app-btn">Send test to me</button>
+              <span id="email-test-status" role="status" class="small"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Email Templates (list + editor) -->
+        <div class="app-card" id="email-templates-panel">
+          <div class="app-card-header"><i class="bi bi-file-earmark-code"></i> Email Templates</div>
+          <ul id="email-template-list" class="list-unstyled mt-3 mb-0"></ul>
+          <div id="email-template-editor" hidden class="mt-3 border-top pt-3">
+            <h3 id="et-title" class="h5"></h3>
+            <p class="small text-muted mb-2">Variables: <span id="et-vars"></span></p>
+            <div class="mb-2">
+              <label class="form-label small">Subject</label>
+              <input id="et-subject" type="text" class="app-input w-100">
+            </div>
+            <div class="et-toolbar d-flex gap-2 mb-2">
+              <button type="button" id="et-mode-source" class="app-btn app-btn-sm active">Source</button>
+              <button type="button" id="et-mode-rich" class="app-btn app-btn-sm">Rich</button>
+            </div>
+            <textarea id="et-html" rows="18" spellcheck="false" class="app-input w-100" style="font-family:monospace;font-size:12px;"></textarea>
+            <div id="et-rich" hidden></div>
+            <div class="d-flex flex-wrap gap-2 mt-2 mb-2">
+              <button type="button" id="et-preview" class="app-btn app-btn-sm">Preview</button>
+              <button type="button" id="et-test" class="app-btn app-btn-sm">Send test to me</button>
+              <button type="button" id="et-reset" class="app-btn app-btn-sm">Reset to default</button>
+              <button type="button" id="et-save" class="app-btn app-btn-primary app-btn-sm">Save template</button>
+              <span id="et-status" role="status" class="small align-self-center"></span>
+            </div>
+            <iframe id="et-preview-frame" title="Email preview" style="width:100%;height:480px;border:1px solid rgba(163,118,195,0.3);background:#fff;"></iframe>
+          </div>
+        </div>
+
         <div class="app-card">
           <div class="app-card-header"><i class="bi bi-envelope"></i> Email Delivery Lookup</div>
           <div class="d-flex gap-2 mb-3" style="max-width: 520px;">

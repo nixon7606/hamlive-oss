@@ -4,6 +4,7 @@
 'use strict';
 
 import { expiryFromPreset } from '#@client/lib/clientUtils.js';
+import { initEmailSettings } from './emailSettings.js';
 
 /**
  * Admin panel — user and net management (superUser only).
@@ -989,4 +990,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const range = lastRecentRange.from ? lastRecentRange : recentRangeFromControls();
         window.location.href = `${API}/email/recent?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}&format=csv`;
     });
+
+    // Email Settings UI (provider config + template editor)
+    initEmailSettings().catch(err => console.error('initEmailSettings failed', err));
 });

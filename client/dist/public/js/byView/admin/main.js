@@ -1,5 +1,6 @@
 'use strict';
 import { expiryFromPreset } from '#@client/lib/clientUtils.js';
+import { initEmailSettings } from './emailSettings.js';
 const API = '/api/admin';
 let usersCache = [];
 let netsCache = [];
@@ -985,5 +986,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const range = lastRecentRange.from ? lastRecentRange : recentRangeFromControls();
         window.location.href = `${API}/email/recent?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}&format=csv`;
     });
+    initEmailSettings().catch(err => console.error('initEmailSettings failed', err));
 });
 //# sourceMappingURL=main.js.map
