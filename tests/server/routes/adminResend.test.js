@@ -7,6 +7,12 @@ jest.mock('../../../server/dist/lib/responseUtils', () => ({
 jest.mock('../../../server/dist/routes/authRoutes', () => ({
   sendMagicSignInLink: jest.fn(async () => ({ devMagicLink: 'http://localhost:3000/auth/magiclogin/callback?token=x' }))
 }));
+// isRealSenderActive() → getActiveTransport() calls loadEmailSettings(). Stub it to
+// return null so buildTransport falls to ConsoleTransport (no DB needed in unit tests).
+jest.mock('../../../server/dist/models/emailSettings', () => ({
+  loadEmailSettings: jest.fn(async () => null),
+  saveEmailSettings: jest.fn()
+}));
 const { sendMagicSignInLink } = require('../../../server/dist/routes/authRoutes');
 const { resendSignInLink } = require('../../../server/dist/controllers/adminController');
 

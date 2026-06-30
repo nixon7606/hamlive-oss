@@ -12,6 +12,7 @@ const MagicLoginStrategy = require('passport-magic-login').default;
 const gravatar = require('gravatar');
 const { EmailBase, emailEnabled } = require('../lib/userNotification');
 const { renderTemplate } = require('../lib/templateService');
+const { isRealSenderActive } = require('../lib/emailTransports');
 const { isCurrentlyLocked } = require('../lib/serverUtils');
 
 // clientIp() and the magic-link rate limiter live in ../lib/magicLoginLimiter so
@@ -49,10 +50,10 @@ const magicLogin = new MagicLoginStrategy({
         // the local-login log and the SendGrid send. Nothing is persisted.
         if (req && req.generateOnly) return;
 
-        // Local test drive: when email delivery is not configured, surface the
+        // Local test drive: when no real sender is configured, surface the
         // sign-in link directly (returned to the browser by the route below) and
         // also print it to the server console.
-        if (!emailEnabled) {
+        if (!(await isRealSenderActive())) {
             logger.info(
                 `\n\n========== LOCAL LOGIN (email delivery disabled) ==========\n` +
                     `Magic sign-in link for ${destination}:\n${link}\n` +
@@ -134,14 +135,14 @@ const magicLogin = new MagicLoginStrategy({
 });
 
 passport.use(magicLogin);
-router.post('/magiclogin', magicLoginLimiter, (req, res, next) => {
+router.post('/magiclogin', magicLoginLimiter, async (req, res, next) => {
     const dest = req.body && req.body.destination;
     if (typeof dest !== 'string' || !validator.isEmail(dest)) {
         return res.status(400).json({ success: false, error: 'A valid email address is required.' });
     }
-    // When email delivery is disabled (local test drive), include the sign-in
+    // When no real sender is configured (local test drive), include the sign-in
     // link in the JSON response so the browser can show it — no logs needed.
-    if (!emailEnabled) {
+    if (!(await isRealSenderActive())) {
         const origJson = res.json.bind(res);
         res.json = body => origJson({ ...body, devMagicLink: req._devMagicLink || null });
     }

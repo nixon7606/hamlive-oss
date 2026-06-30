@@ -110,8 +110,13 @@ async function getActiveTransport() {
     return _cached;
 }
 
+async function isRealSenderActive() {
+    const t = await getActiveTransport();
+    return !(t instanceof ConsoleTransport);
+}
+
 module.exports = {
     buildSendGridPayload, toSendGridAttachment, toNodemailerAttachment,
     ConsoleTransport, SendGridTransport, SmtpTransport,
-    getActiveTransport, invalidateTransportCache
+    getActiveTransport, invalidateTransportCache, isRealSenderActive
 };

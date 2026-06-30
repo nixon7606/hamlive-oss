@@ -4,6 +4,12 @@ const request = require('supertest');
 jest.mock('../../../server/dist/lib/responseUtils', () => ({
   handleRequest: (res, fn) => { fn().then(r => res.json(r)).catch(e => res.status(500).json({ error: e.message })); }
 }));
+// isRealSenderActive() → getActiveTransport() calls loadEmailSettings(). Stub it to
+// return null so buildTransport falls to ConsoleTransport (no DB needed in unit tests).
+jest.mock('../../../server/dist/models/emailSettings', () => ({
+  loadEmailSettings: jest.fn(async () => null),
+  saveEmailSettings: jest.fn()
+}));
 jest.mock('../../../server/dist/lib/sendgridSuppression', () => ({
   getSuppressions: jest.fn(async () => []),
   removeSuppression: jest.fn(async () => {}),

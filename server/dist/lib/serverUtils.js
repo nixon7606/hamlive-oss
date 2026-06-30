@@ -16,6 +16,7 @@ const { conf } = require('../lib/configLib');
 const { getFlexOption } = require('../models/flexOptions');
 const { getQrzCache } = require('../models/qrzCache');
 const { getInitialReg } = require('../models/initialRegTracker');
+const { isRealSenderActive } = require('./emailTransports');
 const axios = require('axios');
 let qrzSessionKey = null;
 let qrzInQuotaWait = 0;
@@ -187,7 +188,7 @@ const addServerInfo = async (req, res, next) => {
             conf || {};
         const googleAuth = Boolean(conf.google_client_id && conf.google_client_secret);
         const chatEnabled = Boolean(conf.stream_api_key && conf.stream_api_secret);
-        const emailEnabled = Boolean(conf.sendgrid_api_key);
+        const emailEnabled = await isRealSenderActive();
 
         // Ads & analytics are OFF by default in the community edition; they only
         // run when explicitly enabled AND a provider ID is configured.

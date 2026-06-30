@@ -16,7 +16,7 @@ const { handleRequest } = require('../lib/responseUtils');
 const { logger } = require('../lib/logger');
 const mongoose = require('mongoose');
 const { sendMagicSignInLink, generateMagicSignInLink } = require('../routes/authRoutes');
-const { emailEnabled } = require('../lib/userNotification');
+const { isRealSenderActive } = require('../lib/emailTransports');
 const { getSuppressions, removeSuppression } = require('../lib/sendgridSuppression');
 
 function toCsv(rows) {
@@ -304,11 +304,12 @@ const resendSignInLink = async (req, res) => {
         const result = await sendMagicSignInLink(email);
         logger.info(`admin resend sign-in link to ${email}`);
         recordAudit(req, { action: 'resend-login', targetType: 'email', targetLabel: email });
-        // Only surface the live link when no email was actually sent (dev / email
-        // disabled). When SendGrid sends it, returning the link in-band would put a
+        // Only surface the live link when no email was actually sent (dev / no real
+        // sender). When a real sender is active, returning the link in-band would put a
         // live bearer credential in the response (proxies/APM/history). For
         // copy-without-send in production, use the generate-login endpoint.
-        return { message: { sent: true, devMagicLink: emailEnabled ? null : (result.devMagicLink || null) } };
+        const realSender = await isRealSenderActive();
+        return { message: { sent: true, devMagicLink: realSender ? null : (result.devMagicLink || null) } };
     }, 'admin: resendSignInLink');
 };
 
@@ -343,8 +344,9 @@ const unsuppressEmail = async (req, res) => {
         const result = await sendMagicSignInLink(email);
         logger.info(`admin removed ${list} suppression for ${email} and resent link`);
         recordAudit(req, { action: 'unsuppress', targetType: 'email', targetLabel: email, details: list });
-        // See resendSignInLink: don't return the live link when email was sent.
-        return { message: { removed: true, devMagicLink: emailEnabled ? null : (result.devMagicLink || null) } };
+        // See resendSignInLink: don't return the live link when a real sender is active.
+        const realSender = await isRealSenderActive();
+        return { message: { removed: true, devMagicLink: realSender ? null : (result.devMagicLink || null) } };
     }, 'admin: unsuppressEmail');
 };
 
