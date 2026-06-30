@@ -3,6 +3,8 @@ const sgMail = require('@sendgrid/mail');
 const nodemailer = require('nodemailer');
 const { conf } = require('./configLib');
 const { logger } = require('./logger');
+const { loadEmailSettings } = require('../models/emailSettings');
+const { decryptSecret } = require('./secretBox');
 
 // ── attachment adapters ────────────────────────────────────────────────────
 // Normalized attachment: { filename, contentBase64, contentType, contentId? }
@@ -70,18 +72,41 @@ class SmtpTransport {
     }
 }
 
-// ── active-transport resolution (env/console only; Task 4 adds DB settings) ──
+// ── active-transport resolution (DB → env → console) ─────────────────────────
 let _cached = null;
 function invalidateTransportCache() { _cached = null; }
 
-async function buildTransportFromEnv() {
+async function buildTransport() {
+    let settings = null;
+    try { settings = await loadEmailSettings(); }
+    catch (err) { logger.warn(`emailTransports: settings load failed, falling back to env: ${err.message}`); }
+
+    const provider = settings?.provider;
+    if (provider === 'smtp' && settings.smtp?.host) {
+        const s = settings.smtp;
+        const pass = s.passwordEnc ? safeDecrypt(s.passwordEnc) : undefined;
+        return new SmtpTransport({ host: s.host, port: s.port, secure: s.secure, user: s.user, pass, from: s.fromOverride || EMAIL_FROM() });
+    }
+    if (provider === 'sendgrid' && conf.sendgrid_api_key) return new SendGridTransport(conf.sendgrid_api_key);
+    if (provider === 'console') return new ConsoleTransport();
+
+    // No (usable) DB setting → env fallback, then console.
     if (conf.sendgrid_api_key) return new SendGridTransport(conf.sendgrid_api_key);
     return new ConsoleTransport();
 }
 
+function safeDecrypt(token) {
+    try { return decryptSecret(token); }
+    catch (err) { logger.error(`emailTransports: failed to decrypt SMTP password: ${err.message}`); return undefined; }
+}
+
+function EMAIL_FROM() {
+    return process.env.EMAIL_FROM || conf.email_from || `${conf.app_name || 'Ham.Live'} <no-reply@example.com>`;
+}
+
 async function getActiveTransport() {
     if (_cached) return _cached;
-    _cached = await buildTransportFromEnv();
+    _cached = await buildTransport();
     return _cached;
 }
 
