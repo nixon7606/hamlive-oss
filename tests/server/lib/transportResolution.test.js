@@ -20,3 +20,10 @@ test('getActiveTransport picks SMTP from settings and caches until invalidated',
   transports.invalidateTransportCache();
   expect(await transports.getActiveTransport()).toBeInstanceOf(transports.ConsoleTransport);
 });
+
+test('getActiveTransport handles SMTP password decrypt failure gracefully', async () => {
+  mockSettings = { provider: 'smtp', smtp: { host: 'h', port: 587, secure: false, user: 'u', passwordEnc: 'not-a-valid-token' } };
+  // Should not throw despite decryptSecret throwing on malformed token
+  const t = await transports.getActiveTransport();
+  expect(t).toBeInstanceOf(transports.SmtpTransport);
+});
