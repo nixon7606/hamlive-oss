@@ -598,26 +598,31 @@ Expected: PASS (3 tests).
 
 - [ ] **Step 5: Write the resolver test**
 
-Append to `tests/server/lib/emailTransports.test.js`:
+Create a **separate** file `tests/server/lib/transportResolution.test.js` (not an append — `jest.mock` must be hoisted to the top of its file, and `emailTransports.js` destructures `loadEmailSettings` at load time, so `jest.spyOn` on the namespace would NOT intercept it; a hoisted `jest.mock` factory replaces the module before `require` runs):
 ```js
-const transports = require('../../../server/dist/lib/emailTransports');
-const settingsMod = require('../../../server/dist/models/emailSettings');
+// Mutable settings the factory returns; hoisted ahead of all requires by jest.
+let _settings = null;
+jest.mock('../../../server/dist/models/emailSettings', () => ({
+  loadEmailSettings: jest.fn(async () => _settings),
+  saveEmailSettings: jest.fn()
+}));
 
-afterEach(() => { transports.invalidateTransportCache(); jest.restoreAllMocks(); });
+const transports = require('../../../server/dist/lib/emailTransports');
+
+afterEach(() => { transports.invalidateTransportCache(); });
 
 test('getActiveTransport picks SMTP from settings and caches until invalidated', async () => {
-  jest.spyOn(settingsMod, 'loadEmailSettings').mockResolvedValue({
-    provider: 'smtp', smtp: { host: 'h', port: 587, secure: false, user: 'u', passwordEnc: null }
-  });
+  _settings = { provider: 'smtp', smtp: { host: 'h', port: 587, secure: false, user: 'u', passwordEnc: null } };
   const t1 = await transports.getActiveTransport();
   expect(t1).toBeInstanceOf(transports.SmtpTransport);
-  // change settings, but cache should still serve the old one
-  settingsMod.loadEmailSettings.mockResolvedValue({ provider: 'console' });
+  // change settings, but the cache should still serve the old transport
+  _settings = { provider: 'console' };
   expect(await transports.getActiveTransport()).toBe(t1);
   transports.invalidateTransportCache();
   expect(await transports.getActiveTransport()).toBeInstanceOf(transports.ConsoleTransport);
 });
 ```
+> The Task 7/8 controller tests already use `jest.mock(factory)` and are unaffected. Update the Step 7 run command below to include this new file.
 
 - [ ] **Step 6: Update `getActiveTransport` to consult settings**
 
@@ -669,13 +674,13 @@ Keep all three transport classes exported. Remove the old `buildTransportFromEnv
 
 - [ ] **Step 7: Run tests**
 
-Run: `npx jest tests/server/lib/emailTransports.test.js`
-Expected: PASS (resolver + transport tests).
+Run: `npx jest tests/server/lib/emailTransports.test.js tests/server/lib/transportResolution.test.js`
+Expected: PASS (transport tests + resolver test).
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add server/dist/models/emailSettings.js server/dist/lib/emailTransports.js tests/server/models/emailSettings.test.js tests/server/lib/emailTransports.test.js
+git add server/dist/models/emailSettings.js server/dist/lib/emailTransports.js tests/server/models/emailSettings.test.js tests/server/lib/transportResolution.test.js
 git commit -m "feat(email): resolve active transport per-send from EmailSettings (DB > env > console)"
 ```
 
@@ -1026,6 +1031,118 @@ Then a quick local smoke (optional, needs dev DB + dev server): trigger a magic-
 ```bash
 git add server/dist/lib/userNotification.js server/dist/routes/authRoutes.js server/dist/controllers/liveNetController.js docs/email-templates/README.md
 git commit -m "feat(email): render magic-link, net-announce, net-close from in-house Handlebars templates"
+```
+
+---
+
+### Task 6.5: Make send/log/dev-link gating transport-aware (retire `emailEnabled` on the send path)
+
+**Why:** `emailEnabled = Boolean(conf.sendgrid_api_key)` (`userNotification.js:14`) is computed once from the SendGrid key and gates **actual sending, EmailLog writes, and the "surface the magic link instead of emailing" dev behavior**. With SMTP selected and no SendGrid key set — the canonical self-hoster case — every one of those gates is `false`, so the magic-login email never sends, no EmailLog rows are written, and the sign-in link leaks into the HTTP response. Replace the send-path gates with a transport-aware predicate. (The UI-only `chatEnabled`-style flag in `login.ejs` is driven by the same value via `serverUtils`, so it gets fixed too.)
+
+**Files:**
+- Modify: `server/dist/lib/emailTransports.js` (add predicate)
+- Modify: `server/dist/lib/userNotification.js` (`recordEmailLogs` gate)
+- Modify: `server/dist/routes/authRoutes.js` (lines ~54 and ~149–161)
+- Modify: `server/dist/controllers/adminController.js` (lines ~311, ~347)
+- Modify: `server/dist/lib/serverUtils.js` (line ~190)
+- Test: `tests/server/lib/sendGating.test.js`
+
+**Interfaces:**
+- Produces: `isRealSenderActive() -> Promise<boolean>` — `true` when the active transport is **not** `ConsoleTransport` (i.e. a real send will happen). Exported from `emailTransports.js`.
+
+- [ ] **Step 1: Add the predicate + failing test**
+
+Create `tests/server/lib/sendGating.test.js`:
+```js
+let _settings = null;
+jest.mock('../../../server/dist/models/emailSettings', () => ({
+  loadEmailSettings: jest.fn(async () => _settings),
+  saveEmailSettings: jest.fn()
+}));
+const transports = require('../../../server/dist/lib/emailTransports');
+afterEach(() => transports.invalidateTransportCache());
+
+test('isRealSenderActive is false in console mode, true for SMTP', async () => {
+  _settings = { provider: 'console' };
+  expect(await transports.isRealSenderActive()).toBe(false);
+  transports.invalidateTransportCache();
+  _settings = { provider: 'smtp', smtp: { host: 'h', port: 25, secure: false } };
+  expect(await transports.isRealSenderActive()).toBe(true);
+});
+```
+
+In `server/dist/lib/emailTransports.js`, add after `getActiveTransport`:
+```js
+async function isRealSenderActive() {
+    const t = await getActiveTransport();
+    return !(t instanceof ConsoleTransport);
+}
+```
+Add `isRealSenderActive` to `module.exports`.
+
+- [ ] **Step 2: Run test to verify it passes**
+
+Run: `npx jest tests/server/lib/sendGating.test.js`
+Expected: PASS.
+
+- [ ] **Step 3: Gate EmailLog writes on the active transport**
+
+In `server/dist/lib/userNotification.js`:
+- Add to the `emailTransports` import: `const { getActiveTransport, isRealSenderActive } = require('./emailTransports');`
+- In `recordEmailLogs`, remove the `if (!emailEnabled) return;` line (the caller now decides).
+- In `sendMailToAddrs`, gate the log call on the predicate:
+```js
+            const messageId = await this.sendEmailWithRetry(emailData, allowed);
+            if (await isRealSenderActive()) this.recordEmailLogs(allowed, subject, batchId, messageId);
+```
+
+- [ ] **Step 4: Fix magic-link send + dev-link in authRoutes.js**
+
+In `server/dist/routes/authRoutes.js`:
+- Add: `const { isRealSenderActive } = require('../lib/emailTransports');`
+- Replace the `if (!emailEnabled) {` guard at line ~54 (inside `sendMagicLink`) with `if (!(await isRealSenderActive())) {` — keep the existing console-logging body and `return`. (`sendMagicLink` is already `async`.)
+- Make the `/magiclogin` route handler async and gate the dev-link injection on the predicate:
+```js
+router.post('/magiclogin', magicLoginLimiter, async (req, res, next) => {
+    const dest = req.body && req.body.destination;
+    if (typeof dest !== 'string' || !validator.isEmail(dest)) {
+        return res.status(400).json({ success: false, error: 'A valid email address is required.' });
+    }
+    if (!(await isRealSenderActive())) {
+        const origJson = res.json.bind(res);
+        res.json = body => origJson({ ...body, devMagicLink: req._devMagicLink || null });
+    }
+    return magicLogin.send(req, res, next);
+});
+```
+
+- [ ] **Step 5: Fix dev-link leak in adminController.js**
+
+In `server/dist/controllers/adminController.js` (the `resendSignInLink` and `unsuppressEmail` handlers, lines ~311 and ~347), replace the `emailEnabled` ternary. Add `const { isRealSenderActive } = require('../lib/emailTransports');` to the imports, and in each handler compute `const realSender = await isRealSenderActive();` then:
+```js
+        return { message: { sent: true, devMagicLink: realSender ? null : (result.devMagicLink || null) } };
+```
+(and the `removed: true` variant similarly). Remove the now-unused `const { emailEnabled } = require('../lib/userNotification');` import if nothing else uses it.
+
+- [ ] **Step 6: Fix the login-page flag in serverUtils.js**
+
+In `server/dist/lib/serverUtils.js`, the `addServerInfo` function (async) sets `const emailEnabled = Boolean(conf.sendgrid_api_key);` at line ~190 for `server.emailEnabled` (consumed by `login.ejs`). Change it to be transport-aware:
+```js
+const { isRealSenderActive } = require('./emailTransports');
+const emailEnabled = await isRealSenderActive();
+```
+> Place the `require` at the top of the file with the other imports, not inline, unless a require cycle appears (serverUtils ↔ userNotification ↔ emailTransports). If a cycle warning appears, keep the `require` inline inside `addServerInfo`.
+
+- [ ] **Step 7: Run the affected suites**
+
+Run: `npx jest tests/server/lib/sendGating.test.js tests/server/routes/adminResend.test.js tests/server/routes/adminUnsuppress.test.js tests/server/routes/magicSendHelper.test.js`
+Expected: PASS. If a pre-existing test asserted behavior via the old `emailEnabled` env flag, update it to drive `getActiveTransport`/`isRealSenderActive` (mock the transport) and note it in the commit.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add server/dist/lib/emailTransports.js server/dist/lib/userNotification.js server/dist/routes/authRoutes.js server/dist/controllers/adminController.js server/dist/lib/serverUtils.js tests/server/lib/sendGating.test.js
+git commit -m "fix(email): gate sending/logging/dev-link on active transport, not SendGrid key"
 ```
 
 ---
@@ -1649,6 +1766,7 @@ systemctl restart hamlive
 - Encrypted SMTP password → Tasks 1, 7. ✓
 - EmailTemplate model + Handlebars + seeding → Task 5. ✓
 - All three emails rendered in-house → Task 6. ✓
+- Send/log/dev-link gating made transport-aware (SMTP actually sends with no SendGrid key) → Task 6.5. ✓ **(critical: without this, SMTP sign-in emails silently never send)**
 - Admin provider config + test send → Task 7. ✓
 - Admin template editor (source + TinyMCE toggle, preview, test, reset) → Tasks 8, 9. ✓
 - Log-&-drop failure behavior → preserved in Task 2 (3-retry then throw/log). ✓
