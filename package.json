@@ -10,6 +10,7 @@
     "scripts": {
         "start": "node server/dist/server.js",
         "setup": "node ./scripts/setup.js",
+        "test": "jest",
         "mongo:dev": "node ./scripts/devMongo.js",
         "gen-certs": "openssl req -x509 -newkey rsa:2048 -nodes -keyout server/dist/ssl/dev-server_key.pem -out server/dist/ssl/dev-server_cert.pem -days 3650 -subj \"/CN=localhost/O=hamlive-oss dev\" -addext \"subjectAltName=DNS:localhost,IP:127.0.0.1\"",
         "build": "tsc -p server/tsconfig.json && tsc -p client/tsconfig.json",
@@ -36,6 +37,7 @@
         "express-sse-ts": "^1.0.2",
         "fast-xml-parser": "^5.8.0",
         "gravatar": "^1.8.2",
+        "handlebars": "^4.7.8",
         "helmet": "^8.2.0",
         "humanize-duration": "^3.33.2",
         "lodash": "^4.17.21",
@@ -46,6 +48,7 @@
         "node-cache": "^5.1.2",
         "node-color-log": "^11.0.0",
         "node-json-logger": "^0.0.17",
+        "nodemailer": "^6.9.14",
         "object-hash": "^3.0.0",
         "passport": "^0.6.0",
         "passport-google-oauth20": "^2.0.0",
