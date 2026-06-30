@@ -10,7 +10,7 @@ const UserProfile = require('../models/userProfile').getUserProfile(null);
 const GoogleStrategy = require('passport-google-oauth20');
 const MagicLoginStrategy = require('passport-magic-login').default;
 const gravatar = require('gravatar');
-const { EmailBase, emailEnabled } = require('../lib/userNotification');
+const { EmailBase } = require('../lib/userNotification');
 const { renderTemplate } = require('../lib/templateService');
 const { isRealSenderActive } = require('../lib/emailTransports');
 const { isCurrentlyLocked } = require('../lib/serverUtils');
@@ -294,7 +294,7 @@ router.get('/login', (req, res) => {
  * Send a fresh magic sign-in link to an address using the same flow as
  * /auth/magiclogin. Resolves with { devMagicLink } — the link is always captured
  * and returned here, so CALLERS are responsible for not exposing it when an email
- * was actually sent (see adminController, which gates it behind !emailEnabled).
+ * was actually sent (see adminController, which gates it behind !isRealSenderActive()).
  * For admin resend.
  */
 function sendMagicSignInLink(email) {

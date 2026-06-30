@@ -1,7 +1,6 @@
 /* hamlive-oss — MIT License. See LICENSE. */
 
 const { getUserProfile } = require('../models/userProfile');
-const sgMail = require('@sendgrid/mail');
 const { conf } = require('../lib/configLib');
 const { checkBulk } = require('./emailRateLimiter');
 const crypto = require('crypto');
@@ -12,12 +11,8 @@ const { getActiveTransport, ConsoleTransport, isRealSenderActive } = require('./
 // logged to the server console instead of being sent (see INSTALL.md,
 // "Local test drive"). The sender address is configurable via EMAIL_FROM and
 // must be a verified sender in your SendGrid account when email is enabled.
-const emailEnabled = Boolean(conf.sendgrid_api_key);
 const EMAIL_FROM =
     process.env.EMAIL_FROM || conf.email_from || `${conf.app_name || 'Ham.Live'} <no-reply@example.com>`;
-if (emailEnabled) {
-    sgMail.setApiKey(conf.sendgrid_api_key);
-}
 const humanizeDuration = require('humanize-duration');
 const { getFlexOptionsByUser, fetchChatLog } = require('../lib/serverUtils');
 const { logger } = require('./logger');
@@ -115,19 +110,7 @@ class EmailBase {
         return this.#subject || this.body?.subject || this.body?.dynamic_template_data?.subject;
     }
 
-    getEmailData(validRecipients, subject) {
-        return this.#body
-            ? { ...this.#body, to: validRecipients }
-            : {
-                  to: validRecipients,
-                  from: EMAIL_FROM,
-                  subject: subject,
-                  html: this.#message
-              };
-    }
-
-    // Build the normalized transport message from this email's body/subject/message.
-    // Mirrors the old getEmailData() spread so the SG payload is key-for-key equivalent:
+    // Build the normalized transport message from this email's body/subject/message:
     // - body branch: uses b.subject (present for html bodies, absent for templated) rather than
     //   the passed subject param, so NetCloseReport never gains a spurious top-level subject.
     // - attachments: normalized to { filename, contentBase64, contentType, contentId? } with
@@ -159,7 +142,7 @@ class EmailBase {
         if (transport instanceof ConsoleTransport) {
             const subject = emailData.subject || '(templated email)';
             logger.info(`[email disabled] Would send "${subject}" to ${validRecipients.join(', ')}`);
-            // Still return null id; recordEmailLogs() is gated on emailEnabled below.
+            // Still return null id; the caller gates EmailLog writes on isRealSenderActive().
             return null;
         }
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -497,6 +480,5 @@ class NetCloseReport extends EmailBase {
 module.exports = {
     EmailBase,
     NetAnnounceStart,
-    NetCloseReport,
-    emailEnabled
+    NetCloseReport
 };
