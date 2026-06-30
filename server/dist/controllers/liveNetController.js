@@ -281,13 +281,16 @@ const liveNetCreatePost = async (req, res) => {
                         }
 
                         if (npresult.followers.length) {
-                            const email = new NetAnnounceStart({
-                                netControl: req.user.callSign,
-                                netProfileDoc: npresult,
-                                liveNetDoc: lnresult
-                            });
-
-                            email.sendMailToUPIDs({ upids: npresult.followers });
+                            try {
+                                const email = await NetAnnounceStart.init({
+                                    netControl: req.user.callSign,
+                                    netProfileDoc: npresult,
+                                    liveNetDoc: lnresult
+                                });
+                                email.sendMailToUPIDs({ upids: npresult.followers });
+                            } catch (announceErr) {
+                                logger.error(`net-announce email failed: ${announceErr.message}`);
+                            }
                         }
 
                         return res.json({ ...{ endpointVersion: '1.0' }, ...lnresult.toObject() });

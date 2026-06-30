@@ -242,38 +242,20 @@ class EmailBase {
 }
 
 class NetAnnounceStart extends EmailBase {
-    constructor({ netControl, netProfileDoc: { title }, liveNetDoc: { countdownTimer, url } }) {
-        let humanTime;
-
-        if (countdownTimer <= 1) {
-            humanTime = 'now';
-        } else {
-            humanTime =
-                'in ' +
-                humanizeDuration(countdownTimer * 60 * 1000, {
-                    largest: 2,
-                    round: true,
-                    delimiter: '--',
-                    units: ['h', 'm']
-                });
-        }
-
-        super({
-            body: {
-                from: EMAIL_FROM,
-                subject: `${title}(★) is going live ${humanTime} !`,
-                html:
-                    `<div style="background-color:#f4f2ec; padding:24px 12px; font-family:Arial,Helvetica,sans-serif;">` +
-                    `<table role="presentation" align="center" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; background-color:#ffffff; border:1px solid #e2ddd0; border-radius:10px; overflow:hidden;">` +
-                    `<tr><td align="center" bgcolor="#23262B" style="background-color:#23262B; padding:20px 0;"><img src="https://netcontrol.live/img/hamlive-logo-tagline-beta-horizontal-darkbg.png" alt="netcontrol.live" width="300" style="display:block; width:300px; max-width:82%; height:auto; border:0;"></td></tr>` +
-                    `<tr><td style="padding:28px 32px 6px 32px; font-family:Georgia,'Times New Roman',serif; color:#23262B; font-size:20px; font-weight:bold;">A net is going live</td></tr>` +
-                    `<tr><td style="padding:0 32px 18px 32px; color:#444444; font-size:14px; line-height:1.6;">${netControl} is starting <a href='${conf.base_url}${url}' style="color:#C24A38; font-weight:bold; text-decoration:none;">${title}</a>.</td></tr>` +
-                    `<tr><td style="padding:0 32px 26px 32px;"><a href='${conf.base_url}${url}' style="display:inline-block; background-color:#C24A38; color:#ffffff; font-size:15px; font-weight:bold; text-decoration:none; padding:12px 26px; border-radius:6px;">Join the net</a></td></tr>` +
-                    `<tr><td bgcolor="#23262B" style="background-color:#23262B; padding:16px 32px; color:#9a9a9a; font-size:11px; line-height:1.6;">To stop these alerts, unfollow (☆) ${title} at <a href='${conf.base_url}/views/favorites' style="color:#C4933F; text-decoration:none;">your favorites</a>.<br>Sent by <a href="https://netcontrol.live" style="color:#C4933F; text-decoration:none;">netcontrol.live</a> &middot; Amateur Radio Net Control</td></tr>` +
-                    `</table></div>`
-            }
-        });
-        this.type = 'net-announce';
+    static async init({ netControl, netProfileDoc: { title }, liveNetDoc: { countdownTimer, url } }) {
+        const humanTime = countdownTimer <= 1
+            ? 'now'
+            : 'in ' + humanizeDuration(countdownTimer * 60 * 1000, { largest: 2, round: true, delimiter: '--', units: ['h', 'm'] });
+        const { renderTemplate } = require('./templateService');
+        const data = {
+            netControl, title, humanTime,
+            url: `${conf.base_url}${url}`,
+            favoritesUrl: `${conf.base_url}/views/favorites`
+        };
+        const { subject, html } = await renderTemplate('net-announce', data);
+        const inst = new NetAnnounceStart({ body: { from: EMAIL_FROM, subject, html } });
+        inst.type = 'net-announce';
+        return inst;
     }
 }
 
@@ -303,7 +285,7 @@ class NetCloseReport extends EmailBase {
 
         // Pass the private symbol when calling the actual constructor
         // Report is always created, with or without chat log
-        return new NetCloseReport(NetCloseReport.#_internal, {
+        const inst = new NetCloseReport(NetCloseReport.#_internal, {
             title,
             NPID,
             netTZ,
@@ -313,6 +295,11 @@ class NetCloseReport extends EmailBase {
             attendees,
             chatLog
         });
+
+        const { renderTemplate } = require('./templateService');
+        const { html } = await renderTemplate('net-close', inst._templateData);
+        inst.body.html = html;   // EmailBase.buildMessage reads body.html
+        return inst;
     }
 
     // Private constructor
@@ -340,19 +327,21 @@ class NetCloseReport extends EmailBase {
         super({
             body: {
                 from: EMAIL_FROM,
-                templateId: 'd-c2c75b3765954b5dbc043576c67493a7',
-                dynamic_template_data: {
-                    subject: `${title} - Net Close Report`,
-                    url: `${conf.base_url}${url}`,
-                    title: title,
-                    formattedAttendees: formattedAttendees,
-                    startedAtString: started ? NetCloseReport.#fmtDatetime(startedAt, netTZ) : '',
-                    timezoneAbbr: new Intl.DateTimeFormat('en-US', { timeZone: netTZ, timeZoneName: 'short' })
-                        .formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || 'Local'
-                },
+                subject: `${title} - Net Close Report`,
                 attachments: attachments
             }
         });
+
+        // Stash template data so init() can render it and inject body.html
+        this._templateData = {
+            subject: `${title} - Net Close Report`,
+            url: `${conf.base_url}${url}`,
+            title,
+            formattedAttendees,
+            startedAtString: started ? NetCloseReport.#fmtDatetime(startedAt, netTZ) : '',
+            timezoneAbbr: new Intl.DateTimeFormat('en-US', { timeZone: netTZ, timeZoneName: 'short' })
+                .formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || 'Local'
+        };
 
         // Set instance properties
         this.type = 'net-close-report';
@@ -361,7 +350,7 @@ class NetCloseReport extends EmailBase {
         this.#attendees = sortedAttendees;
         this.#reportGeneration();
 
-        logger.debug(this.body.dynamic_template_data);
+        logger.debug(this._templateData);
     }
 
     // Private method to log report generation

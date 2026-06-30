@@ -9,11 +9,11 @@ The **Net Close Report** sent to net owners + superusers when a net closes
 (`server/dist/lib/userNotification.js` → `NetCloseReport`, triggered from
 `server/dist/lib/sharedNetOps.js`).
 
-> ⚠️ **Syntax is Handlebars**, not EJS — this is the original **SendGrid dynamic template**
-> (currently template id `d-c2c75b3765954b5dbc043576c67493a7`). When bringing email in-house,
-> convert `{{var}}` → `<%= var %>`, `{{#each xs}}…{{/each}}` → `<% xs.forEach(x => { %>…<% }) %>`,
-> and `{{#if c}}…{{/if}}` → `<% if (c) { %>…<% } %>`, then render it server-side and hand the
-> finished HTML to whichever transport (SendGrid / SMTP) is active.
+> **Syntax is Handlebars** — these templates are rendered in-house by
+> `server/dist/lib/templateService.js`, seeded from `server/dist/views/emails/*.hbs`. The `{{ }}`
+> syntax is used **as-is**; no conversion to EJS is needed. `renderTemplate(key, data)` compiles
+> the template with Handlebars and returns `{ subject, html }` which is handed to whichever
+> transport (SendGrid / SMTP / console) is active.
 
 ### Template-data contract
 
