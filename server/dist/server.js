@@ -59,6 +59,7 @@ const {
     isCurrentlyLocked
 } = require('./lib/serverUtils');
 const mongoose = require('mongoose');
+const { seedTemplates } = require('./lib/templateService');
 const authRoutes = require('./routes/authRoutes');
 const dataNetProfileRoutes = require('./routes/dataNetProfileRoutes');
 const dataUserProfileRoutes = require('./routes/dataUserProfileRoutes');
@@ -137,6 +138,7 @@ mongoose
         if (!conf.chat_upload_dir || conf.chat_upload_dir === path.resolve(__dirname, '../../uploads/chat')) {
             logger.info('Chat uploads storing at default path. Set CHAT_UPLOAD_DIR env var for production persistence.');
         }
+        seedTemplates().catch(err => logger.error(`seedTemplates failed: ${err.message}`));
     })
     .catch(error => {
         logger.error(error);
