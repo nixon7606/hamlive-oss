@@ -6,6 +6,7 @@ const { conf } = require('../lib/configLib');
 const { checkBulk } = require('./emailRateLimiter');
 const crypto = require('crypto');
 const { getEmailLog } = require('../models/emailLog');
+const { getActiveTransport, ConsoleTransport } = require('./emailTransports');
 
 // Email delivery is optional. When SENDGRID_API_KEY is absent, messages are
 // logged to the server console instead of being sent (see INSTALL.md,
@@ -92,10 +93,10 @@ class EmailBase {
         const batchId = crypto.randomUUID();
         try {
             const subject = this.getSubject();
-            const emailData = this.getEmailData(allowed, subject);
+            const emailData = this.buildMessage(allowed, subject);
             emailData.customArgs = { ...(emailData.customArgs || {}), hlType: this.type, hlBatch: batchId };
-            const sgMessageId = await this.sendEmailWithRetry(emailData, allowed);
-            this.recordEmailLogs(allowed, subject, batchId, sgMessageId);
+            const messageId = await this.sendEmailWithRetry(emailData, allowed);
+            this.recordEmailLogs(allowed, subject, batchId, messageId);
         } catch (err) {
             logger.error(`Failed to send mail: ${err.message}`);
             throw err;
@@ -125,23 +126,52 @@ class EmailBase {
               };
     }
 
+    // Build the normalized transport message from this email's body/subject/message.
+    // Mirrors the old getEmailData() spread so the SG payload is key-for-key equivalent:
+    // - body branch: uses b.subject (present for html bodies, absent for templated) rather than
+    //   the passed subject param, so NetCloseReport never gains a spurious top-level subject.
+    // - attachments: normalized to { filename, contentBase64, contentType, contentId? } with
+    //   content_id carried through so the round-trip is lossless.
+    buildMessage(validRecipients, subject) {
+        const b = this.#body;
+        if (b) {
+            const msg = { to: validRecipients, from: b.from || EMAIL_FROM };
+            if (b.subject) msg.subject = b.subject;
+            if (b.html) msg.html = b.html;
+            if (b.templateId) { msg.templateId = b.templateId; msg.templateData = b.dynamic_template_data || {}; }
+            if (b.attachments) {
+                // b.attachments may already be SG-shaped (content/type) — normalize, preserving content_id.
+                msg.attachments = b.attachments.map(a => ({
+                    filename: a.filename,
+                    contentBase64: a.content,
+                    contentType: a.type,
+                    ...(a.content_id ? { contentId: a.content_id } : {}),
+                }));
+            }
+            return msg;
+        }
+        return { to: validRecipients, from: EMAIL_FROM, subject, html: this.#message };
+    }
+
     async sendEmailWithRetry(emailData, validRecipients) {
-        if (!emailEnabled) {
-            const subject =
-                emailData.subject || emailData.dynamic_template_data?.subject || '(templated email)';
+        // emailData carries customArgs assembled in sendMailToAddrs; merge onto the message.
+        const transport = await getActiveTransport();
+        if (transport instanceof ConsoleTransport) {
+            const subject = emailData.subject || '(templated email)';
             logger.info(`[email disabled] Would send "${subject}" to ${validRecipients.join(', ')}`);
+            // Still return null id; recordEmailLogs() is gated on emailEnabled below.
             return null;
         }
         for (let attempt = 0; attempt < 3; attempt++) {
             try {
-                const [response] = await sgMail.sendMultiple(emailData);
-                logger.info(`Mail successfully sent to SendGrid for ${validRecipients.length} recipients`);
-                return response?.headers?.['x-message-id'] || null;
+                const { messageId } = await transport.send(emailData);
+                logger.info(`Mail successfully handed to transport for ${validRecipients.length} recipients`);
+                return messageId;
             } catch (err) {
                 if (attempt < 2) {
-                    logger.warn(`Failed to send to SendGrid on attempt ${attempt + 1}: ${err.message}. Retrying...`);
+                    logger.warn(`Transport send failed on attempt ${attempt + 1}: ${err.message}. Retrying...`);
                 } else {
-                    logger.error(`Failed to send to SendGrid on final attempt: ${err.message}`);
+                    logger.error(`Transport send failed on final attempt: ${err.message}`);
                     throw err;
                 }
             }
