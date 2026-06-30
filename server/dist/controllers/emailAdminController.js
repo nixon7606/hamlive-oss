@@ -6,7 +6,8 @@ const { conf } = require('../lib/configLib');
 const { loadEmailSettings, saveEmailSettings } = require('../models/emailSettings');
 const { encryptSecret } = require('../lib/secretBox');
 const { invalidateTransportCache, getActiveTransport } = require('../lib/emailTransports');
-const { renderTemplate, TEMPLATE_KEYS, TEMPLATE_META } = require('../lib/templateService');
+const { renderTemplate, TEMPLATE_KEYS, TEMPLATE_META, getDefault } = require('../lib/templateService');
+const { getEmailTemplate } = require('../models/emailTemplate');
 
 function recordAudit(req, entry) {
     try {
@@ -66,4 +67,64 @@ const sendTest = (req, res) => handleRequest(res, async () => {
     return { message: { sent: true, via: transport.constructor.name } };
 }, 'admin: sendTestEmail');
 
-module.exports = { getSettings, putSettings, sendTest };
+function assertKey(key) {
+    if (!TEMPLATE_KEYS.includes(key)) { const e = new Error(`unknown template key: ${key}`); e.status = 404; throw e; }
+}
+
+const listTemplates = (req, res) => handleRequest(res, async () => {
+    const T = getEmailTemplate();
+    const templates = await Promise.all(TEMPLATE_KEYS.map(async key => {
+        const doc = await T.findOne({ key }).lean();
+        const def = getDefault(key);
+        return { key, label: TEMPLATE_META[key].label, subject: (doc && doc.subject) || def.subject, updatedAt: doc && doc.updatedAt };
+    }));
+    return { message: { templates } };
+}, 'admin: listEmailTemplates');
+
+const getTemplate = (req, res) => handleRequest(res, async () => {
+    const key = req.params.key; assertKey(key);
+    const doc = await getEmailTemplate().findOne({ key }).lean();
+    const def = getDefault(key);
+    return { message: {
+        key, label: TEMPLATE_META[key].label,
+        subject: (doc && doc.subject) || def.subject,
+        html: (doc && doc.html) || def.html,
+        variables: TEMPLATE_META[key].variables, sample: TEMPLATE_META[key].sample
+    } };
+}, 'admin: getEmailTemplate');
+
+const putTemplate = (req, res) => handleRequest(res, async () => {
+    const key = req.params.key; assertKey(key);
+    const { subject, html } = req.body || {};
+    if (!subject || !html) { const e = new Error('subject and html are required'); e.status = 400; throw e; }
+    const doc = await getEmailTemplate().findOneAndUpdate(
+        { key }, { $set: { key, subject, html, updatedBy: req.user && req.user._id } },
+        { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+    );
+    recordAudit(req, { action: 'email-template-update', targetType: 'emailTemplate', targetId: key, targetLabel: TEMPLATE_META[key].label, details: `subject="${subject}"` });
+    return { message: { key, subject: doc.subject, html: doc.html } };
+}, 'admin: putEmailTemplate');
+
+const previewTemplate = (req, res) => handleRequest(res, async () => {
+    const key = req.params.key; assertKey(key);
+    const { subject, html } = req.body || {};
+    const Handlebars = require('handlebars');
+    const data = TEMPLATE_META[key].sample;
+    return { message: {
+        subject: Handlebars.compile(String(subject || ''), { noEscape: true })(data),
+        html: Handlebars.compile(String(html || ''))(data)
+    } };
+}, 'admin: previewEmailTemplate');
+
+const resetTemplate = (req, res) => handleRequest(res, async () => {
+    const key = req.params.key; assertKey(key);
+    const def = getDefault(key);
+    const doc = await getEmailTemplate().findOneAndUpdate(
+        { key }, { $set: { key, subject: def.subject, html: def.html, updatedBy: req.user && req.user._id } },
+        { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+    );
+    recordAudit(req, { action: 'email-template-reset', targetType: 'emailTemplate', targetId: key, targetLabel: TEMPLATE_META[key].label, details: 'reset to default' });
+    return { message: { key, subject: doc.subject, html: doc.html } };
+}, 'admin: resetEmailTemplate');
+
+module.exports = { getSettings, putSettings, sendTest, listTemplates, getTemplate, putTemplate, previewTemplate, resetTemplate };
