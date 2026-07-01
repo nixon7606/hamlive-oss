@@ -180,7 +180,7 @@ async function initProviderSection() {
         showStatus('tracking-status', 'Testing…');
         try {
             const r = await api('/tracking/test', { method: 'POST', body: '{}' });
-            showStatus('tracking-status', r.ok ? `OK — ${r.rows} tracked deliveries visible` : `Failed: ${r.error ?? 'unknown'}`);
+            showStatus('tracking-status', r.ok ? `OK — ${r.rows} tracked rows, ${r.fromSender} from your sender` : `Failed: ${r.error ?? 'unknown'}`);
         }
         catch (err) {
             showStatus('tracking-status', `Error: ${err.message}`);

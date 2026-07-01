@@ -245,6 +245,18 @@ producing unhelpful errors, and they fix one validator that could hang a login.
     encrypted at rest via `secretBox.js` (same mechanism as the SMTP
     password) and is write-only through the admin API (`publicSettings()`
     only ever returns `tokenSet`/`tokenInvalid` booleans, never the token).
+  - cPanel API 2 caps `EmailTrack::search` results at roughly **250 rows**;
+    on a busy shared account, unrelated mail on the same box can push our
+    own rows out of a single unbounded search. Known, spec-accepted
+    limitation for now — revisit with per-recipient `recipient=` searches
+    if it starts biting in practice.
+  - `EmailLog` has no `provider` field. After flipping providers
+    (SendGrid → SMTP or back), a leftover SendGrid-era non-terminal row
+    could, in a narrow time window, mis-correlate with a same-recipient
+    SMTP send that the poller is tracking (`correlateRow()` only matches on
+    recipient + send-time proximity, not provider). A `sentVia` field on
+    `EmailLog` would eliminate this ambiguity if it ever turns out to
+    matter in practice.
 
 ---
 

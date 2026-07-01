@@ -8,11 +8,15 @@ jest.mock('../../../server/dist/models/emailSettings', () => ({
   loadEmailSettings: jest.fn()
 }));
 jest.mock('../../../server/dist/models/adminAudit', () => ({ getAdminAudit: () => ({ create: jest.fn(async () => ({})) }) }));
-jest.mock('../../../server/dist/lib/cpanelDeliveryPoller', () => ({ searchEmailTrack: jest.fn() }));
+jest.mock('../../../server/dist/lib/cpanelDeliveryPoller', () => ({
+  searchEmailTrack: jest.fn(),
+  filterToSender: jest.fn((rows, sender) => (rows || []).filter(r => r.email === sender)),
+  resolveSenderAddress: jest.fn(() => 'noreply@netcontrol.live')
+}));
 
 const { testTracking } = require('../../../server/dist/controllers/emailAdminController');
 const { loadEmailSettings } = require('../../../server/dist/models/emailSettings');
-const { searchEmailTrack } = require('../../../server/dist/lib/cpanelDeliveryPoller');
+const { searchEmailTrack, filterToSender, resolveSenderAddress } = require('../../../server/dist/lib/cpanelDeliveryPoller');
 
 const app = express();
 app.use(express.json());
@@ -21,12 +25,17 @@ app.post('/api/admin/email/tracking/test', testTracking);
 
 const fullTracking = { enabled: true, host: 'cp.example.com', port: 2083, user: 'acct', tokenEnc: 'enc:tok', tlsVerify: true };
 
-test('POST returns ok:true with row count on success', async () => {
+test('POST returns ok:true with row count and sender-filtered count on success', async () => {
   loadEmailSettings.mockResolvedValue({ tracking: fullTracking });
-  searchEmailTrack.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+  searchEmailTrack.mockResolvedValue([
+    { id: 1, email: 'noreply@netcontrol.live' },
+    { id: 2, email: 'someone-else@example.com' }
+  ]);
   const res = await request(app).post('/api/admin/email/tracking/test');
   expect(res.status).toBe(200);
-  expect(res.body.message).toEqual({ ok: true, rows: 2 });
+  expect(res.body.message).toEqual({ ok: true, rows: 2, fromSender: 1 });
+  expect(filterToSender).toHaveBeenCalled();
+  expect(resolveSenderAddress).toHaveBeenCalled();
 });
 
 test('POST returns ok:false with the error message when the search throws', async () => {

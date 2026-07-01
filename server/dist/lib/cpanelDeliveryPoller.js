@@ -144,7 +144,22 @@ async function pollOnce({ searchImpl = searchEmailTrack } = {}) {
     }).lean();
     if (!open.length) return { polled: 0, updated: 0, events: 0 };
 
-    const rows = filterToSender(await searchImpl(settings.tracking), resolveSenderAddress(settings));
+    const unfiltered = await searchImpl(settings.tracking);
+    const senderAddress = resolveSenderAddress(settings);
+    const rows = filterToSender(unfiltered, senderAddress);
+
+    // Silent permanent-failure mode: if cPanel/Exim rewrites the envelope
+    // sender, filterToSender drops every row forever and the poller looks
+    // "fine" (no errors) while never updating anything again.
+    if (unfiltered.length && !rows.length) {
+        logger.warn(`cpanelDeliveryPoller: EmailTrack returned ${unfiltered.length} row(s) but none matched configured sender "${senderAddress}" — cPanel may be rewriting the envelope sender; delivery status will not update until this is fixed`);
+    }
+
+    // Rows are one per delivery ATTEMPT — a defer followed by a later success
+    // is routine (greylisting). Sort ascending by event time so the LATEST
+    // attempt is applied LAST and wins; otherwise a newest-first feed can
+    // leave the EmailLog stuck at the non-terminal 'deferred' status forever.
+    rows.sort((a, b) => (Number(a.actionunixtime) || Number(a.sendunixtime) || 0) - (Number(b.actionunixtime) || Number(b.sendunixtime) || 0));
 
     let updated = 0, events = 0;
     for (const row of rows) {
@@ -152,10 +167,10 @@ async function pollOnce({ searchImpl = searchEmailTrack } = {}) {
         if (!status) continue; // inprogress / unknown → leave as-is
         const log = correlateRow(row, open);
         if (!log) continue;
-        const when = Number.isFinite(Number(row.actionunixtime))
+        const when = Number(row.actionunixtime) > 0
             ? new Date(Number(row.actionunixtime) * 1000) : new Date();
         try {
-            await EmailEvent.updateOne(
+            const eventRes = await EmailEvent.updateOne(
                 { sgEventId: syntheticEventId(row.msgid, row.recipient, row.type) },
                 { $setOnInsert: {
                     sgEventId: syntheticEventId(row.msgid, row.recipient, row.type),
@@ -168,7 +183,7 @@ async function pollOnce({ searchImpl = searchEmailTrack } = {}) {
                 } },
                 { upsert: true }
             );
-            events++;
+            if (eventRes && eventRes.upsertedCount) events++;
             await EmailLog.updateOne(
                 { batchId: log.batchId, recipient: log.recipient },
                 { $set: { status, lastEventAt: when } }
@@ -178,11 +193,14 @@ async function pollOnce({ searchImpl = searchEmailTrack } = {}) {
             logger.error(`cpanelDeliveryPoller: row processing failed: ${err.message}`);
         }
     }
+    if (updated > 0) {
+        logger.info(`cpanelDeliveryPoller: polled ${rows.length} row(s), updated ${updated} EmailLog(s), ${events} new EmailEvent(s)`);
+    }
     return { polled: rows.length, updated, events };
 }
 
 module.exports = {
     mapTrackType, syntheticEventId, filterToSender, correlateRow,
     buildSearchUrl, parseSearchResponse, searchEmailTrack,
-    shouldPoll, pollOnce
+    resolveSenderAddress, shouldPoll, pollOnce
 };

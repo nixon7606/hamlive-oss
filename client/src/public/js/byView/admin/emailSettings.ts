@@ -263,8 +263,8 @@ async function initProviderSection(): Promise<void> {
     el('tracking-test-btn')?.addEventListener('click', async () => {
         showStatus('tracking-status', 'Testing…');
         try {
-            const r = await api('/tracking/test', { method: 'POST', body: '{}' }) as { ok?: boolean; rows?: number; error?: string };
-            showStatus('tracking-status', r.ok ? `OK — ${r.rows} tracked deliveries visible` : `Failed: ${r.error ?? 'unknown'}`);
+            const r = await api('/tracking/test', { method: 'POST', body: '{}' }) as { ok?: boolean; rows?: number; fromSender?: number; error?: string };
+            showStatus('tracking-status', r.ok ? `OK — ${r.rows} tracked rows, ${r.fromSender} from your sender` : `Failed: ${r.error ?? 'unknown'}`);
         } catch (err) {
             showStatus('tracking-status', `Error: ${(err as Error).message}`);
         }

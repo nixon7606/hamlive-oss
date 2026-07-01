@@ -103,11 +103,12 @@ const testTracking = (req, res) => handleRequest(res, async () => {
     if (!t || !t.host || !t.user || !t.tokenEnc) {
         return { message: { ok: false, error: 'tracking is not fully configured' } };
     }
-    const { searchEmailTrack } = require('../lib/cpanelDeliveryPoller');
+    const { searchEmailTrack, filterToSender, resolveSenderAddress } = require('../lib/cpanelDeliveryPoller');
     try {
         const rows = await searchEmailTrack(t);
-        recordAudit(req, { action: 'email-tracking-test', targetType: 'emailSettings', targetId: 'singleton', targetLabel: t.host, details: `rows=${rows.length}` });
-        return { message: { ok: true, rows: rows.length } };
+        const fromSender = filterToSender(rows, resolveSenderAddress(doc)).length;
+        recordAudit(req, { action: 'email-tracking-test', targetType: 'emailSettings', targetId: 'singleton', targetLabel: t.host, details: `rows=${rows.length} fromSender=${fromSender}` });
+        return { message: { ok: true, rows: rows.length, fromSender } };
     } catch (err) {
         return { message: { ok: false, error: err.message } };
     }
