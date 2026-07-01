@@ -210,7 +210,7 @@ async function startScheduledNet(profile, { NetProfile, LiveNet, StationInteract
     // Email followers
     if (fresh.followers?.length && fresh.schedule?.notifyBeforeEnabled !== false) {
         try {
-            const email = new NetAnnounceStart({
+            const email = await NetAnnounceStart.init({
                 netControl: owner.callSign || 'Scheduled Net',
                 netProfileDoc: fresh,
                 liveNetDoc: lnResult
