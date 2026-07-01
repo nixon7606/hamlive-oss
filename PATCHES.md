@@ -160,15 +160,21 @@ producing unhelpful errors, and they fix one validator that could hang a login.
   `server/dist/views/emails/*.hbs` (email templates in Handlebars format)
 - **Modified files:** `server/dist/lib/userNotification.js` (uses new pluggable
   transports instead of SendGrid dynamic templates),
-  `server/dist/lib/authRoutes.js` (magic-link email uses templateService),
+  `server/dist/routes/authRoutes.js` (magic-link email uses templateService),
   `server/dist/controllers/adminController.js` (admin UI includes Email
   Settings), `server/dist/routes/adminRoutes.js` (Email Settings endpoints),
   `server/dist/lib/serverUtils.js` (admin mail test endpoint),
   `server/dist/controllers/liveNetController.js` (net-close uses new transports),
+  `server/dist/lib/backgroundTasks/scheduledNetStarter.js` (announce email via
+  `NetAnnounceStart.init()`), `server/dist/lib/responseUtils.js` (`handleRequest`
+  honors a deliberate `err.status`, e.g. 400/404 from the email admin endpoints),
   `server/dist/server.js` (seeds email templates on startup), `server/dist/views/admin.ejs`
   (Email Settings UI added)
-- **Client:** new `client/dist/public/js/lib/emailTransportClient.ts` (admin
-  transport picker)
+- **Client:** new `client/src/public/js/byView/admin/emailSettings.ts` (Email
+  Settings panel: provider config + template editor), compiled to
+  `client/dist/public/js/byView/admin/emailSettings.js` (+ `.d.ts`/maps);
+  `client/src/public/js/byView/admin/main.ts` + compiled
+  `client/dist/public/js/byView/admin/main.js` import and init it
 - **Breaking change:** net-close report no longer uses the SendGrid dynamic
   template `d-c2c75b3765954b5dbc043576c67493a7`. It now uses the in-house
   Handlebars template engine.
