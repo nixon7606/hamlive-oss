@@ -8,7 +8,7 @@ jest.mock('../../../server/dist/models/emailSettings', () => {
   let doc = null;
   return {
     loadEmailSettings: jest.fn(async () => doc),
-    saveEmailSettings: jest.fn(async (patch) => { doc = { provider: patch.provider, smtp: { ...(doc?.smtp), ...(patch.smtp) } }; return doc; })
+    saveEmailSettings: jest.fn(async (patch) => { doc = { provider: patch.provider, smtp: { ...(doc?.smtp), ...(patch.smtp) }, tracking: { ...(doc?.tracking), ...(patch.tracking) } }; return doc; })
   };
 });
 jest.mock('../../../server/dist/lib/secretBox', () => ({ encryptSecret: jest.fn(p => `enc:${p}`), decryptSecret: jest.fn() }));
@@ -71,4 +71,25 @@ test('GET reports passwordInvalid when the stored password no longer decrypts (k
   res = await request(app).get('/api/admin/email/settings');
   expect(res.body.message.smtp.passwordSet).toBe(true);
   expect(res.body.message.smtp.passwordInvalid).toBe(true);
+});
+
+test('PUT encrypts a provided tracking token, write-only; GET reports tokenSet, never the token', async () => {
+  const res = await request(app).put('/api/admin/email/settings')
+    .send({ provider: 'smtp', tracking: { enabled: true, host: 'cp.example.com', port: 2083, user: 'acct', tlsVerify: true, token: 'SECRETTOKEN' } });
+  expect(res.status).toBe(200);
+  const savedPatch = saveEmailSettings.mock.calls.at(-1)[0];
+  expect(savedPatch.tracking.tokenEnc).toBe('enc:SECRETTOKEN');
+  expect(savedPatch.tracking).not.toHaveProperty('token');
+
+  const get = await request(app).get('/api/admin/email/settings');
+  expect(JSON.stringify(get.body)).not.toContain('SECRETTOKEN');
+  expect(JSON.stringify(get.body)).not.toContain('tokenEnc');
+  expect(get.body.message.tracking.tokenSet).toBe(true);
+});
+
+test('PUT without a token preserves the stored tokenEnc', async () => {
+  await request(app).put('/api/admin/email/settings')
+    .send({ provider: 'smtp', tracking: { enabled: false, host: 'cp2', port: 2083, user: 'acct', tlsVerify: false } });
+  const savedPatch = saveEmailSettings.mock.calls.at(-1)[0];
+  expect(savedPatch.tracking).not.toHaveProperty('tokenEnc');
 });

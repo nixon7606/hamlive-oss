@@ -11,11 +11,21 @@ const smtpSchema = new Schema({
     fromOverride: { type: String }
 }, { _id: false });
 
+const trackingSchema = new Schema({
+    enabled:   { type: Boolean, default: false },
+    host:      { type: String },
+    port:      { type: Number, default: 2083 },
+    user:      { type: String },
+    tokenEnc:  { type: String },   // secretBox token; never returned by APIs
+    tlsVerify: { type: Boolean, default: true }
+}, { _id: false });
+
 const emailSettingsSchema = new Schema({
     // singleton marker so we always upsert the same row
     singleton:  { type: String, default: 'email', unique: true },
     provider:   { type: String, enum: ['sendgrid', 'smtp', 'console'], default: 'sendgrid' },
     smtp:       { type: smtpSchema, default: () => ({}) },
+    tracking:   { type: trackingSchema, default: () => ({}) },
     updatedBy:  { type: Schema.Types.ObjectId, ref: 'UserProfile' }
 }, { timestamps: true });
 
@@ -32,6 +42,7 @@ async function saveEmailSettings(patch, actorId) {
     const set = { updatedBy: actorId || undefined };
     if (patch.provider !== undefined) set.provider = patch.provider;
     if (patch.smtp) for (const [k, v] of Object.entries(patch.smtp)) set[`smtp.${k}`] = v;
+    if (patch.tracking) for (const [k, v] of Object.entries(patch.tracking)) set[`tracking.${k}`] = v;
     return Model.findOneAndUpdate(
         { singleton: 'email' },
         { $set: set, $setOnInsert: { singleton: 'email' } },

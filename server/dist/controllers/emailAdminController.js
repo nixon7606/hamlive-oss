@@ -21,13 +21,19 @@ function recordAudit(req, entry) {
 
 function publicSettings(doc) {
     const s = (doc && doc.smtp) || {};
-    // A stored password that no longer decrypts (encryption key rotated) would
-    // otherwise read as "set" while every SMTP auth fails — flag it so the
-    // admin knows to re-enter it.
+    const t = (doc && doc.tracking) || {};
+    // A stored password/token that no longer decrypts (encryption key rotated)
+    // would otherwise read as "set" while auth silently fails — flag it so
+    // the admin knows to re-enter it.
     let passwordInvalid = false;
     if (s.passwordEnc) {
         try { decryptSecret(s.passwordEnc); }
         catch { passwordInvalid = true; }
+    }
+    let tokenInvalid = false;
+    if (t.tokenEnc) {
+        try { decryptSecret(t.tokenEnc); }
+        catch { tokenInvalid = true; }
     }
     return {
         provider: (doc && doc.provider) || 'sendgrid',
@@ -36,6 +42,11 @@ function publicSettings(doc) {
             user: s.user || '', fromOverride: s.fromOverride || '',
             passwordSet: Boolean(s.passwordEnc),
             passwordInvalid
+        },
+        tracking: {
+            enabled: Boolean(t.enabled), host: t.host || '', port: t.port || 2083,
+            user: t.user || '', tlsVerify: t.tlsVerify !== false,
+            tokenSet: Boolean(t.tokenEnc), tokenInvalid
         },
         envFallback: { sendgrid: Boolean(conf.sendgrid_api_key) }
     };
@@ -59,6 +70,16 @@ const putSettings = (req, res) => handleRequest(res, async () => {
             patch.smtp.passwordEnc = encryptSecret(s.password);
         }
     }
+    if (body.tracking) {
+        const t = body.tracking;
+        patch.tracking = {
+            enabled: Boolean(t.enabled), host: t.host, port: t.port,
+            user: t.user, tlsVerify: t.tlsVerify !== false
+        };
+        if (typeof t.token === 'string' && t.token.length > 0) {
+            patch.tracking.tokenEnc = encryptSecret(t.token);
+        }
+    }
     const doc = await saveEmailSettings(patch, req.user && req.user._id);
     invalidateTransportCache();
     recordAudit(req, { action: 'email-settings-update', targetType: 'emailSettings', targetId: 'singleton', targetLabel: patch.provider || doc.provider, details: `provider=${doc.provider}` });
@@ -75,6 +96,22 @@ const sendTest = (req, res) => handleRequest(res, async () => {
     recordAudit(req, { action: 'email-test-send', targetType: 'emailTemplate', targetId: key, targetLabel: to, details: `via ${transport.constructor.name}` });
     return { message: { sent: true, via: transport.constructor.name } };
 }, 'admin: sendTestEmail');
+
+const testTracking = (req, res) => handleRequest(res, async () => {
+    const doc = await loadEmailSettings();
+    const t = doc && doc.tracking;
+    if (!t || !t.host || !t.user || !t.tokenEnc) {
+        return { message: { ok: false, error: 'tracking is not fully configured' } };
+    }
+    const { searchEmailTrack } = require('../lib/cpanelDeliveryPoller');
+    try {
+        const rows = await searchEmailTrack(t);
+        recordAudit(req, { action: 'email-tracking-test', targetType: 'emailSettings', targetId: 'singleton', targetLabel: t.host, details: `rows=${rows.length}` });
+        return { message: { ok: true, rows: rows.length } };
+    } catch (err) {
+        return { message: { ok: false, error: err.message } };
+    }
+}, 'admin: testEmailTracking');
 
 function assertKey(key) {
     if (!TEMPLATE_KEYS.includes(key)) { const e = new Error(`unknown template key: ${key}`); e.status = 404; throw e; }
@@ -146,4 +183,4 @@ const resetTemplate = (req, res) => handleRequest(res, async () => {
     return { message: { key, subject: doc.subject, html: doc.html } };
 }, 'admin: resetEmailTemplate');
 
-module.exports = { getSettings, putSettings, sendTest, listTemplates, getTemplate, putTemplate, previewTemplate, resetTemplate };
+module.exports = { getSettings, putSettings, sendTest, testTracking, listTemplates, getTemplate, putTemplate, previewTemplate, resetTemplate };
