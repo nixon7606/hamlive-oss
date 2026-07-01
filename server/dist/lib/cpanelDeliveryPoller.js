@@ -106,7 +106,83 @@ async function searchEmailTrack(tracking, { requestImpl = httpsRequestImpl } = {
     return parseSearchResponse(json);
 }
 
+const LOOKBACK_MS = 48 * 60 * 60 * 1000;
+const NON_TERMINAL = ['accepted', 'deferred'];
+
+function shouldPoll(settings) {
+    const t = settings && settings.tracking;
+    return Boolean(settings && settings.provider === 'smtp' &&
+        t && t.enabled && t.host && t.user && t.tokenEnc);
+}
+
+// Bare address out of "Display Name <addr@host>" (EMAIL_FROM style).
+function bareAddress(s) {
+    const m = /<([^>]+)>/.exec(String(s || ''));
+    return (m ? m[1] : String(s || '')).trim().toLowerCase();
+}
+
+function resolveSenderAddress(settings) {
+    const { conf } = require('./configLib');
+    return bareAddress(
+        (settings.smtp && settings.smtp.fromOverride) ||
+        process.env.EMAIL_FROM || conf.email_from || '');
+}
+
+async function pollOnce({ searchImpl = searchEmailTrack } = {}) {
+    const { loadEmailSettings } = require('../models/emailSettings');
+    const settings = await loadEmailSettings();
+    if (!shouldPoll(settings)) return { polled: 0, updated: 0, events: 0 };
+
+    const { getEmailLog } = require('../models/emailLog');
+    const { getEmailEvent } = require('../models/emailEvent');
+    const EmailLog = getEmailLog();
+    const EmailEvent = getEmailEvent();
+
+    const open = await EmailLog.find({
+        status: { $in: NON_TERMINAL },
+        createdAt: { $gte: new Date(Date.now() - LOOKBACK_MS) }
+    }).lean();
+    if (!open.length) return { polled: 0, updated: 0, events: 0 };
+
+    const rows = filterToSender(await searchImpl(settings.tracking), resolveSenderAddress(settings));
+
+    let updated = 0, events = 0;
+    for (const row of rows) {
+        const status = mapTrackType(row.type);
+        if (!status) continue; // inprogress / unknown → leave as-is
+        const log = correlateRow(row, open);
+        if (!log) continue;
+        const when = Number.isFinite(Number(row.actionunixtime))
+            ? new Date(Number(row.actionunixtime) * 1000) : new Date();
+        try {
+            await EmailEvent.updateOne(
+                { sgEventId: syntheticEventId(row.msgid, row.recipient, row.type) },
+                { $setOnInsert: {
+                    sgEventId: syntheticEventId(row.msgid, row.recipient, row.type),
+                    batchId: log.batchId,
+                    email: log.recipient,
+                    event: status,
+                    reason: row.reason,
+                    sgMessageId: row.msgid,
+                    timestamp: when
+                } },
+                { upsert: true }
+            );
+            events++;
+            await EmailLog.updateOne(
+                { batchId: log.batchId, recipient: log.recipient },
+                { $set: { status, lastEventAt: when } }
+            );
+            updated++;
+        } catch (err) {
+            logger.error(`cpanelDeliveryPoller: row processing failed: ${err.message}`);
+        }
+    }
+    return { polled: rows.length, updated, events };
+}
+
 module.exports = {
     mapTrackType, syntheticEventId, filterToSender, correlateRow,
-    buildSearchUrl, parseSearchResponse, searchEmailTrack
+    buildSearchUrl, parseSearchResponse, searchEmailTrack,
+    shouldPoll, pollOnce
 };
