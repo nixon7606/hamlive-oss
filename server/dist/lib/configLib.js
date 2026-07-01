@@ -76,6 +76,15 @@ if (process.env.SCHEDULED_NET_STARTER_ENABLED !== undefined) {
     _.set(conf, 'background_tasks.scheduledNetStarter.enabled', process.env.SCHEDULED_NET_STARTER_ENABLED === 'true');
 }
 
+// Per-host cPanel delivery-poller override. The repo ships cpanelDeliveryPoller
+// enabled (see {dev,prod}Config.yaml); a host can disable the 5-minute tracking
+// interval without editing committed YAML by setting CPANEL_DELIVERY_POLLER_ENABLED=false
+// in its .env. The interval is a cheap no-op unless provider=smtp and tracking are enabled
+// (checked per tick inside pollOnce, so admin changes apply without restart).
+if (process.env.CPANEL_DELIVERY_POLLER_ENABLED !== undefined) {
+    _.set(conf, 'background_tasks.cpanelDeliveryPoller.enabled', process.env.CPANEL_DELIVERY_POLLER_ENABLED === 'true');
+}
+
 // ---------------------------------------------------------------------------
 // Secret-strength guard
 // ---------------------------------------------------------------------------

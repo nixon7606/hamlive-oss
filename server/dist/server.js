@@ -377,6 +377,23 @@ if (conf.background_tasks?.scheduledNetStarter?.enabled !== false) {
     logger.warn('scheduledNetStarter disabled by config — 60s auto-start interval not started');
 }
 
+// cPanel delivery-tracking poller — advances SMTP EmailLog rows using cPanel's
+// Track Delivery data every 5 minutes. Cheap no-op unless the admin enabled
+// tracking AND the provider is smtp (checked per tick inside pollOnce, so
+// admin-UI changes apply without a restart). Kill switch:
+// CPANEL_DELIVERY_POLLER_ENABLED=false in .env.
+if (conf.background_tasks?.cpanelDeliveryPoller?.enabled !== false) {
+    const { pollOnce } = require('./lib/cpanelDeliveryPoller');
+    setInterval(() => {
+        pollOnce().catch(err => {
+            const { logger } = require('./lib/logger');
+            logger.error(`cpanelDeliveryPoller interval error: ${err.message}`);
+        });
+    }, 5 * 60_000);
+} else {
+    logger.warn('cpanelDeliveryPoller disabled by config — delivery tracking interval not started');
+}
+
 app.use((req, res) => {
     if (!res.headersSent) return res.status(404).render('404', populate(req, res, { VIEW: '404' }));
 });
