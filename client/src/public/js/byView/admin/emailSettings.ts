@@ -68,14 +68,23 @@ function escAttr(s: string): string {
 
 // ── API helper ────────────────────────────────────────────────────────────────
 
+// Server failures arrive as body.errorMessage (handleRequest → sendError).
+export function apiErrorMessage(body: unknown): string {
+    if (body && typeof body === 'object') {
+        const msg = (body as { errorMessage?: unknown }).errorMessage;
+        if (typeof msg === 'string' && msg.length) return msg;
+    }
+    return 'request failed';
+}
+
 async function api(path: string, init?: RequestInit): Promise<unknown> {
     const res = await fetch(`/api/admin/email${path}`, {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         ...init,
     });
-    const body = await res.json() as { message?: unknown; error?: string };
-    if (!res.ok) throw new Error(body.error ?? 'request failed');
+    const body = await res.json() as { message?: unknown };
+    if (!res.ok) throw new Error(apiErrorMessage(body));
     return body.message;
 }
 
@@ -88,12 +97,13 @@ interface SmtpConfig {
     user?: string;
     fromOverride?: string;
     passwordSet?: boolean;
+    passwordInvalid?: boolean;
 }
 
 interface EmailSettingsResponse {
     provider?: string;
     smtp?: SmtpConfig;
-    envFallback?: boolean;
+    envFallback?: { sendgrid?: boolean };
 }
 
 interface TemplateSummary {
@@ -135,7 +145,11 @@ async function initProviderSection(): Promise<void> {
     setVal('fromOverride', smtp.fromOverride ?? '');
 
     const pwStatus = el('smtp-password-status');
-    if (pwStatus) pwStatus.textContent = smtp.passwordSet ? 'password is set' : 'no password set';
+    if (pwStatus) {
+        pwStatus.textContent = smtp.passwordInvalid
+            ? '⚠ stored password can no longer be decrypted (encryption key changed) — re-enter it'
+            : smtp.passwordSet ? 'password is set' : 'no password set';
+    }
 
     toggleSmtpFields(settings.provider ?? 'console');
 

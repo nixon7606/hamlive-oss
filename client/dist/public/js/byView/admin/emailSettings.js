@@ -44,6 +44,14 @@ function escAttr(s) {
         return map[c] ?? c;
     });
 }
+export function apiErrorMessage(body) {
+    if (body && typeof body === 'object') {
+        const msg = body.errorMessage;
+        if (typeof msg === 'string' && msg.length)
+            return msg;
+    }
+    return 'request failed';
+}
 async function api(path, init) {
     const res = await fetch(`/api/admin/email${path}`, {
         headers: { 'Content-Type': 'application/json' },
@@ -52,7 +60,7 @@ async function api(path, init) {
     });
     const body = await res.json();
     if (!res.ok)
-        throw new Error(body.error ?? 'request failed');
+        throw new Error(apiErrorMessage(body));
     return body.message;
 }
 async function initProviderSection() {
@@ -67,8 +75,11 @@ async function initProviderSection() {
     setVal('user', smtp.user ?? '');
     setVal('fromOverride', smtp.fromOverride ?? '');
     const pwStatus = el('smtp-password-status');
-    if (pwStatus)
-        pwStatus.textContent = smtp.passwordSet ? 'password is set' : 'no password set';
+    if (pwStatus) {
+        pwStatus.textContent = smtp.passwordInvalid
+            ? '⚠ stored password can no longer be decrypted (encryption key changed) — re-enter it'
+            : smtp.passwordSet ? 'password is set' : 'no password set';
+    }
     toggleSmtpFields(settings.provider ?? 'console');
     const panel = el('email-settings-panel');
     panel?.querySelectorAll('[name=provider]').forEach(r => {

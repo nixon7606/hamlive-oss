@@ -127,7 +127,14 @@ const handleRequest = async (res, callback, successMessage) => {
                     /^E\d|11000/.test(String(err['code'])))));
         const clientMsg = process.env['NODE_ENV'] === 'production' && isInternal ? 'An internal error occurred.' : rawMessage;
         logger_js_1.logger.error(err instanceof Error ? err.stack : rawMessage);
-        handleResponse.sendError(res, 'INTERNAL_SERVER_ERROR', clientMsg);
+        // Honor a deliberate err.status (e.g. 404 unknown-key, 400 validation)
+        // so client mistakes don't read as server outages. Anything else — and
+        // any status we don't map — stays a 500.
+        const errStatus = err != null && typeof err === 'object' ? err['status'] : undefined;
+        const statusName = typeof errStatus === 'number' && typeof HttpStatus[errStatus] === 'string'
+            ? HttpStatus[errStatus]
+            : 'INTERNAL_SERVER_ERROR';
+        handleResponse.sendError(res, statusName, clientMsg);
     }
 };
 exports.handleRequest = handleRequest;
