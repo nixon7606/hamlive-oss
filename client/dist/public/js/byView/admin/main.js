@@ -981,6 +981,9 @@ document.addEventListener('DOMContentLoaded', () => {
             loadRecentEmails(recentRangeFromControls(parseInt(preset.getAttribute('data-recent-preset'), 10)));
         }
     });
+    document.getElementById('email-tab')?.addEventListener('shown.bs.tab', () => {
+        loadRecentEmails(recentRangeFromControls(1));
+    }, { once: true });
     document.getElementById('recent-load-btn')?.addEventListener('click', () => loadRecentEmails(recentRangeFromControls()));
     document.getElementById('recent-csv-btn')?.addEventListener('click', () => {
         const range = lastRecentRange.from ? lastRecentRange : recentRangeFromControls();

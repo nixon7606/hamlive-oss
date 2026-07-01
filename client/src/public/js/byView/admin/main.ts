@@ -985,6 +985,11 @@ document.addEventListener('DOMContentLoaded', () => {
             loadRecentEmails(recentRangeFromControls(parseInt(preset.getAttribute('data-recent-preset') as string, 10)));
         }
     });
+    // First open of the Email tab: show the last 24h of sends by default
+    // (also fires when the Users-table "view email history" jump opens the tab).
+    document.getElementById('email-tab')?.addEventListener('shown.bs.tab', () => {
+        loadRecentEmails(recentRangeFromControls(1));
+    }, { once: true });
     document.getElementById('recent-load-btn')?.addEventListener('click', () => loadRecentEmails(recentRangeFromControls()));
     document.getElementById('recent-csv-btn')?.addEventListener('click', () => {
         const range = lastRecentRange.from ? lastRecentRange : recentRangeFromControls();

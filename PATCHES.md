@@ -169,7 +169,10 @@ producing unhelpful errors, and they fix one validator that could hang a login.
   `NetAnnounceStart.init()`), `server/dist/lib/responseUtils.js` (`handleRequest`
   honors a deliberate `err.status`, e.g. 400/404 from the email admin endpoints),
   `server/dist/server.js` (seeds email templates on startup), `server/dist/views/admin.ejs`
-  (Email Settings UI added)
+  (Email Settings UI added; the Email Settings + Email Templates cards live in a
+  dedicated **Settings** admin tab — `#settings-panel` — while the Email tab keeps the
+  reporting cards: Delivery Lookup + Recent Sends, the latter auto-loading the last 24 h
+  on first open via `byView/admin/main.ts`)
 - **Client:** new `client/src/public/js/byView/admin/emailSettings.ts` (Email
   Settings panel: provider config + template editor), compiled to
   `client/dist/public/js/byView/admin/emailSettings.js` (+ `.d.ts`/maps);
