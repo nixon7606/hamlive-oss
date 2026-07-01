@@ -49,8 +49,9 @@ class SendGridTransport {
 }
 
 class SmtpTransport {
-    constructor({ host, port, secure, user, pass, from }) {
+    constructor({ host, port, secure, user, pass, from, fromOverride }) {
         this._from = from;
+        this._fromOverride = fromOverride;
         this._tx = nodemailer.createTransport({
             host, port: Number(port), secure: Boolean(secure),
             auth: user ? { user, pass } : undefined
@@ -60,15 +61,30 @@ class SmtpTransport {
         if (msg.templateId && !msg.html) {
             throw new Error('SmtpTransport cannot render a remote SendGrid template (no html provided)');
         }
-        const mail = {
-            from: msg.from || this._from,
-            to: (msg.to || []).join(', '),
+        const base = {
+            from: this._fromOverride || msg.from || this._from,
             subject: msg.subject,
             html: msg.html
         };
-        if (msg.attachments && msg.attachments.length) mail.attachments = msg.attachments.map(toNodemailerAttachment);
-        const info = await this._tx.sendMail(mail);
-        return { messageId: info.messageId || null };
+        if (msg.attachments && msg.attachments.length) base.attachments = msg.attachments.map(toNodemailerAttachment);
+        // One copy per recipient (SendGrid sendMultiple semantics) so recipients
+        // never see each other's addresses in a shared To header.
+        const recipients = msg.to || [];
+        let firstId = null;
+        let failed = 0;
+        for (const rcpt of recipients) {
+            try {
+                const info = await this._tx.sendMail({ ...base, to: rcpt });
+                if (!firstId) firstId = info.messageId || null;
+            } catch (err) {
+                failed++;
+                logger.error(`SmtpTransport: send to ${rcpt} failed: ${err.message}`);
+            }
+        }
+        if (recipients.length && failed === recipients.length) {
+            throw new Error(`SmtpTransport: all ${failed} recipient send(s) failed`);
+        }
+        return { messageId: firstId };
     }
 }
 
@@ -78,21 +94,27 @@ function invalidateTransportCache() { _cached = null; }
 
 async function buildTransport() {
     let settings = null;
+    let cacheable = true;
     try { settings = await loadEmailSettings(); }
-    catch (err) { logger.warn(`emailTransports: settings load failed, falling back to env: ${err.message}`); }
+    catch (err) {
+        // Fall back for THIS send only — do not cache, or a transient DB error
+        // would pin the fallback (console!) until restart or an admin re-save.
+        cacheable = false;
+        logger.warn(`emailTransports: settings load failed, falling back to env: ${err.message}`);
+    }
 
     const provider = settings?.provider;
     if (provider === 'smtp' && settings.smtp?.host) {
         const s = settings.smtp;
         const pass = s.passwordEnc ? safeDecrypt(s.passwordEnc) : undefined;
-        return new SmtpTransport({ host: s.host, port: s.port, secure: s.secure, user: s.user, pass, from: s.fromOverride || EMAIL_FROM() });
+        return { cacheable, transport: new SmtpTransport({ host: s.host, port: s.port, secure: s.secure, user: s.user, pass, from: EMAIL_FROM(), fromOverride: s.fromOverride || undefined }) };
     }
-    if (provider === 'sendgrid' && conf.sendgrid_api_key) return new SendGridTransport(conf.sendgrid_api_key);
-    if (provider === 'console') return new ConsoleTransport();
+    if (provider === 'sendgrid' && conf.sendgrid_api_key) return { cacheable, transport: new SendGridTransport(conf.sendgrid_api_key) };
+    if (provider === 'console') return { cacheable, transport: new ConsoleTransport() };
 
     // No (usable) DB setting → env fallback, then console.
-    if (conf.sendgrid_api_key) return new SendGridTransport(conf.sendgrid_api_key);
-    return new ConsoleTransport();
+    if (conf.sendgrid_api_key) return { cacheable, transport: new SendGridTransport(conf.sendgrid_api_key) };
+    return { cacheable, transport: new ConsoleTransport() };
 }
 
 function safeDecrypt(token) {
@@ -106,8 +128,9 @@ function EMAIL_FROM() {
 
 async function getActiveTransport() {
     if (_cached) return _cached;
-    _cached = await buildTransport();
-    return _cached;
+    const { cacheable, transport } = await buildTransport();
+    if (cacheable) _cached = transport;
+    return transport;
 }
 
 async function isRealSenderActive() {

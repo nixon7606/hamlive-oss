@@ -52,3 +52,23 @@ test('PUT without a password does not call encrypt (preserves existing)', async 
   expect(res.status).toBe(200);
   expect(encryptSecret).not.toHaveBeenCalled();
 });
+
+test('GET reports passwordInvalid when the stored password no longer decrypts (key rotation)', async () => {
+  const { decryptSecret } = require('../../../server/dist/lib/secretBox');
+
+  // store a password so passwordEnc exists
+  await request(app).put('/api/admin/email/settings')
+    .send({ provider: 'smtp', smtp: { host: 'h', port: 587, secure: true, user: 'u', password: 'hunter2' } });
+
+  // decryptable → not flagged
+  decryptSecret.mockImplementation(() => 'hunter2');
+  let res = await request(app).get('/api/admin/email/settings');
+  expect(res.body.message.smtp.passwordSet).toBe(true);
+  expect(res.body.message.smtp.passwordInvalid).toBe(false);
+
+  // key rotated → decrypt throws → flagged so the admin knows to re-enter it
+  decryptSecret.mockImplementation(() => { throw new Error('bad auth tag'); });
+  res = await request(app).get('/api/admin/email/settings');
+  expect(res.body.message.smtp.passwordSet).toBe(true);
+  expect(res.body.message.smtp.passwordInvalid).toBe(true);
+});

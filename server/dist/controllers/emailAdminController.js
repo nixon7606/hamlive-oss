@@ -4,7 +4,7 @@ const { logger } = require('../lib/logger');
 const { getAdminAudit } = require('../models/adminAudit');
 const { conf } = require('../lib/configLib');
 const { loadEmailSettings, saveEmailSettings } = require('../models/emailSettings');
-const { encryptSecret } = require('../lib/secretBox');
+const { encryptSecret, decryptSecret } = require('../lib/secretBox');
 const { invalidateTransportCache, getActiveTransport } = require('../lib/emailTransports');
 const { renderTemplate, TEMPLATE_KEYS, TEMPLATE_META, getDefault } = require('../lib/templateService');
 const { getEmailTemplate } = require('../models/emailTemplate');
@@ -21,12 +21,21 @@ function recordAudit(req, entry) {
 
 function publicSettings(doc) {
     const s = (doc && doc.smtp) || {};
+    // A stored password that no longer decrypts (encryption key rotated) would
+    // otherwise read as "set" while every SMTP auth fails — flag it so the
+    // admin knows to re-enter it.
+    let passwordInvalid = false;
+    if (s.passwordEnc) {
+        try { decryptSecret(s.passwordEnc); }
+        catch { passwordInvalid = true; }
+    }
     return {
         provider: (doc && doc.provider) || 'sendgrid',
         smtp: {
             host: s.host || '', port: s.port || 587, secure: Boolean(s.secure),
             user: s.user || '', fromOverride: s.fromOverride || '',
-            passwordSet: Boolean(s.passwordEnc)
+            passwordSet: Boolean(s.passwordEnc),
+            passwordInvalid
         },
         envFallback: { sendgrid: Boolean(conf.sendgrid_api_key) }
     };
@@ -97,6 +106,16 @@ const putTemplate = (req, res) => handleRequest(res, async () => {
     const key = req.params.key; assertKey(key);
     const { subject, html } = req.body || {};
     if (!subject || !html) { const e = new Error('subject and html are required'); e.status = 400; throw e; }
+    // A saved template that doesn't compile would break every send of this
+    // email type (magic-link = sign-in down) — reject it at save time.
+    try {
+        const Handlebars = require('handlebars');
+        const data = TEMPLATE_META[key].sample;
+        Handlebars.compile(String(subject), { noEscape: true })(data);
+        Handlebars.compile(String(html))(data);
+    } catch (err) {
+        const e = new Error(`template does not compile: ${err.message}`); e.status = 400; throw e;
+    }
     const doc = await getEmailTemplate().findOneAndUpdate(
         { key }, { $set: { key, subject, html, updatedBy: req.user && req.user._id } },
         { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
