@@ -35,3 +35,9 @@ test('GET unknown key 404s', async () => {
   expect(res.status).toBe(500); // handleRequest maps thrown error; assert message
   expect(res.body.error).toMatch(/unknown template/i);
 });
+
+test('PUT rejects a template that does not compile (login must not break on a typo)', async () => {
+  const res = await request(app).put('/t/net-announce').send({ subject: 'S', html: '{{#if title}broken' });
+  expect(res.body.error).toMatch(/compile|invalid/i);
+  expect(store['net-announce']).toBeUndefined(); // nothing was saved
+});

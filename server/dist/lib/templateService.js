@@ -50,10 +50,22 @@ async function loadTemplate(key, { useDefault = false } = {}) {
 
 async function renderTemplate(key, data, opts = {}) {
     const { subject, html } = await loadTemplate(key, opts);
-    return {
-        subject: Handlebars.compile(subject, { noEscape: true })(data),
-        html: Handlebars.compile(html)(data)
-    };
+    try {
+        return {
+            subject: Handlebars.compile(subject, { noEscape: true })(data),
+            html: Handlebars.compile(html)(data)
+        };
+    } catch (err) {
+        // A broken stored template must not take the email type down
+        // (magic-link = sign-in). Fall back to the on-disk default.
+        if (opts.useDefault) throw err;
+        logger.error(`templateService: stored "${key}" template failed to render, using default: ${err.message}`);
+        const def = getDefault(key);
+        return {
+            subject: Handlebars.compile(def.subject, { noEscape: true })(data),
+            html: Handlebars.compile(def.html)(data)
+        };
+    }
 }
 
 async function seedTemplates() {
