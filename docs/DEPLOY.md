@@ -60,6 +60,10 @@ Subsequent deploys without dependency changes do not need `npm install` — a pl
 `git reset --hard` + restart is sufficient. The repo's commit message and
 `PATCHES.md` catalog which releases added new dependencies.
 
+For example, the cPanel delivery-tracking feature (see `PATCHES.md`) adds no
+new npm dependencies — its EmailTrack client is hand-rolled on Node's built-in
+`https` — so deploying it is a plain reset+restart, no `npm install` step.
+
 ## Prerequisite: strong production secrets
 
 In production (`NODE_ENV=production`) the app **refuses to start** if

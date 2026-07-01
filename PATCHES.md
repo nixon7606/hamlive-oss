@@ -188,6 +188,64 @@ producing unhelpful errors, and they fix one validator that could hang a login.
   Handlebars template engine replaces dependency on account-specific SendGrid
   template IDs.
 
+### cPanel delivery tracking — SMTP bounce/delivered status via Track Delivery
+- **New file:** `server/dist/lib/cpanelDeliveryPoller.js` (pure mapping/
+  correlation helpers + a cPanel API 2 `EmailTrack::search` HTTP client with an
+  injectable transport + the `pollOnce()` pipeline that advances `EmailLog`/
+  `EmailEvent` rows)
+- **Modified files:** `server/dist/models/emailSettings.js` (new `tracking`
+  sub-schema: `enabled`, `host`, `port`, `user`, `tokenEnc`, `tlsVerify`;
+  `saveEmailSettings()` deep-sets `tracking.*` the same way it already did for
+  `smtp.*`), `server/dist/controllers/emailAdminController.js` (`tracking`
+  block added to `publicSettings()`/`putSettings()`, encrypts the token
+  write-only like the SMTP password; new `testTracking` endpoint handler),
+  `server/dist/routes/adminRoutes.js` (`POST /admin/email/tracking/test`),
+  `server/dist/lib/userNotification.js` (`recordEmailLogs()` takes a 5th
+  `status` param; SMTP sends now start their `EmailLog` row at `'accepted'`
+  instead of SendGrid's `'queued'`, since SMTP has no queueing step of its
+  own), `server/dist/lib/configLib.js` (`CPANEL_DELIVERY_POLLER_ENABLED`
+  env override, mirrors the existing `SCHEDULED_NET_STARTER_ENABLED`
+  pattern), `server/dist/server.js` (gated 5-minute `setInterval` calling
+  `pollOnce()`), `server/dist/views/admin.ejs` (Delivery Tracking card under
+  Email Settings: host/port/user/token/TLS-verify fields + Save/Test
+  Connection), `.env.example` (documents the new toggle)
+- **Client:** new fields wired into `client/src/public/js/byView/admin/
+  emailSettings.ts` (existing Email Settings panel; not a new page), compiled
+  to `client/dist/public/js/byView/admin/emailSettings.js` (+`.js.map`/
+  `.d.ts.map`)
+- **Dependencies:** none — the EmailTrack client is hand-rolled on Node's
+  built-in `https`, no new package. Deploy remains reset+restart only, no
+  `npm install` needed for this feature (contrast with the `nodemailer`/
+  `handlebars` entry above, which does need one).
+- **Why:** SendGrid sends get delivered/bounced status from SendGrid's event
+  webhook; SMTP sends had no equivalent, so their `EmailLog` rows sat at
+  `'queued'`/`'accepted'` forever. cPanel's Track Delivery feature (surfaced
+  via its legacy `EmailTrack` module) exposes exactly that data for mail sent
+  through the box, so a poller fills the same `EmailLog`/`EmailEvent` pipeline
+  the admin Email Activity UI already reads.
+- **Gotchas for future maintainers (verified against a real cPanel box,
+  2026-07-01):**
+  - `EmailTrack` only exists in **cPanel API 2** (`/json-api/cpanel` with
+    `cpanel_jsonapi_apiversion=2`), **not UAPI** — UAPI has no EmailTrack
+    module and returns "module not found." Don't "modernize" this to UAPI.
+  - The search call **requires** the bare boolean query flags
+    `success=1&defer=1&failure=1&inprogress=1`. With no flags at all, cPanel
+    defaults to **failures-only**. The more REST-ish-looking spellings
+    (`show_success=1`, `deliverytype=all`, etc.) are silently accepted and
+    return an **empty result set** — no error, just nothing, which is easy to
+    mistake for "no mail sent yet." See `buildSearchUrl()` in
+    `cpanelDeliveryPoller.js` for the exact query string.
+  - EmailTrack rows carry the Exim queue id (`msgid`), not the RFC
+    `Message-ID` we store on `EmailLog`. Correlation is therefore
+    recipient + send-time proximity (`correlateRow()`, 15-minute window over
+    the last 48h of non-terminal `EmailLog` rows) — not an exact-id join.
+  - The cPanel API token is **user-level** (created in cPanel → Security →
+    Manage API Tokens on the account that owns the sending domain), **never a
+    WHM token** — WHM tokens can't call per-account `EmailTrack`. It's
+    encrypted at rest via `secretBox.js` (same mechanism as the SMTP
+    password) and is write-only through the admin API (`publicSettings()`
+    only ever returns `tokenSet`/`tokenInvalid` booleans, never the token).
+
 ---
 
 ## Branding
