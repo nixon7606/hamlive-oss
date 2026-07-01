@@ -5,7 +5,7 @@ const { conf } = require('../lib/configLib');
 const { checkBulk } = require('./emailRateLimiter');
 const crypto = require('crypto');
 const { getEmailLog } = require('../models/emailLog');
-const { getActiveTransport, ConsoleTransport, isRealSenderActive } = require('./emailTransports');
+const { getActiveTransport, ConsoleTransport, SmtpTransport, isRealSenderActive } = require('./emailTransports');
 
 // Email delivery is optional. When SENDGRID_API_KEY is absent, messages are
 // logged to the server console instead of being sent (see INSTALL.md,
@@ -91,7 +91,11 @@ class EmailBase {
             const emailData = this.buildMessage(allowed, subject);
             emailData.customArgs = { ...(emailData.customArgs || {}), hlType: this.type, hlBatch: batchId };
             const messageId = await this.sendEmailWithRetry(emailData, allowed);
-            if (await isRealSenderActive()) this.recordEmailLogs(allowed, subject, batchId, messageId);
+            if (await isRealSenderActive()) {
+                const transport = await getActiveTransport(); // cached — cheap
+                const initialStatus = transport instanceof SmtpTransport ? 'accepted' : 'queued';
+                this.recordEmailLogs(allowed, subject, batchId, messageId, initialStatus);
+            }
         } catch (err) {
             logger.error(`Failed to send mail: ${err.message}`);
             throw err;
@@ -160,10 +164,10 @@ class EmailBase {
             }
         }
     }
-    recordEmailLogs(recipients, subject, batchId, sgMessageId) {
+    recordEmailLogs(recipients, subject, batchId, sgMessageId, status = 'queued') {
         const EmailLog = getEmailLog();
         Promise.all(recipients.map(r => EmailLog.create({
-            recipient: r, type: this.type, subject, batchId, sgMessageId, status: 'queued'
+            recipient: r, type: this.type, subject, batchId, sgMessageId, status
         }))).catch(err => logger.error(`recordEmailLogs() failed: ${err.message}`));
     }
 
