@@ -22,6 +22,9 @@ function toggleSmtpFields(provider) {
     const wrap = el('smtp-fields');
     if (wrap)
         wrap.hidden = provider !== 'smtp';
+    const tf = el('tracking-fields');
+    if (tf)
+        tf.hidden = provider !== 'smtp';
 }
 function showStatus(id, text) {
     const e = el(id);
@@ -63,6 +66,23 @@ async function api(path, init) {
         throw new Error(apiErrorMessage(body));
     return body.message;
 }
+function fillTracking(t) {
+    const en = qs('[name=trackingEnabled]');
+    if (en)
+        en.checked = t.enabled ?? false;
+    setVal('trackingHost', t.host ?? '');
+    setVal('trackingPort', t.port ?? 2083);
+    setVal('trackingUser', t.user ?? '');
+    const tls = qs('[name=trackingTlsVerify]');
+    if (tls)
+        tls.checked = t.tlsVerify !== false;
+    const st = el('tracking-token-status');
+    if (st) {
+        st.textContent = t.tokenInvalid
+            ? '⚠ stored token can no longer be decrypted (encryption key changed) — re-enter it'
+            : t.tokenSet ? 'token is set' : 'no token set';
+    }
+}
 async function initProviderSection() {
     const settings = await api('/settings');
     const smtp = settings.smtp ?? {};
@@ -81,6 +101,7 @@ async function initProviderSection() {
             : smtp.passwordSet ? 'password is set' : 'no password set';
     }
     toggleSmtpFields(settings.provider ?? 'console');
+    fillTracking(settings.tracking ?? {});
     const panel = el('email-settings-panel');
     panel?.querySelectorAll('[name=provider]').forEach(r => {
         r.addEventListener('change', e => toggleSmtpFields(e.target.value));
@@ -128,6 +149,41 @@ async function initProviderSection() {
         }
         catch (err) {
             showStatus('email-test-status', `Error: ${err.message}`);
+        }
+    });
+    el('email-tracking-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = e.target;
+        const token = val(f, 'trackingToken');
+        const tracking = {
+            enabled: qs('[name=trackingEnabled]', f)?.checked ?? false,
+            host: val(f, 'trackingHost'),
+            port: Number(val(f, 'trackingPort')) || 2083,
+            user: val(f, 'trackingUser'),
+            tlsVerify: qs('[name=trackingTlsVerify]', f)?.checked ?? true,
+        };
+        if (token)
+            tracking['token'] = token;
+        try {
+            const s = await api('/settings', { method: 'PUT', body: JSON.stringify({ tracking }) });
+            showStatus('tracking-status', 'Saved.');
+            const tokEl = qs('[name=trackingToken]', f);
+            if (tokEl)
+                tokEl.value = '';
+            fillTracking(s.tracking ?? {});
+        }
+        catch (err) {
+            showStatus('tracking-status', `Error: ${err.message}`);
+        }
+    });
+    el('tracking-test-btn')?.addEventListener('click', async () => {
+        showStatus('tracking-status', 'Testing…');
+        try {
+            const r = await api('/tracking/test', { method: 'POST', body: '{}' });
+            showStatus('tracking-status', r.ok ? `OK — ${r.rows} tracked deliveries visible` : `Failed: ${r.error ?? 'unknown'}`);
+        }
+        catch (err) {
+            showStatus('tracking-status', `Error: ${err.message}`);
         }
     });
 }

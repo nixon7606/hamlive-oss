@@ -42,6 +42,8 @@ function setRadio(name: string, value: string): void {
 function toggleSmtpFields(provider: string): void {
     const wrap = el('smtp-fields');
     if (wrap) wrap.hidden = provider !== 'smtp';
+    const tf = el('tracking-fields');
+    if (tf) tf.hidden = provider !== 'smtp';
 }
 
 function showStatus(id: string, text: string): void {
@@ -100,9 +102,20 @@ interface SmtpConfig {
     passwordInvalid?: boolean;
 }
 
+interface TrackingConfig {
+    enabled?: boolean;
+    host?: string;
+    port?: number;
+    user?: string;
+    tlsVerify?: boolean;
+    tokenSet?: boolean;
+    tokenInvalid?: boolean;
+}
+
 interface EmailSettingsResponse {
     provider?: string;
     smtp?: SmtpConfig;
+    tracking?: TrackingConfig;
     envFallback?: { sendgrid?: boolean };
 }
 
@@ -126,6 +139,24 @@ interface TestResult {
     sent: boolean;
     via?: string;
     error?: string;
+}
+
+// ── Delivery tracking sub-section ─────────────────────────────────────────────
+
+function fillTracking(t: TrackingConfig): void {
+    const en = qs<HTMLInputElement>('[name=trackingEnabled]');
+    if (en) en.checked = t.enabled ?? false;
+    setVal('trackingHost', t.host ?? '');
+    setVal('trackingPort', t.port ?? 2083);
+    setVal('trackingUser', t.user ?? '');
+    const tls = qs<HTMLInputElement>('[name=trackingTlsVerify]');
+    if (tls) tls.checked = t.tlsVerify !== false;
+    const st = el('tracking-token-status');
+    if (st) {
+        st.textContent = t.tokenInvalid
+            ? '⚠ stored token can no longer be decrypted (encryption key changed) — re-enter it'
+            : t.tokenSet ? 'token is set' : 'no token set';
+    }
 }
 
 // ── Provider sub-section ──────────────────────────────────────────────────────
@@ -152,6 +183,7 @@ async function initProviderSection(): Promise<void> {
     }
 
     toggleSmtpFields(settings.provider ?? 'console');
+    fillTracking(settings.tracking ?? {});
 
     // Provider radio toggles smtp field visibility
     const panel = el('email-settings-panel');
@@ -200,6 +232,41 @@ async function initProviderSection(): Promise<void> {
             showStatus('email-test-status', r.sent ? `Sent via ${r.via ?? '?'}` : `Not sent: ${r.error ?? 'unknown'}`);
         } catch (err) {
             showStatus('email-test-status', `Error: ${(err as Error).message}`);
+        }
+    });
+
+    // Save tracking settings
+    el('email-tracking-form')?.addEventListener('submit', async e => {
+        e.preventDefault();
+        const f = e.target as HTMLFormElement;
+        const token = val(f, 'trackingToken');
+        const tracking: Record<string, unknown> = {
+            enabled: qs<HTMLInputElement>('[name=trackingEnabled]', f)?.checked ?? false,
+            host: val(f, 'trackingHost'),
+            port: Number(val(f, 'trackingPort')) || 2083,
+            user: val(f, 'trackingUser'),
+            tlsVerify: qs<HTMLInputElement>('[name=trackingTlsVerify]', f)?.checked ?? true,
+        };
+        if (token) tracking['token'] = token;
+        try {
+            const s = await api('/settings', { method: 'PUT', body: JSON.stringify({ tracking }) }) as EmailSettingsResponse;
+            showStatus('tracking-status', 'Saved.');
+            const tokEl = qs<HTMLInputElement>('[name=trackingToken]', f);
+            if (tokEl) tokEl.value = '';
+            fillTracking(s.tracking ?? {});
+        } catch (err) {
+            showStatus('tracking-status', `Error: ${(err as Error).message}`);
+        }
+    });
+
+    // Test tracking connection
+    el('tracking-test-btn')?.addEventListener('click', async () => {
+        showStatus('tracking-status', 'Testing…');
+        try {
+            const r = await api('/tracking/test', { method: 'POST', body: '{}' }) as { ok?: boolean; rows?: number; error?: string };
+            showStatus('tracking-status', r.ok ? `OK — ${r.rows} tracked deliveries visible` : `Failed: ${r.error ?? 'unknown'}`);
+        } catch (err) {
+            showStatus('tracking-status', `Error: ${(err as Error).message}`);
         }
     });
 }

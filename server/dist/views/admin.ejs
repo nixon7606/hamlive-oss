@@ -201,6 +201,42 @@
               <span id="email-settings-status" role="status" class="small"></span>
             </div>
           </form>
+
+          <div id="tracking-fields" class="mt-3 border-top pt-3">
+            <h6>Delivery Tracking (cPanel Track Delivery)</h6>
+            <p class="text-muted small mb-2">
+              Polls your cPanel server every 5 minutes and fills in delivered / bounced status
+              for SMTP sends. Create a user-level API token in cPanel → Security → Manage API
+              Tokens on the account that owns the sending domain.
+            </p>
+            <form id="email-tracking-form">
+              <div class="mb-2">
+                <label class="d-flex align-items-center gap-2"><input name="trackingEnabled" id="tracking-enabled" type="checkbox"> Enable delivery tracking</label>
+              </div>
+              <div class="row g-2">
+                <div class="col-md-5"><label class="form-label small">cPanel host</label>
+                  <input class="app-input w-100" name="trackingHost" placeholder="cpanel03.example.com"></div>
+                <div class="col-md-2"><label class="form-label small">Port</label>
+                  <input class="app-input w-100" name="trackingPort" type="number" value="2083"></div>
+                <div class="col-md-5"><label class="form-label small">cPanel user</label>
+                  <input class="app-input w-100" name="trackingUser"></div>
+              </div>
+              <div class="row g-2 mt-1">
+                <div class="col-md-7"><label class="form-label small">API token</label>
+                  <input class="app-input w-100" name="trackingToken" type="password" autocomplete="new-password">
+                  <div id="tracking-token-status" class="small text-muted"></div></div>
+                <div class="col-md-5 d-flex align-items-end pb-1">
+                  <label class="d-flex align-items-center gap-2"><input name="trackingTlsVerify" id="tracking-tls" type="checkbox" checked> Verify TLS certificate</label>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-3 mt-3">
+                <button type="submit" class="app-btn app-btn-primary app-btn-sm">Save tracking</button>
+                <button type="button" class="app-btn app-btn-sm" id="tracking-test-btn">Test connection</button>
+                <span id="tracking-status" role="status" class="small"></span>
+              </div>
+            </form>
+          </div>
+
           <div id="email-test" class="border-top pt-3">
             <div class="d-flex flex-wrap align-items-center gap-2">
               <label class="d-flex align-items-center gap-2">
