@@ -261,6 +261,23 @@ producing unhelpful errors, and they fix one validator that could hang a login.
     `EmailLog` would eliminate this ambiguity if it ever turns out to
     matter in practice.
 
+### Net-schedule hardening (review fixes)
+- **Files:** `server/dist/controllers/netProfileController.js`
+  (`buildAndValidateSchedule` + owner update path),
+  `server/dist/lib/backgroundTasks/scheduledNetStarter.js` (log level),
+  `client/src/public/js/byView/myNets/main.ts` + compiled
+  `client/dist/public/js/byView/myNets/main.js`
+- **Change:** (1) the My Nets "Send email notification" checkbox is now
+  actually wired — it loads the stored `schedule.notifyBeforeEnabled` and is
+  sent on save (it previously did nothing; followers were always emailed);
+  (2) `timezone` is validated as a real IANA name at save time — an invalid
+  one used to save fine and then make the net **silently never auto-start**
+  (the per-tick failure now also logs at `warn`, not `debug`);
+  (3) `notifyBeforeMinutes` validation matches the UI/starter contract
+  (5–120, default 30 — was 5–1440, default 15); (4) owner edits no longer
+  reset `schedule.lastAutoStartedAt` (the subdoc replace could let a
+  just-closed net re-open inside the start window).
+
 ---
 
 ## Branding

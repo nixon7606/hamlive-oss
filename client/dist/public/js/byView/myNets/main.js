@@ -253,6 +253,8 @@ window.netProfileEditByID = async function (id) {
         }
         document.getElementById('input_schedule_tz').value = sched.timezone || 'UTC';
         document.getElementById('input_schedule_notify').value = String(sched.notifyBeforeMinutes ?? 30);
+        document.getElementById('input_schedule_notify_enabled').checked =
+            sched.notifyBeforeEnabled !== false;
     }
     else {
         schedEnabledEl.checked = false;
@@ -293,6 +295,7 @@ function np_submitHandler(e) {
             hour, minute,
             timezone: document.getElementById('input_schedule_tz').value,
             notifyBeforeMinutes: parseInt(document.getElementById('input_schedule_notify').value, 10) || 30,
+            notifyBeforeEnabled: document.getElementById('input_schedule_notify_enabled').checked,
             enabled: true
         };
     }

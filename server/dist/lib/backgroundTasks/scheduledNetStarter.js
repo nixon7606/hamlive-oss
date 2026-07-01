@@ -123,7 +123,9 @@ function isTimeMatch(now, sched, notifyMin = 0) {
         const diff = minute - sched.minute;
         return diff >= 0 && diff <= 1;
     } catch (err) {
-        logger.debug(`ScheduledNetStarter: timezone error for ${tz}: ${err.message}`);
+        // A bad stored timezone means this net can NEVER auto-start — make it
+        // visible in prod logs, not debug-only.
+        logger.warn(`ScheduledNetStarter: timezone error for ${tz}: ${err.message}`);
         return false;
     }
 }

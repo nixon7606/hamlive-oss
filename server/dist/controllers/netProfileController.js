@@ -15,22 +15,30 @@ const { sanitizeNotes } = require('../lib/serverUtils');
 function buildAndValidateSchedule(input) {
     if (!input) return undefined;
     const s = input;
+    const tz = s.timezone || 'UTC';
+    // An invalid IANA name would save fine and then make isTimeMatch throw on
+    // every tick — the net silently never auto-starts. Reject it here instead.
+    try { new Intl.DateTimeFormat('en', { timeZone: tz }); }
+    catch { throw new Error(`timezone "${tz}" is not a valid IANA timezone name`); }
     if (s.enabled !== false) {
         if (s.dayOfWeek !== undefined && (s.dayOfWeek < 0 || s.dayOfWeek > 6)) {
             throw new Error('dayOfWeek must be 0 (Sunday) through 6 (Saturday)');
         }
         if (s.hour !== undefined && (s.hour < 0 || s.hour > 23)) throw new Error('hour must be 0-23');
         if (s.minute !== undefined && (s.minute < 0 || s.minute > 59)) throw new Error('minute must be 0-59');
-        if (s.notifyBeforeMinutes !== undefined && (s.notifyBeforeMinutes < 5 || s.notifyBeforeMinutes > 1440)) {
-            throw new Error('notifyBeforeMinutes must be 5-1440');
+        // 120 is the contract everywhere else: the UI input's max and the
+        // starter's runtime clamp. Accepting more here would silently fire at 120.
+        if (s.notifyBeforeMinutes !== undefined && (s.notifyBeforeMinutes < 5 || s.notifyBeforeMinutes > 120)) {
+            throw new Error('notifyBeforeMinutes must be 5-120');
         }
     }
     return {
         dayOfWeek: s.dayOfWeek,
         hour: s.hour,
         minute: s.minute,
-        timezone: s.timezone || 'UTC',
-        notifyBeforeMinutes: s.notifyBeforeMinutes || 15,
+        timezone: tz,
+        notifyBeforeMinutes: s.notifyBeforeMinutes || 30,
+        notifyBeforeEnabled: s.notifyBeforeEnabled !== false,
         enabled: s.enabled !== false
     };
 }
@@ -127,7 +135,12 @@ const netProfileUpdate = async (req, res) => {
                         autoIn: req.body.autoIn ? true : false,
                         modeDetails: req.body.modeDetails && req.body.modeDetails.trim(),
                         notes: sanitizeNotes(req.body.notes),
-                        schedule
+                        // Replacing the subdoc would reset lastAutoStartedAt and let a
+                        // just-closed net re-open if edited inside the match window —
+                        // carry the existing value through.
+                        schedule: schedule
+                            ? { ...schedule, lastAutoStartedAt: npresult.schedule?.lastAutoStartedAt ?? null }
+                            : schedule
                     },
                     { runValidators: true }
                 ))

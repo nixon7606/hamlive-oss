@@ -331,6 +331,8 @@ function refreshNetList() {
         }
         (document.getElementById('input_schedule_tz') as HTMLSelectElement).value = sched.timezone || 'UTC';
         (document.getElementById('input_schedule_notify') as HTMLInputElement).value = String(sched.notifyBeforeMinutes ?? 30);
+        (document.getElementById('input_schedule_notify_enabled') as HTMLInputElement).checked =
+            sched.notifyBeforeEnabled !== false;
     } else {
         schedEnabledEl.checked = false;
         schedSettingsEl.style.display = 'none';
@@ -374,6 +376,7 @@ function np_submitHandler(e: Event) {
             hour, minute,
             timezone: (document.getElementById('input_schedule_tz') as HTMLSelectElement).value,
             notifyBeforeMinutes: parseInt((document.getElementById('input_schedule_notify') as HTMLInputElement).value, 10) || 30,
+            notifyBeforeEnabled: (document.getElementById('input_schedule_notify_enabled') as HTMLInputElement).checked,
             enabled: true
         };
     }
