@@ -7,6 +7,9 @@
  * 2026-07-01-cpanel-delivery-tracking.md for the verified endpoint shape.
  */
 const crypto = require('crypto');
+const https = require('https');
+const { decryptSecret } = require('./secretBox');
+const { logger } = require('./logger');
 
 // EmailTrack `type` → the SendGrid-webhook status vocabulary the admin UI
 // already understands. `inprogress` (and unknown types) → null = don't touch.
@@ -50,4 +53,60 @@ function correlateRow(trackRow, logRows, windowMs = 15 * 60 * 1000) {
     return best;
 }
 
-module.exports = { mapTrackType, syntheticEventId, filterToSender, correlateRow };
+function buildSearchUrl({ host, port, user }) {
+    const qs = new URLSearchParams({
+        cpanel_jsonapi_user: user,
+        cpanel_jsonapi_apiversion: '2',
+        cpanel_jsonapi_module: 'EmailTrack',
+        cpanel_jsonapi_func: 'search',
+        // Verified on a real box (2026-07-01): bare boolean flags are the only
+        // spelling that returns successes; the no-flag default is failures-only.
+        success: '1', defer: '1', failure: '1', inprogress: '1'
+    });
+    return `https://${host}:${Number(port) || 2083}/json-api/cpanel?${qs.toString()}`;
+}
+
+function parseSearchResponse(json) {
+    const topErrors = json && json.errors;
+    if (Array.isArray(topErrors) && topErrors.length) throw new Error(topErrors.join('; '));
+    const cr = json && json.cpanelresult;
+    if (cr && cr.error) throw new Error(String(cr.error));
+    return (cr && Array.isArray(cr.data)) ? cr.data : [];
+}
+
+// Default transport — thin https wrapper so tests can inject requestImpl.
+function httpsRequestImpl(url, options) {
+    return new Promise((resolve, reject) => {
+        const req = https.request(url, options, res => {
+            let body = '';
+            res.on('data', c => { body += c; });
+            res.on('end', () => resolve({ statusCode: res.statusCode, body }));
+        });
+        req.on('error', reject);
+        req.setTimeout(options.timeout || 10_000, () => req.destroy(new Error('EmailTrack request timed out')));
+        req.end();
+    });
+}
+
+async function searchEmailTrack(tracking, { requestImpl = httpsRequestImpl } = {}) {
+    let token;
+    try { token = decryptSecret(tracking.tokenEnc); }
+    catch (err) { throw new Error(`cannot decrypt cPanel API token (re-enter it in Email Settings): ${err.message}`); }
+    const url = buildSearchUrl(tracking);
+    const { statusCode, body } = await requestImpl(url, {
+        method: 'GET',
+        headers: { Authorization: `cpanel ${tracking.user}:${token}` },
+        rejectUnauthorized: tracking.tlsVerify !== false,
+        timeout: 10_000
+    });
+    if (statusCode !== 200) throw new Error(`EmailTrack HTTP ${statusCode}`);
+    let json;
+    try { json = JSON.parse(body); }
+    catch { throw new Error('EmailTrack returned non-JSON (check host/port)'); }
+    return parseSearchResponse(json);
+}
+
+module.exports = {
+    mapTrackType, syntheticEventId, filterToSender, correlateRow,
+    buildSearchUrl, parseSearchResponse, searchEmailTrack
+};
