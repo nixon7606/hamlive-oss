@@ -300,8 +300,16 @@ producing unhelpful errors, and they fix one validator that could hang a login.
   `server/dist/views/cookiePolicy.ejs`, `server/dist/views/termsOfUse.ejs`
 - **Change:** populated operator, jurisdiction, contact, age, and effective
   date; liability clause set to an at-your-own-risk, no-liability form.
-- **Pending:** remove the leftover TEMPLATE banner comments at the top of each
-  file; counsel review.
+- **2026-07-01 accuracy pass (CalOPPA):** removed the visible bracketed
+  placeholders from `privacyPolicy.ejs` and updated it to match the running
+  system — in-house SMTP delivery + per-recipient delivery-outcome logs
+  (EmailLog/EmailEvent), in-house chat (Stream reference removed), enabled
+  integrations stated definitively (Google sign-in, QRZ, Google Analytics; no
+  ads), a Do Not Track response statement (CalOPPA requirement), and a link to
+  the self-serve delete on `/views/dataprivacy`. Effective date bumped.
+  `partials/footer.ejs` now links Privacy Policy + Terms on every page
+  (CalOPPA "conspicuously posted"). Leftover TEMPLATE banner comments removed.
+- **Pending:** counsel review.
 - **Upstream:** placeholder template text.
 
 ---
