@@ -199,7 +199,7 @@ producing unhelpful errors, and they fix one validator that could hang a login.
   `smtp.*`), `server/dist/controllers/emailAdminController.js` (`tracking`
   block added to `publicSettings()`/`putSettings()`, encrypts the token
   write-only like the SMTP password; new `testTracking` endpoint handler),
-  `server/dist/routes/adminRoutes.js` (`POST /admin/email/tracking/test`),
+  `server/dist/routes/adminRoutes.js` (`POST /api/admin/email/tracking/test`),
   `server/dist/lib/userNotification.js` (`recordEmailLogs()` takes a 5th
   `status` param; SMTP sends now start their `EmailLog` row at `'accepted'`
   instead of SendGrid's `'queued'`, since SMTP has no queueing step of its
