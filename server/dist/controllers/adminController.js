@@ -212,7 +212,8 @@ const getStats = async (req, res) => {
             NetProfile.countDocuments({}),
             LiveNet.countDocuments({}),
             NetProfile.countDocuments({ 'schedule.enabled': true }),
-            EmailEvent.countDocuments({ event: { $in: ['bounce', 'dropped', 'blocked'] }, timestamp: { $gte: sevenDaysAgo } })
+            // Keep in sync with isBouncedStatus in client adminViewHelpers.ts
+            EmailEvent.countDocuments({ event: { $in: ['bounce', 'dropped', 'blocked', 'spamreport'] }, timestamp: { $gte: sevenDaysAgo } })
         ]);
 
         return { message: { totalUsers, totalNets, liveNetsCount: liveNets, scheduledNetsCount: scheduledNets, recentBounces } };
