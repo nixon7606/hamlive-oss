@@ -5,6 +5,7 @@ const { conf } = require('../lib/configLib');
 const { checkBulk } = require('./emailRateLimiter');
 const crypto = require('crypto');
 const { getEmailLog } = require('../models/emailLog');
+const { getEmailEvent } = require('../models/emailEvent');
 const { getActiveTransport, ConsoleTransport, SmtpTransport, isRealSenderActive } = require('./emailTransports');
 
 // Email delivery is optional. When SENDGRID_API_KEY is absent, messages are
@@ -82,7 +83,7 @@ class EmailBase {
             logger.warn(
                 'sendMailToAddrs() — all recipients are in cooldown, no email sent'
             );
-            return;
+            return { sent: [], rejected: [], cooldown: blocked.map(b => b.recipient) };
         }
 
         const batchId = crypto.randomUUID();
@@ -90,13 +91,22 @@ class EmailBase {
             const subject = this.getSubject();
             const emailData = this.buildMessage(allowed, subject);
             emailData.customArgs = { ...(emailData.customArgs || {}), hlType: this.type, hlBatch: batchId };
-            const messageId = await this.sendEmailWithRetry(emailData, allowed);
+            const { messageId, rejected } = await this.sendEmailWithRetry(emailData, allowed);
+            const rejectedAddrs = new Set(rejected.map(r => r.recipient));
+            const sent = allowed.filter(r => !rejectedAddrs.has(r));
             if (await isRealSenderActive()) {
                 const transport = await getActiveTransport(); // cached — cheap
                 const initialStatus = transport instanceof SmtpTransport ? 'accepted' : 'queued';
-                this.recordEmailLogs(allowed, subject, batchId, messageId, initialStatus);
+                if (sent.length) this.recordEmailLogs(sent, subject, batchId, messageId, initialStatus);
+                if (rejected.length) this.recordEmailRejections(rejected, subject, batchId);
             }
+            return { sent, rejected, cooldown: blocked.map(b => b.recipient) };
         } catch (err) {
+            // All recipients failed. If the transport told us who/why, still
+            // surface the bounces in the admin UI before propagating.
+            if (Array.isArray(err.rejected) && err.rejected.length && (await isRealSenderActive())) {
+                this.recordEmailRejections(err.rejected, this.getSubject(), batchId);
+            }
             logger.error(`Failed to send mail: ${err.message}`);
             throw err;
         }
@@ -147,14 +157,20 @@ class EmailBase {
             const subject = emailData.subject || '(templated email)';
             logger.info(`[email disabled] Would send "${subject}" to ${validRecipients.join(', ')}`);
             // Still return null id; the caller gates EmailLog writes on isRealSenderActive().
-            return null;
+            return { messageId: null, rejected: [] };
         }
         for (let attempt = 0; attempt < 3; attempt++) {
             try {
-                const { messageId } = await transport.send(emailData);
+                const { messageId, rejected } = await transport.send(emailData);
                 logger.info(`Mail successfully handed to transport for ${validRecipients.length} recipients`);
-                return messageId;
+                return { messageId, rejected: rejected || [] };
             } catch (err) {
+                if (err.permanent) {
+                    // Every recipient was 5xx-rejected at SMTP time — a retry
+                    // resends the identical message to the identical addresses.
+                    logger.error(`Transport send permanently rejected: ${err.message}`);
+                    throw err;
+                }
                 if (attempt < 2) {
                     logger.warn(`Transport send failed on attempt ${attempt + 1}: ${err.message}. Retrying...`);
                 } else {
@@ -169,6 +185,26 @@ class EmailBase {
         Promise.all(recipients.map(r => EmailLog.create({
             recipient: r, type: this.type, subject, batchId, sgMessageId, status
         }))).catch(err => logger.error(`recordEmailLogs() failed: ${err.message}`));
+    }
+
+    // A recipient the SMTP relay rejected synchronously never enters the mail
+    // queue, so neither SendGrid webhooks nor the cPanel poller will ever see
+    // it. Record the bounce here — an EmailLog row (Recent Sends) plus an
+    // EmailEvent carrying the relay's rejection text (Delivery Lookup,
+    // Bounces-7d stat) — or the send is invisible everywhere but the app log.
+    recordEmailRejections(rejected, subject, batchId) {
+        const EmailLog = getEmailLog();
+        const EmailEvent = getEmailEvent();
+        const now = new Date();
+        Promise.all(rejected.flatMap(r => [
+            EmailLog.create({
+                recipient: r.recipient, type: this.type, subject, batchId, sgMessageId: null, status: 'bounce'
+            }),
+            EmailEvent.create({
+                sgEventId: 'smtp-' + crypto.createHash('sha256').update(`${batchId}|${r.recipient}`).digest('hex').slice(0, 40),
+                batchId, email: r.recipient, event: 'bounce', reason: r.reason, timestamp: now
+            })
+        ])).catch(err => logger.error(`recordEmailRejections() failed: ${err.message}`));
     }
 
     async sendMailToUPIDs({ upids, db = mongoose.connection }) {

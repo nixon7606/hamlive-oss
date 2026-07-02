@@ -14,11 +14,13 @@ describe('emailRateLimiter', () => {
             expect(result.reason).toBeUndefined();
         });
 
-        it('blocks a second send within the cooldown window', () => {
+        it('allows one retry, then blocks the third send within the cooldown window', () => {
             emailRateLimiter.checkAndRecordSend('block@test.com');
-            const result = emailRateLimiter.checkAndRecordSend('block@test.com');
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toMatch(/Cooldown active/);
+            const retry = emailRateLimiter.checkAndRecordSend('block@test.com');
+            expect(retry.allowed).toBe(true);
+            const third = emailRateLimiter.checkAndRecordSend('block@test.com');
+            expect(third.allowed).toBe(false);
+            expect(third.reason).toMatch(/Cooldown active/);
         });
 
         it('allows sends to different recipients', () => {
@@ -40,7 +42,8 @@ describe('emailRateLimiter', () => {
             expect(blocked).toHaveLength(0);
         });
 
-        it('blocks duplicate sends across bulk calls', () => {
+        it('blocks duplicate sends across bulk calls once the window is used up', () => {
+            emailRateLimiter.checkBulk(['dup@test.com']);
             emailRateLimiter.checkBulk(['dup@test.com']);
             const { allowed, blocked } = emailRateLimiter.checkBulk([
                 'dup@test.com',
@@ -59,6 +62,7 @@ describe('emailRateLimiter', () => {
 
         it('returns > 0 for a recipient in cooldown', () => {
             emailRateLimiter.checkAndRecordSend('cooldown@test.com');
+            emailRateLimiter.checkAndRecordSend('cooldown@test.com'); // window (max 2) now used up
             const remaining = emailRateLimiter.getCooldownRemaining('cooldown@test.com');
             expect(remaining).toBeGreaterThan(0);
         });
@@ -75,8 +79,8 @@ describe('emailRateLimiter', () => {
             expect(emailRateLimiter.getWindowMs()).toBe(5 * 60 * 1000);
         });
 
-        it('returns max 1 per window by default', () => {
-            expect(emailRateLimiter.getMaxPerWindow()).toBe(1);
+        it('returns max 2 per window by default (one honest retry)', () => {
+            expect(emailRateLimiter.getMaxPerWindow()).toBe(2);
         });
     });
 });

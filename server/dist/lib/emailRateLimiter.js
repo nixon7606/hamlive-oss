@@ -15,13 +15,16 @@
  *   EMAIL_COOLDOWN_MINUTES  — how long to wait before sending to the same
  *                             address again (default: 5)
  *   EMAIL_MAX_PER_WINDOW    — maximum emails per recipient per window
- *                             (default: 1)
+ *                             (default: 2)
  */
 
 const { logger } = require('./logger');
 
 const DEFAULT_COOLDOWN_MINUTES = 5;
-const DEFAULT_MAX_PER_WINDOW = 1;
+// 2, not 1: a ham who doesn't spot the first sign-in email and resubmits the
+// form within the window should get a second one, not a silent skip. Two per
+// 5 minutes is still far too slow to email-bomb anyone.
+const DEFAULT_MAX_PER_WINDOW = 2;
 
 // In-memory send record: Map<email, Array<timestamp_ms>>
 const sendRecords = new Map();

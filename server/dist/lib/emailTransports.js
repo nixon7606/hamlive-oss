@@ -71,20 +71,26 @@ class SmtpTransport {
         // never see each other's addresses in a shared To header.
         const recipients = msg.to || [];
         let firstId = null;
-        let failed = 0;
+        const rejected = [];
         for (const rcpt of recipients) {
             try {
                 const info = await this._tx.sendMail({ ...base, to: rcpt });
                 if (!firstId) firstId = info.messageId || null;
             } catch (err) {
-                failed++;
+                // 5xx = the relay permanently rejected this recipient (bad
+                // address, policy) — retrying can never succeed.
+                const permanent = Number(err.responseCode) >= 500;
+                rejected.push({ recipient: rcpt, reason: err.message, permanent });
                 logger.error(`SmtpTransport: send to ${rcpt} failed: ${err.message}`);
             }
         }
-        if (recipients.length && failed === recipients.length) {
-            throw new Error(`SmtpTransport: all ${failed} recipient send(s) failed`);
+        if (recipients.length && rejected.length === recipients.length) {
+            const err = new Error(`SmtpTransport: all ${rejected.length} recipient send(s) failed`);
+            err.rejected = rejected;
+            err.permanent = rejected.every(r => r.permanent);
+            throw err;
         }
-        return { messageId: firstId };
+        return { messageId: firstId, rejected };
     }
 }
 

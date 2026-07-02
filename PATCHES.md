@@ -261,6 +261,38 @@ producing unhelpful errors, and they fix one validator that could hang a login.
     `EmailLog` would eliminate this ambiguity if it ever turns out to
     matter in practice.
 
+### Synchronous SMTP rejections are recorded as bounces (and never retried)
+
+- **Files:** `server/dist/lib/emailTransports.js`, `server/dist/lib/userNotification.js`,
+  `server/dist/routes/authRoutes.js`, `server/dist/lib/emailRateLimiter.js`
+- **What:** when the SMTP relay rejects a recipient at submission time (550 —
+  bad address/domain), the message never enters the mail queue, so neither the
+  SendGrid webhook nor the cPanel EmailTrack poller can ever see it — the send
+  used to be invisible everywhere except the app log. Now:
+  - `SmtpTransport.send()` reports per-recipient rejections
+    (`{ recipient, reason, permanent }`; `permanent` = 5xx `responseCode`) and,
+    when every recipient fails, attaches them to the thrown error.
+  - `EmailBase.sendMailToAddrs()` records rejected recipients as an `EmailLog`
+    row with status `bounce` plus an `EmailEvent` (`sgEventId` = `smtp-<sha256>`
+    like the poller's synthetic ids) carrying the relay's rejection text — so
+    the failure shows in Recent Sends, Email Delivery Lookup, and the
+    Bounces (7d) stat. It also returns a `{ sent, rejected, cooldown }` summary.
+  - `sendEmailWithRetry()` no longer retries a permanent (all-5xx) rejection —
+    previously a hopeless 550 was retried 3× back-to-back.
+  - The magic-link route logs honestly (`rejected by the mail server: …` /
+    `skipped — recipient cooldown active`) instead of unconditionally logging
+    "Auth link email sent".
+- **Also:** per-recipient cooldown default `EMAIL_MAX_PER_WINDOW` raised 1 → 2
+  (one honest "didn't get it" retry per 5-minute window; still bomb-proof).
+  Docs updated: `docs/email-abuse-protection.md`, `.env.example`.
+- **Tests:** `tests/server/lib/emailTransports.test.js` (rejection details,
+  permanent flag), `tests/server/lib/emailLogging.test.js` (bounce
+  EmailLog+EmailEvent, no-retry-on-550, partial rejection),
+  `tests/server/lib/emailRateLimiter.test.js` (max 2 default).
+- **Why:** discovered on prod 2026-07-02 — a deliberately bad address
+  (`…@gmail.co`) produced three 550 log lines and nothing in the admin UI,
+  making email look broken.
+
 ### Admin QoL pass — schedule calendar, status filters, audit range
 
 - **New files:** `client/src/public/js/byView/admin/adminViewHelpers.ts`

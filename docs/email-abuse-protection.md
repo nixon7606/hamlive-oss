@@ -8,25 +8,28 @@ This document describes the email rate-limiting and abuse-protection layers buil
 
 ### Layer 1: HTTP Rate Limiter — Magic Link Endpoint
 
-**File:** `server/dist/routes/authRoutes.js`
+**File:** `server/dist/lib/magicLoginLimiter.js` (used by `server/dist/routes/authRoutes.js`)
 
 The `POST /auth/magiclogin` endpoint is protected by `express-rate-limit`:
 
-- **Window:** 5 minutes
-- **Max requests:** 5 per IP per window
+- **Window:** 15 minutes
+- **Max requests:** 20 per IP per window
 - **Response:** `429 Too Many Requests` with JSON body `{ "error": "Too many sign-in attempts. Please try again in a few minutes." }`
 - **Headers:** Standard `RateLimit-*` headers are set on every response
 
-This prevents rapid-fire API calls from overwhelming the server. It complements the Cloudflare edge rate limit (5 requests / 10s) by providing defense at the application layer.
+The limit is deliberately generous: the per-recipient cooldown (Layer 2) is the real anti-abuse control, so this layer only has to stop one IP from hammering the endpoint — while staying loose enough that a club meeting or event on shared/NAT'd Wi-Fi (many operators signing in from one public IP at net start) is never blocked.
 
 **Why per-IP?** The magic link form takes an email address to send to. A per-IP limit is the simplest defense that prevents one attacker from generating many requests while allowing legitimate users with different IPs to sign in. The deeper per-recipient cooldown (Layer 2) catches cases where an attacker cycles through IPs to target the same email.
 
+**Real client IP:** behind the Cloudflare Tunnel every origin connection comes from the local `cloudflared` daemon, so `req.ip` is loopback for all visitors. The limiter keys on the `CF-Connecting-IP` header (normalized for IPv6) so each real visitor gets their own bucket instead of everyone sharing one.
+
 ```javascript
 const magicLoginLimiter = rateLimit({
-    windowMs: 5 * 60 * 1000,
-    max: 5,
+    windowMs: 15 * 60 * 1000,
+    max: 20,
     standardHeaders: true,
     legacyHeaders: false,
+    keyGenerator: req => ipKeyGenerator(clientIp(req)), // CF-Connecting-IP
     message: { error: 'Too many sign-in attempts. Please try again in a few minutes.' }
 });
 
@@ -60,14 +63,14 @@ This is the most important protection layer. Since **every** email path ultimate
 | Variable | Default | Description |
 |---|---|---|
 | `EMAIL_COOLDOWN_MINUTES` | `5` | Minimum minutes between emails to the same recipient |
-| `EMAIL_MAX_PER_WINDOW` | `1` | Maximum emails per recipient within the cooldown window |
+| `EMAIL_MAX_PER_WINDOW` | `2` | Maximum emails per recipient within the cooldown window (2 so a user who missed the first email can honestly retry once) |
 
 **Example — extending the cooldown to 30 minutes:**
 
 ```bash
 # In .env:
 EMAIL_COOLDOWN_MINUTES=30
-EMAIL_MAX_PER_WINDOW=1
+EMAIL_MAX_PER_WINDOW=2
 ```
 
 **Example — allowing 2 emails per 10-minute window:**
@@ -80,7 +83,7 @@ EMAIL_MAX_PER_WINDOW=2
 
 **Log output when cooldown is active:**
 ```
-[emailRateLimiter] Cooldown active for user@example.com — 1/1 sends within the last 5min window. Retry in ~247s.
+[emailRateLimiter] Cooldown active for user@example.com — 2/2 sends within the last 5min window. Retry in ~247s.
 [emailRateLimiter] Skipping user@example.com — Cooldown active for ...
 sendMailToAddrs() — all recipients are in cooldown, no email sent
 ```

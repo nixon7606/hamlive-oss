@@ -71,11 +71,35 @@ test('SmtpTransport continues past a failed recipient and only throws when all f
   const r = await t.send({ to: ['bad@b.com', 'good@d.com'], subject: 'Hi', html: 'x' });
   expect(sendMail).toHaveBeenCalledTimes(2);
   expect(r.messageId).toBe('<ok@local>');
+  // the failed recipient is reported, not swallowed
+  expect(r.rejected).toEqual([{ recipient: 'bad@b.com', reason: 'mailbox full', permanent: false }]);
 
   const allFail = jest.fn(async () => { throw new Error('550'); });
   jest.spyOn(nodemailer, 'createTransport').mockReturnValue({ sendMail: allFail });
   const t2 = new SmtpTransport({ host: 'localhost', port: 1025, secure: false, from: 'x@y.com' });
   await expect(t2.send({ to: ['a@b.com'], subject: 'Hi', html: 'x' })).rejects.toThrow(/failed/);
+});
+
+test('SmtpTransport all-fail error carries per-recipient rejections and a permanent flag on 5xx', async () => {
+  const err550 = new Error('550 domain may not exist');
+  err550.responseCode = 550;
+  const sendMail = jest.fn(async () => { throw err550; });
+  jest.spyOn(nodemailer, 'createTransport').mockReturnValue({ sendMail });
+  const t = new SmtpTransport({ host: 'localhost', port: 1025, secure: false, from: 'x@y.com' });
+  let thrown;
+  await t.send({ to: ['bad@gmail.co'], subject: 'Hi', html: 'x' }).catch(e => { thrown = e; });
+  expect(thrown.rejected).toEqual([{ recipient: 'bad@gmail.co', reason: '550 domain may not exist', permanent: true }]);
+  expect(thrown.permanent).toBe(true);
+
+  // A transient failure (no 5xx responseCode) must NOT be flagged permanent —
+  // the retry loop keys off this.
+  const errConn = new Error('connection reset');
+  const sendMail2 = jest.fn(async () => { throw errConn; });
+  jest.spyOn(nodemailer, 'createTransport').mockReturnValue({ sendMail: sendMail2 });
+  const t2 = new SmtpTransport({ host: 'localhost', port: 1025, secure: false, from: 'x@y.com' });
+  let thrown2;
+  await t2.send({ to: ['a@b.com'], subject: 'Hi', html: 'x' }).catch(e => { thrown2 = e; });
+  expect(thrown2.permanent).toBe(false);
 });
 
 test('SmtpTransport fromOverride wins over the message from; absent override keeps msg.from', async () => {

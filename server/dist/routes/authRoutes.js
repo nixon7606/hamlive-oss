@@ -66,9 +66,15 @@ const magicLogin = new MagicLoginStrategy({
         try {
             const { subject, html } = await renderTemplate('magic-link', { link });
             const email = new EmailBase({ subject, type: 'magic-login', message: html });
-            await email.sendMailToAddrs([destination]);
+            const result = await email.sendMailToAddrs([destination]);
 
-            logger.info(`Auth link email sent to ${destination}`);
+            if (result?.cooldown?.length && !result?.sent?.length) {
+                logger.warn(`Auth link email to ${destination} skipped — recipient cooldown active`);
+            } else if (result?.rejected?.length) {
+                logger.warn(`Auth link email to ${destination} rejected by the mail server: ${result.rejected[0].reason}`);
+            } else {
+                logger.info(`Auth link email sent to ${destination}`);
+            }
         } catch (err) {
             logger.error(err.stack);
         }
