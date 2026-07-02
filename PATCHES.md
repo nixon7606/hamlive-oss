@@ -261,6 +261,59 @@ producing unhelpful errors, and they fix one validator that could hang a login.
     `EmailLog` would eliminate this ambiguity if it ever turns out to
     matter in practice.
 
+### Admin QoL pass — schedule calendar, status filters, audit range
+
+- **New files:** `client/src/public/js/byView/admin/adminViewHelpers.ts`
+  (DOM-free pure helpers), compiled to
+  `client/dist/public/js/byView/admin/adminViewHelpers.js` (+ `.d.ts`/maps):
+  timezone-correct weekly next-occurrence math (`nextOccurrence()` probes
+  candidate dates by **calendar day**, not a fixed 24h step — an earlier
+  24h-step version skipped the spring-forward calendar day when evaluated in
+  the last local hour before the transition eve's midnight, returning the
+  occurrence a full week late; fixed in `8faae05`), relative-time formatting
+  (`relTime()`), human schedule descriptions (`describeSchedule()`),
+  Week/Agenda HTML builders (`buildWeekHTML()`/`buildAgendaHTML()`), and
+  recent-sends status bucketing (`bucketRecentRows()`). Covered by
+  `tests/client/lib/adminViewHelpers.test.ts` (new).
+- **Modified files:**
+  - `client/src/public/js/byView/admin/main.ts`, compiled to
+    `client/dist/public/js/byView/admin/main.js` (+ `.js.map`): Nets tab
+    Table/Week/Agenda view toggle (viewer-timezone normalized; ● LIVE badge
+    links to the live net; blocks open the schedule editor), a readable
+    Schedule column with a next-in countdown, Users tab status chips + a
+    sortable Last Login column, Recent Sends status chips + a bucketed
+    summary + a recipient jump into Delivery Lookup, and Audit tab
+    date-range/action-dropdown/clickable-actor controls.
+  - `server/dist/views/admin.ejs`: Nets view-toggle markup + containers +
+    `.sched-*` styles; Users status-chip group + `Last Login` sortable `<th>`;
+    Recent Sends status chips; Audit `<select>` (actions) + `from`/`to` date
+    inputs.
+  - `server/dist/controllers/adminController.js`: `listUsers` gains a
+    `status=locked|flagged|new|active` query param (combined with the
+    existing `search` filter via `$and`; pagination counts respect it).
+    `listAudit` gains an inclusive `from`/`to` date-range filter (the CSV
+    export branch shares the same filter, so it inherits the range) and
+    returns a distinct, sorted `actions` list alongside `entries`.
+- **Tests:** `tests/client/lib/adminViewHelpers.test.ts` (new),
+  `tests/server/routes/adminUserStatusFilter.test.js` (new),
+  `tests/server/routes/adminAuditFilter.test.js` (extended).
+- **Scope decision (recorded deliberately):** the "liveNet pattern is the
+  standard" architecture direction (see `CLAUDE.md`) mandates porting legacy
+  screens to the `ReactiveStore`/`HamLiveElement` pattern when touched. This
+  pass **consciously extends the admin page's existing legacy pattern
+  instead of porting it** — a port would triple the project's size without
+  adding any of the requested features. This continues the precedent set by
+  the Email Settings work (see the in-house-email entry above). See
+  `docs/superpowers/specs/2026-07-01-admin-qol-design.md` ("Scope decision
+  (recorded deliberately)") for the full reasoning.
+- **Deploy note:** compiled JS only, no new dependency — `git reset --hard` +
+  restart is sufficient, no `npm install`. Because this is edge-cached client
+  JS (see "CDN cache" in `docs/DEPLOY.md`), a deploy that skips the automatic
+  purge (`CF_ZONE_ID`/`CF_API_TOKEN`/`CF_BASE_URL` unset) needs a manual
+  Cloudflare purge of **both** `/js/byView/admin/main.js` **and** the new
+  `/js/byView/admin/adminViewHelpers.js` — easy to miss the second one since
+  it's a brand-new path, not an edit to an already-cached file.
+
 ### Net-schedule hardening (review fixes)
 - **Files:** `server/dist/controllers/netProfileController.js`
   (`buildAndValidateSchedule` + owner update path),
