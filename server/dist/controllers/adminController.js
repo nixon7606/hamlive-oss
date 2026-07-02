@@ -414,6 +414,13 @@ const listAudit = async (req, res) => {
     if (req.query.action) {
         filter.action = req.query.action;
     }
+    // Optional inclusive date range (YYYY-MM-DD). Invalid dates are ignored.
+    const from = new Date(String(req.query.from || ''));
+    const to = new Date(String(req.query.to || ''));
+    const range = {};
+    if (!isNaN(from.getTime())) range.$gte = from;
+    if (!isNaN(to.getTime())) range.$lte = new Date(to.getTime() + 86400000 - 1); // end of day
+    if (range.$gte || range.$lte) filter.createdAt = range;
 
     // CSV export branch — bypass handleRequest, stream directly
     if (req.query.format === 'csv') {
@@ -431,11 +438,12 @@ const listAudit = async (req, res) => {
     handleRequest(res, async () => {
         const page = Math.max(1, parseInt(req.query.page, 10) || 1);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
-        const [entries, total] = await Promise.all([
+        const [entries, total, actions] = await Promise.all([
             AdminAudit.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
-            AdminAudit.countDocuments(filter)
+            AdminAudit.countDocuments(filter),
+            AdminAudit.distinct('action')
         ]);
-        return { message: { entries, total, page, limit } };
+        return { message: { entries, total, page, limit, actions: actions.sort() } };
     }, 'admin: listAudit');
 };
 

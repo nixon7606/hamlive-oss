@@ -20,12 +20,18 @@ let auditTotal = 0;
 let auditLimit = 50;
 let auditActor = '';
 let auditAction = '';
+let auditFrom = '';
+let auditTo = '';
 function auditFilterQuery() {
     let q = '';
     if (auditActor)
         q += `&actor=${encodeURIComponent(auditActor)}`;
     if (auditAction)
         q += `&action=${encodeURIComponent(auditAction)}`;
+    if (auditFrom)
+        q += `&from=${encodeURIComponent(auditFrom)}`;
+    if (auditTo)
+        q += `&to=${encodeURIComponent(auditTo)}`;
     return q;
 }
 let editUserWasSuper = false;
@@ -331,6 +337,14 @@ async function loadAudit() {
         const entries = (data.message && data.message.entries) || [];
         auditTotal = (data.message && data.message.total) || 0;
         auditLimit = (data.message && data.message.limit) || 50;
+        const actions = (data.message && data.message.actions) || [];
+        const sel = document.getElementById('audit-action-select');
+        if (sel && actions.length && sel.options.length <= 1 + actions.length) {
+            const current = sel.value;
+            sel.innerHTML = '<option value="">any action</option>' +
+                actions.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+            sel.value = current;
+        }
         const pageInfo = document.getElementById('audit-page-info');
         if (pageInfo)
             pageInfo.textContent = `Page ${auditPage} · ${auditTotal} entries`;
@@ -352,7 +366,7 @@ async function loadAudit() {
                 : (e.targetId ? esc(e.targetId) : '-');
             return `<tr>
                     <td>${esc(time)}</td>
-                    <td>${esc(e.actorLabel || '-')}</td>
+                    <td><a href="#" data-audit-actor="${esc(e.actorLabel || '')}">${esc(e.actorLabel || '-')}</a></td>
                     <td>${esc(e.action || '-')}</td>
                     <td>${target}</td>
                 </tr>`;
@@ -841,33 +855,52 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     const applyAuditFilters = () => {
         auditActor = document.getElementById('audit-actor-input')?.value.trim() || '';
-        auditAction = document.getElementById('audit-action-input')?.value.trim() || '';
+        auditAction = document.getElementById('audit-action-select')?.value || '';
+        auditFrom = document.getElementById('audit-from')?.value || '';
+        auditTo = document.getElementById('audit-to')?.value || '';
         auditPage = 1;
         loadAudit();
     };
     document.getElementById('audit-apply-btn')?.addEventListener('click', applyAuditFilters);
-    document.getElementById('audit-action-input')?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter')
-            applyAuditFilters();
-    });
     document.getElementById('audit-actor-input')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter')
             applyAuditFilters();
     });
+    document.getElementById('audit-action-select')?.addEventListener('change', applyAuditFilters);
+    document.getElementById('audit-from')?.addEventListener('change', applyAuditFilters);
+    document.getElementById('audit-to')?.addEventListener('change', applyAuditFilters);
     document.getElementById('audit-clear-btn')?.addEventListener('click', () => {
         const actorEl = document.getElementById('audit-actor-input');
-        const actionEl = document.getElementById('audit-action-input');
+        const actionEl = document.getElementById('audit-action-select');
+        const fromEl = document.getElementById('audit-from');
+        const toEl = document.getElementById('audit-to');
         if (actorEl)
             actorEl.value = '';
         if (actionEl)
             actionEl.value = '';
+        if (fromEl)
+            fromEl.value = '';
+        if (toEl)
+            toEl.value = '';
         auditActor = '';
         auditAction = '';
+        auditFrom = '';
+        auditTo = '';
         auditPage = 1;
         loadAudit();
     });
     document.getElementById('audit-csv-btn')?.addEventListener('click', () => {
         window.location.href = `${API}/audit?format=csv${auditFilterQuery()}`;
+    });
+    document.getElementById('audit-results')?.addEventListener('click', (e) => {
+        const a = e.target.closest('a[data-audit-actor]');
+        if (!a)
+            return;
+        e.preventDefault();
+        const input = document.getElementById('audit-actor-input');
+        if (input)
+            input.value = a.getAttribute('data-audit-actor') || '';
+        applyAuditFilters();
     });
     document.getElementById('nets-tab')?.addEventListener('shown.bs.tab', () => {
         loadNets();

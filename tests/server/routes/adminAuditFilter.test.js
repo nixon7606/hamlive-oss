@@ -111,3 +111,48 @@ test('?format=csv responds with text/csv, header row, and seeded entry data', as
     expect(res.text).toMatch(/alice@x\.com/);
     expect(res.text).toMatch(/promoted/);
 });
+
+// ── Test 4: from/to build an inclusive createdAt range ───────────────────────
+
+test('from/to build an inclusive createdAt range', async () => {
+    await seedAudit([
+        { action: 'grant-admin', actorLabel: 'admin@example.com', targetType: 'user', targetId: '1', targetLabel: 'alice@x.com', createdAt: new Date('2026-06-30T12:00:00.000Z') },
+        { action: 'grant-admin', actorLabel: 'admin@example.com', targetType: 'user', targetId: '2', targetLabel: 'bob@x.com', createdAt: new Date('2026-07-01T00:00:00.000Z') },
+        { action: 'grant-admin', actorLabel: 'admin@example.com', targetType: 'user', targetId: '3', targetLabel: 'carol@x.com', createdAt: new Date('2026-07-02T23:59:59.999Z') },
+        { action: 'grant-admin', actorLabel: 'admin@example.com', targetType: 'user', targetId: '4', targetLabel: 'dave@x.com', createdAt: new Date('2026-07-03T00:00:00.001Z') },
+    ]);
+
+    const res = await request(app).get('/audit').query({ from: '2026-07-01', to: '2026-07-02' });
+
+    expect(res.status).toBe(200);
+    const msg = res.body.message;
+    expect(msg.total).toBe(2);
+    expect(msg.entries.map(e => e.targetId).sort()).toEqual(['2', '3']);
+});
+
+// ── Test 5: invalid dates are ignored ─────────────────────────────────────────
+
+test('invalid dates are ignored', async () => {
+    await seedAudit([
+        { action: 'grant-admin', actorLabel: 'admin@example.com', targetType: 'user', targetId: '1', targetLabel: 'alice@x.com' },
+    ]);
+
+    const res = await request(app).get('/audit').query({ from: 'notadate' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.message.total).toBe(1);
+});
+
+// ── Test 6: response carries the distinct actions list ────────────────────────
+
+test('response carries the distinct actions list', async () => {
+    await seedAudit([
+        { action: 'b-action', actorLabel: 'admin@example.com', targetType: 'user', targetId: '1', targetLabel: 'alice@x.com' },
+        { action: 'a-action', actorLabel: 'admin@example.com', targetType: 'user', targetId: '2', targetLabel: 'bob@x.com' },
+    ]);
+
+    const res = await request(app).get('/audit');
+
+    expect(res.status).toBe(200);
+    expect(res.body.message.actions).toEqual(['a-action', 'b-action']);
+});
