@@ -95,3 +95,67 @@ export function bucketRecentRows(rows: Array<{ status?: string }>):
     }
     return b;
 }
+
+function escText(s: string): string {
+    return String(s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>
+    )[c] ?? c);
+}
+
+interface Occurrence { net: any; occ: Date; }
+
+function upcoming(nets: any[], now: Date): Occurrence[] {
+    const out: Occurrence[] = [];
+    for (const net of nets) {
+        const occ = nextOccurrence(net.schedule || {}, now);
+        if (occ) out.push({ net, occ });
+    }
+    return out.sort((a, b) => a.occ.getTime() - b.occ.getTime());
+}
+
+function blockHTML(o: Occurrence): string {
+    const hh = String(o.occ.getHours()).padStart(2, '0');
+    const mm = String(o.occ.getMinutes()).padStart(2, '0');
+    const s = o.net.schedule || {};
+    const tip = `${describeSchedule(s)} · opens ${s.notifyBeforeMinutes ?? 30} min early`;
+    const live = o.net.hasLiveNet ? ' sched-live' : '';
+    const liveTag = o.net.hasLiveNet ? ' <span class="badge badge-live">● LIVE</span>' : '';
+    return `<button type="button" class="sched-block${live}" data-id="${escText(o.net._id)}" title="${escText(tip)}">` +
+        `<span class="sched-time">${hh}:${mm}</span> ${escText(o.net.title || '')}${liveTag}</button>`;
+}
+
+const DAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Recurring weekly pattern: column = viewer-local day of the next occurrence.
+export function buildWeekHTML(nets: any[], now: Date = new Date()): string {
+    const byDay: Occurrence[][] = [[], [], [], [], [], [], []];
+    for (const o of upcoming(nets, now)) byDay[o.occ.getDay()]!.push(o);
+    for (const day of byDay) day.sort((a, b) =>
+        (a.occ.getHours() * 60 + a.occ.getMinutes()) - (b.occ.getHours() * 60 + b.occ.getMinutes()));
+    return `<div class="sched-week">` + byDay.map((day, i) =>
+        `<div class="sched-day"><div class="sched-day-head">${DAY_FULL[i]}</div>` +
+        (day.length ? day.map(blockHTML).join('') : '<div class="text-muted small">—</div>') +
+        `</div>`).join('') + `</div>`;
+}
+
+// Dated next-7-days agenda.
+export function buildAgendaHTML(nets: any[], now: Date = new Date()): string {
+    const occ = upcoming(nets, now);
+    if (!occ.length) return '<p class="text-muted">No scheduled nets.</p>';
+    const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const today = dayKey(now);
+    const tomorrow = dayKey(new Date(now.getTime() + 86400_000));
+    const groups = new Map<string, { label: string; items: Occurrence[] }>();
+    for (const o of occ) {
+        const k = dayKey(o.occ);
+        if (!groups.has(k)) {
+            const label = k === today ? 'Today' : k === tomorrow ? 'Tomorrow'
+                : o.occ.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+            groups.set(k, { label, items: [] });
+        }
+        groups.get(k)!.items.push(o);
+    }
+    return [...groups.values()].map(g =>
+        `<div class="sched-agenda-day"><h6 class="mt-2">${escText(g.label)}</h6>${g.items.map(blockHTML).join('')}</div>`
+    ).join('');
+}

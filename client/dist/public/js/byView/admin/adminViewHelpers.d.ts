@@ -18,4 +18,6 @@ export declare function bucketRecentRows(rows: Array<{
     deferred: number;
     other: number;
 };
+export declare function buildWeekHTML(nets: any[], now?: Date): string;
+export declare function buildAgendaHTML(nets: any[], now?: Date): string;
 //# sourceMappingURL=adminViewHelpers.d.ts.map

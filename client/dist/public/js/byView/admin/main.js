@@ -1,7 +1,7 @@
 'use strict';
 import { expiryFromPreset } from '#@client/lib/clientUtils.js';
 import { initEmailSettings } from './emailSettings.js';
-import { nextOccurrence, relTime, describeSchedule } from './adminViewHelpers.js';
+import { nextOccurrence, relTime, describeSchedule, buildWeekHTML, buildAgendaHTML } from './adminViewHelpers.js';
 const API = '/api/admin';
 let usersCache = [];
 let netsCache = [];
@@ -150,6 +150,22 @@ async function loadUsers() {
         statusMsg(`Error loading users: ${err.message}`, 'danger');
     }
 }
+let netsView = 'table';
+const renderNetsView = () => {
+    const table = document.getElementById('nets-table-view');
+    const week = document.getElementById('nets-week-view');
+    const agenda = document.getElementById('nets-agenda-view');
+    if (!table || !week || !agenda)
+        return;
+    table.hidden = netsView !== 'table';
+    week.hidden = netsView !== 'week';
+    agenda.hidden = netsView !== 'agenda';
+    if (netsView === 'week')
+        week.innerHTML = buildWeekHTML(netsCache);
+    if (netsView === 'agenda')
+        agenda.innerHTML = buildAgendaHTML(netsCache);
+    document.querySelectorAll('#nets-view-toggle [data-nets-view]').forEach(b => b.classList.toggle('active', b.getAttribute('data-nets-view') === netsView));
+};
 async function loadNets() {
     const tbody = document.getElementById('admin-nets-tbody');
     if (!tbody)
@@ -166,6 +182,8 @@ async function loadNets() {
         setSortIndicator('admin-nets-tbody', netsSortMode, netsSortDir);
         if (sorted.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No net profiles found</td></tr>';
+            if (netsView !== 'table')
+                renderNetsView();
             return;
         }
         tbody.innerHTML = sorted.map((n) => {
@@ -205,6 +223,8 @@ async function loadNets() {
                 </td>
             </tr>`;
         }).join('');
+        if (netsView !== 'table')
+            renderNetsView();
     }
     catch (err) {
         tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Failed to load nets</td></tr>';
@@ -558,6 +578,10 @@ async function togglePermanent(id, title) {
         statusMsg(`Error: ${err.message}`, 'danger');
     }
 }
+function openScheduleEditor(netId) {
+    const n = netsCache.find((x) => x._id === netId);
+    manageSchedule(netId, n ? n.title : '');
+}
 async function manageSchedule(id, title) {
     document.getElementById('sched-net-id').value = id;
     document.getElementById('sched-net-title').textContent = title;
@@ -689,13 +713,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 togglePermanent(id, n ? n.title : '');
                 break;
             case 'manage-schedule':
-                manageSchedule(id, n ? n.title : '');
+                openScheduleEditor(id);
                 break;
             case 'delete-net':
                 confirmNetDelete(id, n ? n.title : 'this net');
                 break;
         }
     });
+    document.getElementById('nets-view-toggle')?.addEventListener('click', e => {
+        const btn = e.target.closest('button[data-nets-view]');
+        if (!btn)
+            return;
+        netsView = btn.getAttribute('data-nets-view') || 'table';
+        renderNetsView();
+    });
+    for (const id of ['nets-week-view', 'nets-agenda-view']) {
+        document.getElementById(id)?.addEventListener('click', e => {
+            const blk = e.target.closest('button.sched-block');
+            if (blk)
+                openScheduleEditor(blk.getAttribute('data-id') || '');
+        });
+    }
     document.addEventListener('click', (e) => {
         const th = e.target.closest('th[data-sort-field]');
         if (!th)

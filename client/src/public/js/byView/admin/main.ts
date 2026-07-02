@@ -5,7 +5,7 @@
 
 import { expiryFromPreset } from '#@client/lib/clientUtils.js';
 import { initEmailSettings } from './emailSettings.js';
-import { nextOccurrence, relTime, describeSchedule, bucketRecentRows } from './adminViewHelpers.js';
+import { nextOccurrence, relTime, describeSchedule, bucketRecentRows, buildWeekHTML, buildAgendaHTML } from './adminViewHelpers.js';
 
 /**
  * Admin panel — user and net management (superUser only).
@@ -168,6 +168,24 @@ async function loadUsers() {
 
 /* ── Nets ── */
 
+// Hoisted to module scope (not inside DOMContentLoaded) so loadNets can
+// re-render the active non-table view after a refresh; the toggle's click
+// listeners are still wired up inside DOMContentLoaded below.
+let netsView = 'table';
+const renderNetsView = () => {
+    const table = document.getElementById('nets-table-view');
+    const week = document.getElementById('nets-week-view');
+    const agenda = document.getElementById('nets-agenda-view');
+    if (!table || !week || !agenda) return;
+    table.hidden = netsView !== 'table';
+    week.hidden = netsView !== 'week';
+    agenda.hidden = netsView !== 'agenda';
+    if (netsView === 'week') week.innerHTML = buildWeekHTML(netsCache);
+    if (netsView === 'agenda') agenda.innerHTML = buildAgendaHTML(netsCache);
+    document.querySelectorAll('#nets-view-toggle [data-nets-view]').forEach(b =>
+        b.classList.toggle('active', b.getAttribute('data-nets-view') === netsView));
+};
+
 async function loadNets() {
     const tbody = document.getElementById('admin-nets-tbody') as HTMLTableSectionElement;
     if (!tbody) return;
@@ -182,6 +200,7 @@ async function loadNets() {
         setSortIndicator('admin-nets-tbody', netsSortMode, netsSortDir);
         if (sorted.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No net profiles found</td></tr>';
+            if (netsView !== 'table') renderNetsView();
             return;
         }
         tbody.innerHTML = sorted.map((n: any) => {
@@ -224,6 +243,7 @@ async function loadNets() {
                 </td>
             </tr>`;
         }).join('');
+        if (netsView !== 'table') renderNetsView();
     } catch (err) {
         tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Failed to load nets</td></tr>';
         statusMsg(`Error loading nets: ${(err as Error).message}`, 'danger');
@@ -577,6 +597,13 @@ async function togglePermanent(id: string, title: string) {
 
 /* ── Schedule Management ── */
 
+// Extracted from the netsTbody click handler's `manage-schedule` branch so it
+// can also be triggered by clicks on a .sched-block in the Week/Agenda views.
+function openScheduleEditor(netId: string) {
+    const n = netsCache.find((x: any) => x._id === netId);
+    manageSchedule(netId, n ? n.title : '');
+}
+
 async function manageSchedule(id: string, title: string) {
     (document.getElementById('sched-net-id') as HTMLInputElement).value = id;
     document.getElementById('sched-net-title')!.textContent = title;
@@ -704,13 +731,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 togglePermanent(id, n ? n.title : '');
                 break;
             case 'manage-schedule':
-                manageSchedule(id, n ? n.title : '');
+                openScheduleEditor(id);
                 break;
             case 'delete-net':
                 confirmNetDelete(id, n ? n.title : 'this net');
                 break;
         }
     });
+
+    // Nets view toggle (Table / Week / Agenda)
+    document.getElementById('nets-view-toggle')?.addEventListener('click', e => {
+        const btn = (e.target as HTMLElement).closest('button[data-nets-view]');
+        if (!btn) return;
+        netsView = btn.getAttribute('data-nets-view') || 'table';
+        renderNetsView();
+    });
+    // Clicking a schedule block opens the existing schedule editor
+    for (const id of ['nets-week-view', 'nets-agenda-view']) {
+        document.getElementById(id)?.addEventListener('click', e => {
+            const blk = (e.target as HTMLElement).closest('button.sched-block');
+            if (blk) openScheduleEditor(blk.getAttribute('data-id') || '');
+        });
+    }
 
     // Column header click — sort users or nets
     document.addEventListener('click', (e) => {

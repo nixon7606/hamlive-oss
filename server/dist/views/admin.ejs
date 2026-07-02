@@ -28,6 +28,15 @@
     .sort-arrow { font-size: 10px; margin-left: 2px; color: var(--hl-tertiary); display: inline-block; width: 12px; text-align: center; }
     th[data-sort-dir="asc"] .sort-arrow::after { content: "▲"; color: #ffc107; }
     th[data-sort-dir="desc"] .sort-arrow::after { content: "▼"; color: #ffc107; }
+    .sched-week { display: flex; gap: 6px; align-items: flex-start; }
+    .sched-day { flex: 1 1 0; min-width: 0; }
+    .sched-day-head { font-weight: 600; font-size: .8rem; border-bottom: 1px solid rgba(255,255,255,.2); margin-bottom: 4px; }
+    .sched-block { display: block; width: 100%; text-align: left; background: rgba(163,118,195,.15);
+      border: 1px solid rgba(163,118,195,.4); border-radius: 4px; color: inherit;
+      font-size: .78rem; padding: 2px 6px; margin-bottom: 4px; cursor: pointer; }
+    .sched-block.sched-live { border-color: #3cce3c; }
+    .sched-time { font-weight: 600; }
+    .sched-agenda-day .sched-block { max-width: 480px; }
   </style>
 </head>
 
@@ -116,7 +125,15 @@
           <div class="app-card-header">
             <span class="text-light"><i class="bi bi-broadcast"></i> Net Profiles</span>
           </div>
-          <div class="table-responsive">
+          <div class="d-flex gap-2 my-2" id="nets-view-toggle">
+            <button class="app-btn app-btn-sm active" data-nets-view="table" type="button">Table</button>
+            <button class="app-btn app-btn-sm" data-nets-view="week" type="button">Week</button>
+            <button class="app-btn app-btn-sm" data-nets-view="agenda" type="button">Agenda</button>
+            <span class="text-muted small align-self-center">times shown in your timezone</span>
+          </div>
+          <div id="nets-week-view" hidden></div>
+          <div id="nets-agenda-view" hidden></div>
+          <div class="table-responsive" id="nets-table-view">
             <table class="table table-dark table-striped table-hover admin-table">
               <thead>
                 <tr>

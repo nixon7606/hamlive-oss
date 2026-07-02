@@ -4,6 +4,7 @@ process.env.TZ = 'UTC';
 
 import { nextOccurrence, relTime, describeSchedule, bucketRecentRows }
     from '../../../client/src/public/js/byView/admin/adminViewHelpers';
+import { buildWeekHTML, buildAgendaHTML } from '../../../client/src/public/js/byView/admin/adminViewHelpers';
 
 // Fixed reference: Wed 2026-07-01 18:00:00 UTC
 const NOW = new Date(Date.UTC(2026, 6, 1, 18, 0, 0));
@@ -55,4 +56,35 @@ test('bucketRecentRows counts statuses', () => {
     { status: 'deferred' }, { status: 'accepted' }, {}
   ]);
   expect(b).toEqual({ total: 6, delivered: 2, bounced: 1, deferred: 1, other: 2 });
+});
+
+const NETS = [
+  { _id: 'n1', title: 'Sunday Rag Chew', hasLiveNet: false,
+    schedule: { enabled: true, dayOfWeek: 0, hour: 19, minute: 30, timezone: 'UTC', notifyBeforeMinutes: 30 } },
+  { _id: 'n2', title: 'Wednesday Tech Net', hasLiveNet: true,
+    schedule: { enabled: true, dayOfWeek: 3, hour: 20, minute: 0, timezone: 'UTC', notifyBeforeMinutes: 15 } },
+  { _id: 'n3', title: 'No Schedule Net', hasLiveNet: false, schedule: { enabled: false } },
+];
+
+test('buildWeekHTML: 7 day columns, enabled nets only, live class, data-id present', () => {
+  const html = buildWeekHTML(NETS, NOW);
+  expect((html.match(/class="sched-day"/g) || []).length).toBe(7); // exact — "sched-day-head" must not count
+  expect(html).toContain('Sunday Rag Chew');
+  expect(html).toContain('data-id="n1"');
+  expect(html).toContain('sched-live');           // n2 is live
+  expect(html).not.toContain('No Schedule Net');  // disabled excluded
+});
+
+test('buildWeekHTML escapes titles', () => {
+  const html = buildWeekHTML([{ _id: 'x', title: '<img src=x>', hasLiveNet: false,
+    schedule: { enabled: true, dayOfWeek: 1, hour: 1, minute: 0, timezone: 'UTC' } }], NOW);
+  expect(html).not.toContain('<img src=x>');
+  expect(html).toContain('&lt;img');
+});
+
+test('buildAgendaHTML: chronological next-7-days with day headings', () => {
+  const html = buildAgendaHTML(NETS, NOW);
+  // NOW is Wed 18:00 UTC; Wednesday Tech Net (20:00) is Today, Sunday net later
+  expect(html.indexOf('Wednesday Tech Net')).toBeLessThan(html.indexOf('Sunday Rag Chew'));
+  expect(html).toContain('Today');
 });
