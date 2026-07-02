@@ -338,6 +338,12 @@
             <button class="app-btn app-btn-primary app-btn-sm" id="recent-load-btn" type="button">Load</button>
             <button class="app-btn app-btn-sm" id="recent-csv-btn" type="button">Download CSV</button>
           </div>
+          <div class="d-flex gap-2 mb-2" id="recent-status-chips">
+            <button class="app-btn app-btn-sm active" data-recent-status="" type="button">All</button>
+            <button class="app-btn app-btn-sm" data-recent-status="delivered" type="button">Delivered</button>
+            <button class="app-btn app-btn-sm" data-recent-status="bounced" type="button">Bounced</button>
+            <button class="app-btn app-btn-sm" data-recent-status="deferred" type="button">Deferred</button>
+          </div>
           <div id="recent-summary" class="small mb-2"></div>
           <div id="recent-results"></div>
         </div>

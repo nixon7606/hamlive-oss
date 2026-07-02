@@ -1,7 +1,7 @@
 'use strict';
 import { expiryFromPreset } from '#@client/lib/clientUtils.js';
 import { initEmailSettings } from './emailSettings.js';
-import { nextOccurrence, relTime, describeSchedule, buildWeekHTML, buildAgendaHTML } from './adminViewHelpers.js';
+import { nextOccurrence, relTime, describeSchedule, bucketRecentRows, buildWeekHTML, buildAgendaHTML } from './adminViewHelpers.js';
 const API = '/api/admin';
 let usersCache = [];
 let netsCache = [];
@@ -365,7 +365,7 @@ async function loadAudit() {
 const EVENT_COLORS = {
     delivered: 'success', open: 'info', click: 'info',
     bounce: 'danger', dropped: 'danger', spamreport: 'danger', blocked: 'danger',
-    deferred: 'warning', processed: 'secondary', queued: 'secondary'
+    deferred: 'warning', processed: 'secondary', queued: 'secondary', accepted: 'secondary'
 };
 function showEmailHistory(email) {
     const tabBtn = document.getElementById('email-tab');
@@ -495,6 +495,34 @@ function recentRangeFromControls(presetDays) {
     return { from: from.toISOString(), to: to.toISOString() };
 }
 let lastRecentRange = { from: '', to: '' };
+let recentRowsCache = [];
+let recentStatusFilter = '';
+const RECENT_STATUS_BUCKET = {
+    delivered: s => s === 'delivered',
+    bounced: s => s === 'bounce' || s === 'dropped' || s === 'blocked',
+    deferred: s => s === 'deferred',
+};
+function renderRecentRows() {
+    const box = document.getElementById('recent-results');
+    if (!box)
+        return;
+    const filter = RECENT_STATUS_BUCKET[recentStatusFilter];
+    const rows = filter ? recentRowsCache.filter(r => filter(r.status)) : recentRowsCache;
+    if (rows.length === 0) {
+        box.innerHTML = '<p class="text-muted">No sends with this status in the window.</p>';
+        return;
+    }
+    box.innerHTML = `<table class="table table-dark table-striped table-hover admin-table"><thead><tr>
+        <th>Time</th><th>Recipient</th><th>Type</th><th>Subject</th><th>Status</th></tr></thead><tbody>${rows.map((r) => `<tr>
+            <td>${r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}</td>
+            <td><a href="#" data-action="lookup-recipient" data-recipient="${esc(r.recipient)}" title="Open in Delivery Lookup">${esc(r.recipient)}</a></td>
+            <td>${r.type === 'magic-login'
+        ? `<span class="magic-link-copy-recent" data-action="copy-magic-link" data-recipient="${esc(r.recipient)}" style="cursor:pointer; text-decoration:underline; text-decoration-style:dotted;" title="Click to copy magic sign-in link">${esc(r.type)}</span>`
+        : esc(r.type)}</td>
+            <td>${esc(r.subject || '')}</td>
+            <td><span class="badge bg-${EVENT_COLORS[r.status] || 'secondary'}">${esc(r.status)}</span></td>
+        </tr>`).join('')}</tbody></table>`;
+}
 async function loadRecentEmails(range) {
     lastRecentRange = range;
     const box = document.getElementById('recent-results');
@@ -509,23 +537,16 @@ async function loadRecentEmails(range) {
             throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const rows = (data.message && data.message.rows) || [];
-        const summary = (data.message && data.message.summary) || {};
         const capped = data.message && data.message.capped;
+        recentRowsCache = rows;
         if (rows.length === 0) {
             box.innerHTML = '<p class="text-muted">No sends in this window.</p>';
             return;
         }
-        sum.innerHTML = `${rows.length} sent` + Object.keys(summary).map(k => ` · ${esc(k)}: ${summary[k]}`).join('') + (capped ? ' · <span class="text-warning">(capped at 1000 — narrow the range or use CSV)</span>' : '');
-        box.innerHTML = `<table class="table table-dark table-striped table-hover admin-table"><thead><tr>
-            <th>Time</th><th>Recipient</th><th>Type</th><th>Subject</th><th>Status</th></tr></thead><tbody>${rows.map((r) => `<tr>
-                <td>${r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}</td>
-                <td>${esc(r.recipient)}</td>
-                <td>${r.type === 'magic-login'
-            ? `<span class="magic-link-copy-recent" data-action="copy-magic-link" data-recipient="${esc(r.recipient)}" style="cursor:pointer; text-decoration:underline; text-decoration-style:dotted;" title="Click to copy magic sign-in link">${esc(r.type)}</span>`
-            : esc(r.type)}</td>
-                <td>${esc(r.subject || '')}</td>
-                <td><span class="badge bg-${EVENT_COLORS[r.status] || 'secondary'}">${esc(r.status)}</span></td>
-            </tr>`).join('')}</tbody></table>`;
+        const b = bucketRecentRows(rows);
+        sum.innerHTML = `${b.total} sent · ${b.delivered} delivered · ${b.bounced} bounced · ${b.deferred} deferred · ${b.other} other`
+            + (capped ? ' · <span class="text-warning">(capped at 1000 — narrow the range or use CSV)</span>' : '');
+        renderRecentRows();
     }
     catch (err) {
         box.innerHTML = `<p class="text-danger">Error: ${esc(err.message)}</p>`;
@@ -919,6 +940,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     const recentResults = document.getElementById('recent-results');
     recentResults?.addEventListener('click', async (e) => {
+        const lookup = e.target.closest('a[data-action="lookup-recipient"]');
+        if (lookup) {
+            e.preventDefault();
+            const email = lookup.getAttribute('data-recipient') || '';
+            const input = document.getElementById('email-search-input');
+            if (input)
+                input.value = email;
+            loadEmailActivity(email);
+            return;
+        }
         const el = e.target.closest('[data-action="copy-magic-link"]');
         if (!el)
             return;
@@ -1044,6 +1075,14 @@ document.addEventListener('DOMContentLoaded', () => {
         loadRecentEmails(recentRangeFromControls(1));
     }, { once: true });
     document.getElementById('recent-load-btn')?.addEventListener('click', () => loadRecentEmails(recentRangeFromControls()));
+    document.getElementById('recent-status-chips')?.addEventListener('click', e => {
+        const btn = e.target.closest('button[data-recent-status]');
+        if (!btn)
+            return;
+        recentStatusFilter = btn.getAttribute('data-recent-status') || '';
+        document.querySelectorAll('#recent-status-chips button').forEach(b => b.classList.toggle('active', b === btn));
+        renderRecentRows();
+    });
     document.getElementById('recent-csv-btn')?.addEventListener('click', () => {
         const range = lastRecentRange.from ? lastRecentRange : recentRangeFromControls();
         window.location.href = `${API}/email/recent?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}&format=csv`;
