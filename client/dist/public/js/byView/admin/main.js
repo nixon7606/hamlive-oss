@@ -1,6 +1,7 @@
 'use strict';
 import { expiryFromPreset } from '#@client/lib/clientUtils.js';
 import { initEmailSettings } from './emailSettings.js';
+import { nextOccurrence, relTime, describeSchedule } from './adminViewHelpers.js';
 const API = '/api/admin';
 let usersCache = [];
 let netsCache = [];
@@ -175,18 +176,16 @@ async function loadNets() {
                 if (n.liveNetStatus === 'waiting')
                     statusBadge = '<span class="badge badge-waiting">Waiting</span>';
                 else
-                    statusBadge = '<span class="badge badge-live">Live</span>';
+                    statusBadge = `<a href="/views/livenet/${n._id}" class="badge badge-live" title="Open live net">● LIVE</a>`;
             }
             const permBadge = n.permanent
                 ? '<span class="badge badge-locked">Perm</span>'
                 : '<span class="text-muted">—</span>';
             let scheduleInfo = '<span class="text-muted">—</span>';
             if (n.schedule && n.schedule.enabled) {
-                const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                const day = days[n.schedule.dayOfWeek] || '?';
-                const h = String(n.schedule.hour || 0).padStart(2, '0');
-                const m = String(n.schedule.minute || 0).padStart(2, '0');
-                scheduleInfo = `<span class="badge badge-scheduled">${day} ${h}:${m}</span>`;
+                const occ = nextOccurrence(n.schedule);
+                const next = occ ? ` · next in ${relTime(occ.getTime() - Date.now())}` : '';
+                scheduleInfo = `<span class="badge badge-scheduled" title="${esc(describeSchedule(n.schedule))}">${esc(describeSchedule(n.schedule))}</span><span class="small text-muted">${next}</span>`;
             }
             const permBtnLabel = n.permanent ? 'Un-perm' : 'Perm';
             const permBtnClass = n.permanent ? 'btn-outline-success' : 'btn-outline-warning';
@@ -226,8 +225,12 @@ function getSortValue(obj, field) {
     }
     if (field === 'permanent')
         return obj.permanent ? 0 : 1;
-    if (field === 'schedule')
-        return (obj.schedule && obj.schedule.enabled) ? 0 : 1;
+    if (field === 'schedule') {
+        if (!(obj.schedule && obj.schedule.enabled))
+            return Number.MAX_SAFE_INTEGER;
+        const occ = nextOccurrence(obj.schedule);
+        return occ ? occ.getTime() : Number.MAX_SAFE_INTEGER - 1;
+    }
     if (field === 'ip')
         return obj.lastIp || '';
     if (field === 'createdAt')
