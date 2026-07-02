@@ -1,11 +1,13 @@
 import { createLogger } from '#@client/lib/logger.js';
 import { getNpid } from '#@client/lib/clientUtils.js';
+import { StaleStreamWatchdog } from '#@client/lib/staleStreamWatchdog.js';
 const logger = createLogger('lib/localChat.ts');
 export class LocalChatConnection {
     npid = getNpid();
     session = null;
     eventSource = null;
     initialized = false;
+    watchdog = new StaleStreamWatchdog(90_000, () => this.recoverFromStaleStream());
     handlers = new Map();
     constructor() {
     }
@@ -33,6 +35,9 @@ export class LocalChatConnection {
             return;
         }
         this.eventSource = new EventSource(`/api/chat/${this.npid}/stream`);
+        this.watchdog.start();
+        this.eventSource.onopen = () => this.watchdog.beat();
+        this.eventSource.addEventListener('hb', () => this.watchdog.beat());
         this.eventSource.addEventListener('chat-message', (event) => {
             try {
                 const data = JSON.parse(event.data);
@@ -318,12 +323,19 @@ export class LocalChatConnection {
         });
     }
     disconnect() {
+        this.watchdog.stop();
         if (this.eventSource) {
             this.eventSource.close();
             this.eventSource = null;
         }
         this.initialized = false;
         logger.info('LocalChat: Disconnected');
+    }
+    recoverFromStaleStream() {
+        logger.warn('LocalChat: SSE stream silent past watchdog threshold — reconnecting');
+        this.disconnect();
+        this.connect();
+        this.emit('chat.resync', null);
     }
     get isConnected() {
         return this.initialized;

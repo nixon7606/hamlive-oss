@@ -163,4 +163,18 @@ describe('ChatSSEBroadcaster', () => {
     expect(resA.write).toHaveBeenCalled();
     expect(resB.write).not.toHaveBeenCalled();
   });
+
+
+  // The keep-alive must be a REAL named event, not an SSE comment: comments
+  // are invisible to the browser's EventSource API, so the client-side
+  // dead-stream watchdog can only see 'hb' events. (Prod incident 2026-07-01.)
+  test('keep-alive sends an hb event the client can observe, not a comment', () => {
+    const { res } = connectClient('test-net');
+    res.write.mockClear();
+    jest.advanceTimersByTime(30000);
+    const writes = res.write.mock.calls.map(c => c[0]).join('');
+    expect(writes).toContain('event: hb\n');
+    expect(writes).toContain('data: {}\n\n');
+    expect(writes).not.toContain(': keepalive');
+  });
 });

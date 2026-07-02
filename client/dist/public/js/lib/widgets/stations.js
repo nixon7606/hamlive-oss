@@ -182,7 +182,20 @@ export class NameCell extends StationTableMember {
     scrollDismissHandler = null;
     scrollTarget = null;
     getTemplate() {
-        return `\n        <style>\n            #${this.defaultElementId} {\n                display: grid;\n                align-items: center;\n                justify-items: start;\n                padding: 10px;\n                /* Remaining styles by applyStyling() */\n            }\n        </style>\n\n        <div id="${this.defaultElementId}">\n        </div>\n        `;
+        return `
+        <style>
+            #${this.defaultElementId} {
+                display: grid;
+                align-items: center;
+                justify-items: start;
+                padding: 10px;
+                /* Remaining styles by applyStyling() */
+            }
+        </style>
+
+        <div id="${this.defaultElementId}">
+        </div>
+        `;
     }
     didMyDataSegmentChange() {
         return this.haveThisStationPropertiesChanged(['location', 'displayName', 'role', 'checkedState', 'presence']);
@@ -209,17 +222,12 @@ export class NameCell extends StationTableMember {
         if (onConnected || this.haveThisStationPropertiesChanged(['location'])) {
             this.refreshTooltip();
         }
-        // Paint name + styling unconditionally every render (re-applies fd878b1, reverted by 5b11a66's tooltip rework) — fixes roster names vanishing on update.
         this.defaultElement.textContent = `${this.station?.displayName ?? ''}`;
         if (this.station) {
             this.applyStyling(this.defaultElement, this.getStyling(this.station));
         }
     }
     onConnected() {
-        // Dismiss the Bootstrap tooltip when the roster scrolls. Resolve the scroll
-        // container by walking up from `this` (the host element, in the light DOM) —
-        // NOT defaultElement, whose parentElement chain can't cross the closed
-        // shadow-root boundary.
         let scrollTarget = null;
         let el = this;
         while (el && el !== document.documentElement) {
@@ -232,7 +240,6 @@ export class NameCell extends StationTableMember {
         }
         scrollTarget ??= window;
         this.scrollTarget = scrollTarget;
-        // hide() (not dispose) so the tooltip can re-open on the next tap.
         this.scrollDismissHandler = () => this.tooltip?.hide();
         scrollTarget.addEventListener('scroll', this.scrollDismissHandler, { passive: true });
         scrollTarget.addEventListener('touchmove', this.scrollDismissHandler, { passive: true });

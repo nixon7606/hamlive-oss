@@ -2,6 +2,7 @@
 
 /* eslint-disable @typescript-eslint/require-await */
 import { EndPointClient, Looper, LoopStats, deepEqual, deepClone, createProxy } from '#@client/lib/clientUtils.js';
+import { StaleStreamWatchdog } from '#@client/lib/staleStreamWatchdog.js';
 import {
     EndPointResponse,
     LiveNetDetailsResponse,
@@ -240,6 +241,13 @@ export abstract class ReactiveStore<T extends EndPointResponse> {
 
     private endPointError = false;
 
+    // A dead-but-open SSE stream (extension/AV proxy/middlebox buffering) emits
+    // no error event, and the backup poll is stopped while SSE is attached — so
+    // without a watchdog the view freezes until re-login. The live-net stream
+    // carries presence pushes every 20s, so 90s of silence = 4+ missed
+    // heartbeats = genuinely dead.
+    private readonly sseWatchdog = new StaleStreamWatchdog(90_000, () => this.recoverFromStaleSse());
+
     public constructor(
         protected endPoint: EndPointClient,
         compensatoryScheduling: boolean = false,
@@ -286,14 +294,19 @@ export abstract class ReactiveStore<T extends EndPointResponse> {
             // Stop short-polliing
             this.mainLooper.stop();
 
+            // Arm the dead-stream watchdog for this stream's lifetime.
+            this.sseWatchdog.start();
+
             //SSE Setup:
             this.eventSource.addEventListener('net-close', event => {
                 logger.info('Received net-close event:', event.data);
+                this.sseWatchdog.stop();
                 this.eventSource?.close();
                 window.location.href = '/';
             });
 
             this.eventSource.onopen = () => {
+                this.sseWatchdog.beat();
                 logger.info('SSE Connection to server opened.');
                 this.notifySubscribers('ONLINE').catch(err => logger.error(String(err)));
                 // Re-sync full state on every (re)connect. SSE delivers only
@@ -313,6 +326,7 @@ export abstract class ReactiveStore<T extends EndPointResponse> {
 
             // Listen for messages
             this.eventSource.onmessage = event => {
+                this.sseWatchdog.beat();
                 // Parse the event data
                 if (typeof event.data !== 'string') {
                     throw new Error('Event data is not a string');
@@ -341,6 +355,15 @@ export abstract class ReactiveStore<T extends EndPointResponse> {
         this.inFlightWindowManager.startRttCheck();
 
         // Starts the main application loop
+        this.startMainLoop();
+
+        this.isInitStoreRunning = false;
+    }
+
+    // The short-poll loop. Started by init(), stopped when a response upgrades
+    // us to SSE, and restarted by recoverFromStaleSse() when a stream goes
+    // dead-but-open — extracted so both paths run the identical loop.
+    private startMainLoop(): void {
         this.mainLooper.start(async (stats: LoopStats) => {
             try {
                 const response = await this.endPoint.show();
@@ -366,8 +389,30 @@ export abstract class ReactiveStore<T extends EndPointResponse> {
                 logger.error(String(error));
             }
         }, true);
+    }
 
-        this.isInitStoreRunning = false;
+    // The SSE stream went silent past the watchdog threshold: treat it as dead
+    // even though the browser reports it open (buffering middleboxes produce
+    // exactly that). Drop the stream and fall back to short-polling; the next
+    // poll response still carries ssePath, so the normal upgrade path attaches
+    // a fresh stream (and re-arms the watchdog). If that stream is dead too,
+    // the cycle repeats — degraded to polling, never frozen.
+    private recoverFromStaleSse(): void {
+        logger.warn(`${this.constructor.name}: SSE stream silent past watchdog threshold — dropping stream, resuming polls`);
+        this.eventSource?.close();
+        this.eventSource = null;
+        this.notifySubscribers('OFFLINE').catch(err => logger.error(String(err)));
+        // Mark the endpoint errored so the first successful poll flips
+        // subscribers back ONLINE (the poll loop only notifies ONLINE on
+        // recovery from an error state).
+        this.endPointError = true;
+        try {
+            this.startMainLoop();
+        } catch (err) {
+            // Looper.start throws if the loop is somehow already running — in
+            // that state polling is live, which is exactly what we want.
+            logger.warn(`recoverFromStaleSse: poll loop already running (${String(err)})`);
+        }
     }
 
     // Called when the main cache is about to be modified. It informs the InFlightWindowManager to start the in-flight window, during which updates to the main cache from the server data cache are delayed.

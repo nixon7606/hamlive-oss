@@ -384,6 +384,26 @@ producing unhelpful errors, and they fix one validator that could hang a login.
   error 17 ("ReadChannel not allowed") because the client read the channel
   before `addMembers` ran, hence `addMembers` stays synchronous.
 
+### SSE staleness watchdog (dead-but-open streams recover instead of freezing)
+- **New file:** `client/src/public/js/lib/staleStreamWatchdog.ts` (+ compiled
+  `client/dist/public/js/lib/staleStreamWatchdog.js`) — fires once when a
+  stream shows no activity for 90 s.
+- **Modified:** `client/src/public/js/lib/stores.ts` (+ compiled `stores.js`) —
+  `ReactiveStore` stops polling permanently once SSE attaches; the watchdog
+  (fed by the live-net stream's 20 s presence pushes) now drops a silent
+  stream, resumes short-polling, and lets the normal `ssePath` upgrade
+  re-attach. `client/src/public/js/lib/localChat.ts` + `chat.ts` (+ compiled) —
+  chat watchdog fed by the server's 30 s `hb` events; on recovery the UI
+  re-fetches history (`chat.resync`). `server/dist/lib/sseChat.js` — the 30 s
+  keep-alive changed from an SSE **comment** (invisible to the browser's
+  EventSource API) to a real `event: hb` message the client can observe.
+- **Why:** prod incident 2026-07-01 — one user's roster AND chat froze all net
+  (open-but-buffered stream emits no error; server pipeline verified healthy).
+  With the watchdog the worst case is a ~90 s blip followed by polling.
+- **Note:** the rebuild also reconciled `client/dist/public/js/lib/widgets/stations.js`
+  with its source (comment/formatting only — verified semantically identical;
+  the roster-names fix lives in `stations.ts`).
+
 ---
 
 ## Roster / net control

@@ -663,6 +663,22 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         this.connection.on('pin', (data: unknown) => this.renderPinnedBar(data));
         this.connection.on('unpin', () => this.clearPinnedBar());
         this.connection.on('chat.clear', () => this.handleChatClear());
+        // Fired after the connection rebuilt a dead-but-open SSE stream —
+        // re-fetch history so anything missed while the stream was dead appears.
+        this.connection.on('chat.resync', () => { void this.handleResync(); });
+    }
+
+    private async handleResync(): Promise<void> {
+        if (!this.connection) return;
+        try {
+            const existingMessages = await this.connection.getMessages();
+            if (existingMessages) {
+                this.messages = existingMessages;
+                this.loadMessages();
+            }
+        } catch (e) {
+            logger.error('Chat resync after stream recovery failed:', e);
+        }
     }
 
     private setupInputListeners(): void {

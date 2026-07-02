@@ -517,6 +517,21 @@ export class ChatWidget extends HTMLElement {
         this.connection.on('pin', (data) => this.renderPinnedBar(data));
         this.connection.on('unpin', () => this.clearPinnedBar());
         this.connection.on('chat.clear', () => this.handleChatClear());
+        this.connection.on('chat.resync', () => { void this.handleResync(); });
+    }
+    async handleResync() {
+        if (!this.connection)
+            return;
+        try {
+            const existingMessages = await this.connection.getMessages();
+            if (existingMessages) {
+                this.messages = existingMessages;
+                this.loadMessages();
+            }
+        }
+        catch (e) {
+            logger.error('Chat resync after stream recovery failed:', e);
+        }
     }
     setupInputListeners() {
         const sendBtn = this.querySelector('.chat-send-btn');

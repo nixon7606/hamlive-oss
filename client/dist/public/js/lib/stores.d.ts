@@ -22,9 +22,12 @@ export declare abstract class ReactiveStore<T extends EndPointResponse> {
     private _mainCache;
     private readonly inFlightWindowManager;
     private endPointError;
+    private readonly sseWatchdog;
     constructor(endPoint: EndPointClient, compensatoryScheduling?: boolean, enableSse?: boolean);
     private handleNewData;
     init(): Promise<void>;
+    private startMainLoop;
+    private recoverFromStaleSse;
     delayServerDataIngest(): void;
     private resyncFromServer;
     private notifySubscribers;

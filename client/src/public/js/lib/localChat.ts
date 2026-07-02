@@ -7,6 +7,7 @@
 
 import { createLogger } from '#@client/lib/logger.js';
 import { getNpid } from '#@client/lib/clientUtils.js';
+import { StaleStreamWatchdog } from '#@client/lib/staleStreamWatchdog.js';
 
 const logger = createLogger('lib/localChat.ts');
 
@@ -63,6 +64,11 @@ export class LocalChatConnection {
     private eventSource: EventSource | null = null;
     private initialized = false;
 
+    // Chat traffic is sporadic, so liveness comes from the server's 30s 'hb'
+    // events; 90s of total silence = 3 missed heartbeats = dead stream
+    // (open-but-buffered connections emit no error — prod incident 2026-07-01).
+    private readonly watchdog = new StaleStreamWatchdog(90_000, () => this.recoverFromStaleStream());
+
     // Event handlers
     private handlers = new Map<string, Set<ChatEventHandler>>();
 
@@ -99,6 +105,12 @@ export class LocalChatConnection {
         }
 
         this.eventSource = new EventSource(`/api/chat/${this.npid}/stream`);
+
+        // Dead-stream watchdog: armed for this stream's lifetime, fed by the
+        // server's 30s 'hb' keep-alive events and the open handshake.
+        this.watchdog.start();
+        this.eventSource.onopen = () => this.watchdog.beat();
+        this.eventSource.addEventListener('hb', () => this.watchdog.beat());
 
         this.eventSource.addEventListener('chat-message', (event: MessageEvent) => {
             try {
@@ -426,12 +438,24 @@ export class LocalChatConnection {
     }
 
     disconnect(): void {
+        this.watchdog.stop();
         if (this.eventSource) {
             this.eventSource.close();
             this.eventSource = null;
         }
         this.initialized = false;
         logger.info('LocalChat: Disconnected');
+    }
+
+    // The stream went silent past the watchdog threshold: the browser still
+    // reports it open, but nothing flows (buffering middlebox/extension).
+    // Rebuild the stream and tell the UI to re-fetch history so anything
+    // missed while dead appears.
+    private recoverFromStaleStream(): void {
+        logger.warn('LocalChat: SSE stream silent past watchdog threshold — reconnecting');
+        this.disconnect();
+        this.connect();
+        this.emit('chat.resync', null);
     }
 
     get isConnected(): boolean {

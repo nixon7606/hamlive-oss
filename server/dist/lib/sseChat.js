@@ -60,10 +60,14 @@ class ChatSSEInstance {
         req.on('close', cleanup);
         req.on('error', cleanup);
 
-        // Keep-alive ping every 30s to prevent proxy timeouts
+        // Keep-alive ping every 30s to prevent proxy timeouts. Sent as a REAL
+        // named event (not an SSE comment): comments are invisible to the
+        // browser's EventSource API, and the client-side dead-stream watchdog
+        // needs an observable heartbeat to distinguish "quiet chat" from
+        // "silently dead connection".
         const keepAlive = setInterval(() => {
             try {
-                res.write(': keepalive\n\n');
+                res.write('event: hb\ndata: {}\n\n');
                 // Update lastWrite on successful keep-alive
                 const client = this.clients.find(c => c.id === clientId);
                 if (client) client.lastWrite = Date.now();

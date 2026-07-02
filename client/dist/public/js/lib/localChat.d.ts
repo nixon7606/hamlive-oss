@@ -41,10 +41,11 @@ export interface BanEvent {
 }
 export type ChatEventHandler = (data: unknown) => void;
 export declare class LocalChatConnection {
-    private npid;
+    npid: any;
     private session;
     private eventSource;
     private initialized;
+    private readonly watchdog;
     private handlers;
     constructor();
     getSession(): Promise<LocalChatSession | null>;
@@ -65,6 +66,7 @@ export declare class LocalChatConnection {
     off(event: string, handler: ChatEventHandler): void;
     private emit;
     disconnect(): void;
+    private recoverFromStaleStream;
     get isConnected(): boolean;
 }
 //# sourceMappingURL=localChat.d.ts.map

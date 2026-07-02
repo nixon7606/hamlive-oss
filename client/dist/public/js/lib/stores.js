@@ -1,4 +1,5 @@
 import { Looper, deepEqual, deepClone, createProxy } from '#@client/lib/clientUtils.js';
+import { StaleStreamWatchdog } from '#@client/lib/staleStreamWatchdog.js';
 import { isLiveNetDetailsResponse, isLiveNetPresenceResponse, isFollowListResponse, isNpid } from '#@client/types/commonTypesupport.js';
 import { serverInfo } from '#@client/lib/serverInfo.js';
 import { createLogger } from '#@client/lib/logger.js';
@@ -119,6 +120,7 @@ export class ReactiveStore {
     _mainCache = null;
     inFlightWindowManager;
     endPointError = false;
+    sseWatchdog = new StaleStreamWatchdog(90_000, () => this.recoverFromStaleSse());
     constructor(endPoint, compensatoryScheduling = false, enableSse = true) {
         this.endPoint = endPoint;
         this.enableSse = enableSse;
@@ -144,12 +146,15 @@ export class ReactiveStore {
         if (this.enableSse && data.ssePath && !this.eventSource) {
             this.eventSource = new EventSource(data.ssePath);
             this.mainLooper.stop();
+            this.sseWatchdog.start();
             this.eventSource.addEventListener('net-close', event => {
                 logger.info('Received net-close event:', event.data);
+                this.sseWatchdog.stop();
                 this.eventSource?.close();
                 window.location.href = '/';
             });
             this.eventSource.onopen = () => {
+                this.sseWatchdog.beat();
                 logger.info('SSE Connection to server opened.');
                 this.notifySubscribers('ONLINE').catch(err => logger.error(String(err)));
                 this.resyncFromServer();
@@ -159,6 +164,7 @@ export class ReactiveStore {
                 this.notifySubscribers('OFFLINE').catch(err => logger.error(String(err)));
             };
             this.eventSource.onmessage = event => {
+                this.sseWatchdog.beat();
                 if (typeof event.data !== 'string') {
                     throw new Error('Event data is not a string');
                 }
@@ -175,6 +181,10 @@ export class ReactiveStore {
         }
         this.isInitStoreRunning = true;
         this.inFlightWindowManager.startRttCheck();
+        this.startMainLoop();
+        this.isInitStoreRunning = false;
+    }
+    startMainLoop() {
         this.mainLooper.start(async (stats) => {
             try {
                 const response = await this.endPoint.show();
@@ -194,7 +204,19 @@ export class ReactiveStore {
                 logger.error(String(error));
             }
         }, true);
-        this.isInitStoreRunning = false;
+    }
+    recoverFromStaleSse() {
+        logger.warn(`${this.constructor.name}: SSE stream silent past watchdog threshold — dropping stream, resuming polls`);
+        this.eventSource?.close();
+        this.eventSource = null;
+        this.notifySubscribers('OFFLINE').catch(err => logger.error(String(err)));
+        this.endPointError = true;
+        try {
+            this.startMainLoop();
+        }
+        catch (err) {
+            logger.warn(`recoverFromStaleSse: poll loop already running (${String(err)})`);
+        }
     }
     delayServerDataIngest() {
         if (this.lastHash) {

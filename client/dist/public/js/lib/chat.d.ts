@@ -40,6 +40,7 @@ export declare class ChatWidget extends HTMLElement implements StoreSubscriber {
     private renderReplySnippet;
     private renderReactions;
     private setupConnectionListeners;
+    private handleResync;
     private setupInputListeners;
     private handleClearButtonClick;
     private setupMessageActions;
