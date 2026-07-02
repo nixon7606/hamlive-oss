@@ -64,6 +64,17 @@ const listUsers = async (req, res) => {
             const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
             filter = { $or: [{ email: rx }, { callSign: rx }, { displayName: rx }] };
         }
+        // Optional status facet — server-side so it spans all pages.
+        const STATUS_FILTERS = {
+            locked:  { locked: true },
+            flagged: { flaggedForDeletion: true },
+            new:     { newAccount: true },
+            active:  { locked: { $ne: true }, flaggedForDeletion: { $ne: true } }
+        };
+        const statusFilter = STATUS_FILTERS[String(req.query.status || '')];
+        if (statusFilter) {
+            filter = Object.keys(filter).length ? { $and: [filter, statusFilter] } : statusFilter;
+        }
         const sel = 'email callSign displayName location lastIp locked lockedUntil superUser newAccount policyConsent flaggedForDeletion createdAt lastLogin lastAuthVia';
         const [users, total] = await Promise.all([
             UserProfile.find(filter).select(sel).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),

@@ -24,6 +24,7 @@ let currentEmailRecipient = '';
 // User search + pagination state
 let usersPage = 1;
 let usersSearch = '';
+let usersStatus = '';
 let usersTotal = 0;
 let usersLimit = 50;
 let usersSortField = 'createdAt';
@@ -110,9 +111,9 @@ async function loadStats() {
 async function loadUsers() {
     const tbody = document.getElementById('admin-users-tbody') as HTMLTableSectionElement;
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Loading...</td></tr>';
     try {
-        const res = await fetch(`${API}/users?search=${encodeURIComponent(usersSearch)}&page=${usersPage}`);
+        const res = await fetch(`${API}/users?search=${encodeURIComponent(usersSearch)}&page=${usersPage}&status=${encodeURIComponent(usersStatus)}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const users = (data.message && data.message.users) || [];
@@ -131,7 +132,7 @@ async function loadUsers() {
         if (nextBtn) nextBtn.disabled = usersPage * usersLimit >= usersTotal;
 
         if (users.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No users found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No users found</td></tr>';
             return;
         }
         tbody.innerHTML = sortedUsers.map((u: any) => {
@@ -145,6 +146,11 @@ async function loadUsers() {
                 : '<span class="badge badge-email">Email</span>');
             const created = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-';
             const ip = u.lastIp || '-';
+            let lastLogin = '—';
+            if (u.lastLogin) {
+                const ago = relTime(Date.now() - new Date(u.lastLogin).getTime());
+                lastLogin = ago === 'now' ? 'just now' : ago + ' ago';
+            }
             return `<tr>
                 <td>${esc(u.email)}</td>
                 <td><strong>${esc(u.callSign || '-')}</strong></td>
@@ -153,6 +159,7 @@ async function loadUsers() {
                 <td class="ip-cell">${esc(ip)}</td>
                 <td>${badges.join(' ') || '<span class="text-muted">Active</span>'}</td>
                 <td>${created}</td>
+                <td>${lastLogin}</td>
                 <td>
                     <button class="btn btn-sm btn-outline-light me-1" data-action="edit-user" data-id="${u._id}" title="Edit"><i class="bi bi-pencil"></i></button>
                     <button class="btn btn-sm btn-outline-info me-1" data-action="email-history" data-id="${u._id}" title="View email history"><i class="bi bi-envelope"></i></button>
@@ -161,7 +168,7 @@ async function loadUsers() {
             </tr>`;
         }).join('');
     } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Failed to load users</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-4">Failed to load users</td></tr>';
         statusMsg(`Error loading users: ${(err as Error).message}`, 'danger');
     }
 }
@@ -268,6 +275,7 @@ function getSortValue(obj: any, field: string): any {
     }
     if (field === 'ip') return obj.lastIp || '';
     if (field === 'createdAt') return obj.createdAt ? new Date(obj.createdAt).getTime() : 0;
+    if (field === 'lastLogin') return obj.lastLogin ? new Date(obj.lastLogin).getTime() : 0;
     if (field === 'frequency') {
         const f = parseFloat(obj.frequency);
         return isNaN(f) ? 9999 : f;
@@ -799,6 +807,17 @@ document.addEventListener('DOMContentLoaded', () => {
             usersPage = 1;
             loadUsers();
         }, 300);
+    });
+
+    // User status chips
+    document.getElementById('users-status-chips')?.addEventListener('click', e => {
+        const btn = (e.target as HTMLElement).closest('button[data-users-status]');
+        if (!btn) return;
+        usersStatus = btn.getAttribute('data-users-status') || '';
+        usersPage = 1;
+        document.querySelectorAll('#users-status-chips button').forEach(b =>
+            b.classList.toggle('active', b === btn));
+        loadUsers();
     });
 
     // User pagination clicks

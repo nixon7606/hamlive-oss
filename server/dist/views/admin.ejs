@@ -93,6 +93,13 @@
           </div>
           <div class="d-flex flex-wrap gap-2 mb-2 align-items-center">
             <input type="text" class="app-input" id="user-search-input" placeholder="search email / callsign / name" style="max-width: 320px;" />
+            <div class="btn-group" id="users-status-chips">
+              <button class="app-btn app-btn-sm active" data-users-status="" type="button">All</button>
+              <button class="app-btn app-btn-sm" data-users-status="active" type="button">Active</button>
+              <button class="app-btn app-btn-sm" data-users-status="locked" type="button">Locked</button>
+              <button class="app-btn app-btn-sm" data-users-status="flagged" type="button">Flagged</button>
+              <button class="app-btn app-btn-sm" data-users-status="new" type="button">New</button>
+            </div>
             <span class="text-muted small" id="users-page-info"></span>
             <button class="app-btn app-btn-sm" id="users-prev" type="button" data-users-page="prev">Prev</button>
             <button class="app-btn app-btn-sm" id="users-next" type="button" data-users-page="next">Next</button>
@@ -108,11 +115,12 @@
                   <th data-sort-field="ip">IP <span class="sort-arrow"></span></th>
                   <th data-sort-field="status">Status <span class="sort-arrow"></span></th>
                   <th data-sort-field="createdAt">Created <span class="sort-arrow"></span></th>
+                  <th data-sort-field="lastLogin">Last Login <span class="sort-arrow"></span></th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="admin-users-tbody">
-                <tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>
+                <tr><td colspan="9" class="text-center text-muted py-4">Loading...</td></tr>
               </tbody>
             </table>
           </div>
