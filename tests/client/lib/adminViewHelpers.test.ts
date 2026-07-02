@@ -30,6 +30,13 @@ test('nextOccurrence: null for disabled/incomplete/invalid tz', () => {
   expect(nextOccurrence({ enabled: true, dayOfWeek: 1, hour: 1, minute: 0, timezone: 'Not/AZone' }, NOW)).toBeNull();
 });
 
+test('nextOccurrence: does not skip the spring-forward day (probes calendar days)', () => {
+  // Sat Mar 7 2026 23:30 MST — last hour before the eve of the Mar 8 spring-forward.
+  const eve = new Date(Date.UTC(2026, 2, 8, 6, 30));
+  const occ = nextOccurrence({ dayOfWeek: 0, hour: 10, minute: 0, timezone: 'America/Denver', enabled: true }, eve);
+  expect(occ?.toISOString()).toBe('2026-03-08T16:00:00.000Z'); // Sun Mar 8 10:00 MDT, NOT a week later
+});
+
 test('relTime formats coarse two-unit deltas', () => {
   expect(relTime(2 * 86400_000 + 4 * 3600_000)).toBe('2d 4h');
   expect(relTime(3 * 3600_000 + 12 * 60_000)).toBe('3h 12m');

@@ -33,12 +33,12 @@ export function nextOccurrence(sched, now = new Date()) {
         return null;
     const tz = sched.timezone || 'UTC';
     try {
+        const start = wallClock(now, tz);
         for (let offset = 0; offset <= 7; offset++) {
-            const probe = new Date(now.getTime() + offset * 86400_000);
-            const w = wallClock(probe, tz);
-            if (w.dow !== dayOfWeek)
+            const cand = new Date(Date.UTC(start.y, start.m - 1, start.d + offset));
+            if (cand.getUTCDay() !== dayOfWeek)
                 continue;
-            const occ = zonedTimeToUtc(w.y, w.m, w.d, hour, minute, tz);
+            const occ = zonedTimeToUtc(cand.getUTCFullYear(), cand.getUTCMonth() + 1, cand.getUTCDate(), hour, minute, tz);
             if (occ.getTime() > now.getTime())
                 return occ;
         }

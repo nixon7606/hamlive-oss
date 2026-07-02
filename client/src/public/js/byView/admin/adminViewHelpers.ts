@@ -48,11 +48,15 @@ export function nextOccurrence(sched: NetSchedule, now: Date = new Date()): Date
     if (dayOfWeek === undefined || hour === undefined || minute === undefined) return null;
     const tz = sched.timezone || 'UTC';
     try {
+        const start = wallClock(now, tz);
         for (let offset = 0; offset <= 7; offset++) {
-            const probe = new Date(now.getTime() + offset * 86400_000);
-            const w = wallClock(probe, tz);
-            if (w.dow !== dayOfWeek) continue;
-            const occ = zonedTimeToUtc(w.y, w.m, w.d, hour, minute, tz);
+            // Pure calendar-day arithmetic (timezone-independent): Date.UTC
+            // normalizes day overflow across month/year boundaries, so this
+            // lands on the next local calendar date exactly once per offset
+            // regardless of whether that day is 23, 24, or 25 hours long.
+            const cand = new Date(Date.UTC(start.y, start.m - 1, start.d + offset));
+            if (cand.getUTCDay() !== dayOfWeek) continue;
+            const occ = zonedTimeToUtc(cand.getUTCFullYear(), cand.getUTCMonth() + 1, cand.getUTCDate(), hour, minute, tz);
             if (occ.getTime() > now.getTime()) return occ;
         }
         return null; // unreachable for a valid weekly schedule
