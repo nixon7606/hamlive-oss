@@ -524,7 +524,7 @@ export class ChatWidget extends HTMLElement {
             return;
         try {
             const existingMessages = await this.connection.getMessages();
-            if (existingMessages) {
+            if (existingMessages && existingMessages.length > 0) {
                 this.messages = existingMessages;
                 this.loadMessages();
             }

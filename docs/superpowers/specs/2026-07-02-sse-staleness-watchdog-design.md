@@ -56,10 +56,12 @@ The 30-second keepalive changes from a comment to a real named event the client 
 
 ### 4. Chat client (`lib/localChat.ts`)
 
-Watchdog (same 90 s), beaten by `onopen`, every existing named-event listener, and the new
-`hb` event. On stale: close + null the EventSource and re-run the client's own
-connect/history-refresh path so missed messages are recovered (mirrors what its reconnect
-already does).
+Watchdog (same 90 s), beaten by `onopen` and the new `hb` event (chat traffic shares the
+pipe with `hb`, so beating on every named event adds nothing — deliberate simplification
+from the original draft). On stale: close + null the EventSource, re-run `connect()`, and
+emit `chat.resync`; the chat UI re-fetches history, **never replacing visible history with
+an empty result** (a failed fetch is indistinguishable from empty, and recovery fires
+exactly when the network is suspect).
 
 ## Testing
 
@@ -73,7 +75,9 @@ already does).
 ## Constraints
 
 - Client via `client/src` + `npx tsc -p client/tsconfig.json` only; commit dist. Affected
-  compiled files: `lib/staleStreamWatchdog.js` (new), `lib/stores.js`, `lib/localChat.js` —
-  these are shared by MANY views → Cloudflare purge list for this deploy includes them.
+  compiled files: `lib/staleStreamWatchdog.js` (new), `lib/stores.js`, `lib/localChat.js`,
+  `lib/chat.js`, `lib/widgets/stations.js` (dist/source reconciliation) — shared by MANY
+  views → the Cloudflare purge list for this deploy includes ALL of them (a stale cached
+  `chat.js` would silently skip the history refill on recovery).
 - `server/dist/lib/sseChat.js` patched directly (fork rule); PATCHES.md entry required.
 - No behavior change when streams are healthy: watchdog never fires with beats < threshold.

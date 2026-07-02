@@ -244,8 +244,10 @@ export abstract class ReactiveStore<T extends EndPointResponse> {
     // A dead-but-open SSE stream (extension/AV proxy/middlebox buffering) emits
     // no error event, and the backup poll is stopped while SSE is attached — so
     // without a watchdog the view freezes until re-login. The live-net stream
-    // carries presence pushes every 20s, so 90s of silence = 4+ missed
-    // heartbeats = genuinely dead.
+    // carries presence pushes every 0.8×awayInMs (20s at the default
+    // awayInMs=25000 — see realtimeClients.js), so 90s of silence = 4+ missed
+    // heartbeats = genuinely dead. If a net ever configures awayInMs above
+    // ~112s this threshold must grow with it, or healthy streams would churn.
     private readonly sseWatchdog = new StaleStreamWatchdog(90_000, () => this.recoverFromStaleSse());
 
     public constructor(

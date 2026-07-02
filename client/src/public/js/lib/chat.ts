@@ -672,7 +672,11 @@ export class ChatWidget extends HTMLElement implements StoreSubscriber {
         if (!this.connection) return;
         try {
             const existingMessages = await this.connection.getMessages();
-            if (existingMessages) {
+            // getMessages() returns [] on failure too — and recovery fires
+            // exactly when the network is suspect. Never replace visible
+            // history with nothing (a legitimately emptied room arrives via
+            // the separate chat-clear event).
+            if (existingMessages && existingMessages.length > 0) {
                 this.messages = existingMessages;
                 this.loadMessages();
             }
