@@ -2,7 +2,7 @@
 // format in the viewer-local zone and the assertions must be deterministic.
 process.env.TZ = 'UTC';
 
-import { nextOccurrence, relTime, describeSchedule, bucketRecentRows }
+import { nextOccurrence, relTime, describeSchedule, bucketRecentRows, isBouncedStatus }
     from '../../../client/src/public/js/byView/admin/adminViewHelpers';
 import { buildWeekHTML, buildAgendaHTML } from '../../../client/src/public/js/byView/admin/adminViewHelpers';
 
@@ -58,10 +58,28 @@ test('bucketRecentRows counts statuses', () => {
   expect(b).toEqual({ total: 6, delivered: 2, bounced: 1, deferred: 1, other: 2 });
 });
 
+test('bucketRecentRows counts spamreport as bounced, not other', () => {
+  const b = bucketRecentRows([{ status: 'spamreport' }]);
+  expect(b).toEqual({ total: 1, delivered: 0, bounced: 1, deferred: 0, other: 0 });
+});
+
+test('isBouncedStatus: bounce, dropped, blocked, spamreport are bounced statuses', () => {
+  expect(isBouncedStatus('bounce')).toBe(true);
+  expect(isBouncedStatus('dropped')).toBe(true);
+  expect(isBouncedStatus('blocked')).toBe(true);
+  expect(isBouncedStatus('spamreport')).toBe(true);
+});
+
+test('isBouncedStatus: delivered, deferred, undefined are not bounced statuses', () => {
+  expect(isBouncedStatus('delivered')).toBe(false);
+  expect(isBouncedStatus('deferred')).toBe(false);
+  expect(isBouncedStatus(undefined)).toBe(false);
+});
+
 const NETS = [
   { _id: 'n1', title: 'Sunday Rag Chew', hasLiveNet: false,
     schedule: { enabled: true, dayOfWeek: 0, hour: 19, minute: 30, timezone: 'UTC', notifyBeforeMinutes: 30 } },
-  { _id: 'n2', title: 'Wednesday Tech Net', hasLiveNet: true,
+  { _id: 'n2', title: 'Wednesday Tech Net', hasLiveNet: true, liveNetStatus: 'live',
     schedule: { enabled: true, dayOfWeek: 3, hour: 20, minute: 0, timezone: 'UTC', notifyBeforeMinutes: 15 } },
   { _id: 'n3', title: 'No Schedule Net', hasLiveNet: false, schedule: { enabled: false } },
 ];
@@ -73,6 +91,16 @@ test('buildWeekHTML: 7 day columns, enabled nets only, live class, data-id prese
   expect(html).toContain('data-id="n1"');
   expect(html).toContain('sched-live');           // n2 is live
   expect(html).not.toContain('No Schedule Net');  // disabled excluded
+});
+
+test('buildWeekHTML: waiting (pre-start) nets are not labeled LIVE', () => {
+  const waitingNets = [
+    { _id: 'n4', title: 'Waiting Net', hasLiveNet: true, liveNetStatus: 'waiting',
+      schedule: { enabled: true, dayOfWeek: 3, hour: 20, minute: 0, timezone: 'UTC', notifyBeforeMinutes: 15 } },
+  ];
+  const html = buildWeekHTML(waitingNets, NOW);
+  expect(html).not.toContain('sched-live');
+  expect(html).not.toContain('LIVE');
 });
 
 test('buildWeekHTML escapes titles', () => {

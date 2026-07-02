@@ -5,7 +5,7 @@
 
 import { expiryFromPreset } from '#@client/lib/clientUtils.js';
 import { initEmailSettings } from './emailSettings.js';
-import { nextOccurrence, relTime, describeSchedule, bucketRecentRows, buildWeekHTML, buildAgendaHTML } from './adminViewHelpers.js';
+import { nextOccurrence, relTime, describeSchedule, bucketRecentRows, buildWeekHTML, buildAgendaHTML, isBouncedStatus } from './adminViewHelpers.js';
 
 /**
  * Admin panel — user and net management (superUser only).
@@ -537,7 +537,7 @@ let recentRowsCache: any[] = [];
 let recentStatusFilter = '';
 const RECENT_STATUS_BUCKET: Record<string, (s: string) => boolean> = {
     delivered: s => s === 'delivered',
-    bounced: s => s === 'bounce' || s === 'dropped' || s === 'blocked',
+    bounced: isBouncedStatus,
     deferred: s => s === 'deferred',
 };
 

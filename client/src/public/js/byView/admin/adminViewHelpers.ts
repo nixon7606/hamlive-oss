@@ -84,12 +84,18 @@ export function describeSchedule(sched: NetSchedule): string {
     return `${day} ${hh}:${mm} (${sched.timezone || 'UTC'})`;
 }
 
+// Statuses an admin should treat as delivery failures (SendGrid event names
+// stored verbatim on EmailLog, plus what the cPanel poller writes).
+export function isBouncedStatus(s: string | undefined): boolean {
+    return s === 'bounce' || s === 'dropped' || s === 'blocked' || s === 'spamreport';
+}
+
 export function bucketRecentRows(rows: Array<{ status?: string }>):
     { total: number; delivered: number; bounced: number; deferred: number; other: number } {
     const b = { total: rows.length, delivered: 0, bounced: 0, deferred: 0, other: 0 };
     for (const r of rows) {
         if (r.status === 'delivered') b.delivered++;
-        else if (r.status === 'bounce' || r.status === 'dropped' || r.status === 'blocked') b.bounced++;
+        else if (isBouncedStatus(r.status)) b.bounced++;
         else if (r.status === 'deferred') b.deferred++;
         else b.other++;
     }
@@ -118,8 +124,9 @@ function blockHTML(o: Occurrence): string {
     const mm = String(o.occ.getMinutes()).padStart(2, '0');
     const s = o.net.schedule || {};
     const tip = `${describeSchedule(s)} · opens ${s.notifyBeforeMinutes ?? 30} min early`;
-    const live = o.net.hasLiveNet ? ' sched-live' : '';
-    const liveTag = o.net.hasLiveNet ? ' <span class="badge badge-live">● LIVE</span>' : '';
+    const isLive = o.net.hasLiveNet && o.net.liveNetStatus === 'live';
+    const live = isLive ? ' sched-live' : '';
+    const liveTag = isLive ? ' <span class="badge badge-live">● LIVE</span>' : '';
     return `<button type="button" class="sched-block${live}" data-id="${escText(o.net._id)}" title="${escText(tip)}">` +
         `<span class="sched-time">${hh}:${mm}</span> ${escText(o.net.title || '')}${liveTag}</button>`;
 }
